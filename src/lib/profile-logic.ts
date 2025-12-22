@@ -4,7 +4,7 @@ import type { IProfile, IProfileStore } from '../db/models.js';
 /**
  * Resolves the active profile information (document and specific store name) at a specific timestamp.
  */
-export async function resolveActiveProfile(timestamp: string | Date): Promise<{ doc: IProfile | null, activeProfileName: string, profileData: IProfileStore | null } | null> {
+export async function resolveActiveProfile(timestamp: string | Date): Promise<{ doc: IProfile | null, activeProfileName: string, profileData: IProfileStore | null, expiration?: string | undefined } | null> {
     const targetDate = new Date(timestamp);
     const targetIso = targetDate.toISOString();
 
@@ -21,6 +21,7 @@ export async function resolveActiveProfile(timestamp: string | Date): Promise<{ 
     }).sort({ created_at: -1 }).limit(50); // Most recent 50 should be plenty
 
     let activeSwitch: any = null;
+    let activeEndMs: number = Infinity;
 
     for (const s of switches) {
         const createdMs = new Date(s.created_at).getTime();
@@ -47,6 +48,7 @@ export async function resolveActiveProfile(timestamp: string | Date): Promise<{ 
 
         if (targetDate.getTime() >= startMs && targetDate.getTime() < endMs) {
             activeSwitch = s;
+            activeEndMs = endMs;
             break;
         }
     }
@@ -103,7 +105,8 @@ export async function resolveActiveProfile(timestamp: string | Date): Promise<{ 
             return {
                 activeProfileName: activeSwitch.profile || "Overridden",
                 profileData: profileData || null,
-                doc: baseDoc || null
+                doc: baseDoc || null,
+                expiration: activeEndMs !== Infinity ? new Date(activeEndMs).toISOString() : undefined
             };
         }
     }

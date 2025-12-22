@@ -5,12 +5,13 @@ import {
     ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { connectToDatabase } from "./db/connection.js";
-import { resolveActiveProfile, getProfileStore } from "./lib/profile-logic.js";
-import { getBasalFromSchedule, getBasalRate } from "./lib/basal-logic.js";
-import { getIOB, calculateIOB } from "./lib/iob-logic.js";
-import { getCOB, calculateCOB } from "./lib/cob-logic.js";
+import { resolveActiveProfile } from "./lib/profile-logic.js";
+import { getBasalRate } from "./lib/basal-logic.js";
+import { getIOB } from "./lib/iob-logic.js";
+import { getCOB } from "./lib/cob-logic.js";
+import { getLatestGlucose, getStatus } from "./lib/status-logic.js";
 import { getGraphData } from "./lib/history-logic.js";
-import { Treatment, Entry } from "./db/models.js";
+import { Treatment } from "./db/models.js";
 
 const server = new Server(
     {
@@ -32,17 +33,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         tools: [
             {
                 name: "get_latest_glucose",
-                description: "Get the most recent glucose readings and trend.",
+                description: "Get recent glucose readings with 5m/10m deltas and trend",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        count: { type: "number", description: "Number of readings (default 1)", default: 1 }
+                        count: { type: "number", description: "Number of readings to fetch (default 1)" }
                     }
                 },
             },
             {
-                name: "get_calculated_basal",
-                description: "Get the effective basal rate (including active temp basals).",
+                name: "get_active_profile",
+                description: "Get the active profile (ISF, CR, Basal) at a specific time",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -51,8 +52,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
             },
             {
-                name: "get_active_profile",
-                description: "Get the insulin profile active at a specific time.",
+                name: "get_calculated_basal",
+                description: "Calculate the exact basal rate (accounting for temp basals and profile switches) at a specific time",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -62,7 +63,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: "get_iob",
-                description: "Get the current Insulin on Board (IOB).",
+                description: "Get comprehensive Insulin on Board (Delivered, Scheduled, and Net)",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -72,7 +73,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: "get_cob",
-                description: "Get the current Carbs on Board (COB).",
+                description: "Get current Carbs on Board",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -82,7 +83,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: "get_status",
-                description: "Get current IOB, COB, and Basal rate.",
+                description: "Get a summary of current system status (Basal, IOB, COB, Profile)",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -92,7 +93,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             {
                 name: "get_history",
-                description: "Get glucose and treatment history for a time range.",
+                description: "Get glucose and treatment history for a date range",
                 inputSchema: {
                     type: "object",
                     properties: {
@@ -118,8 +119,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         switch (name) {
             case "get_latest_glucose": {
                 const count = (args?.count as number) || 1;
-                const entries = await Entry.find().sort({ date: -1 }).limit(count);
-                return { content: [{ type: "text", text: JSON.stringify(entries, null, 2) }] };
+                const enrichedEntries = await getLatestGlucose(count);
+                return { content: [{ type: "text", text: JSON.stringify(enrichedEntries, null, 2) }] };
             }
 
             case "get_active_profile": {
@@ -134,14 +135,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             case "get_calculated_basal": {
                 const timestamp = (args?.timestamp as string) || new Date().toISOString();
-                const rate = await getBasalRate(timestamp);
-                return { content: [{ type: "text", text: JSON.stringify({ rate, timestamp }, null, 2) }] };
+                const basalResult = await getBasalRate(timestamp);
+                return { content: [{ type: "text", text: JSON.stringify({ ...basalResult, timestamp }, null, 2) }] };
             }
 
             case "get_iob": {
                 const timestamp = (args?.timestamp as string) || new Date().toISOString();
                 const iob = await getIOB(timestamp);
-                return { content: [{ type: "text", text: JSON.stringify({ iob, timestamp }, null, 2) }] };
+                return { content: [{ type: "text", text: JSON.stringify({ ...iob, timestamp }, null, 2) }] };
             }
 
             case "get_cob": {
@@ -152,32 +153,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             case "get_status": {
                 const timestamp = (args?.timestamp as string) || new Date().toISOString();
-                const date = new Date(timestamp);
-
-                const [profileInfo, iob, cob, basal] = await Promise.all([
-                    resolveActiveProfile(timestamp),
-                    getIOB(timestamp),
-                    getCOB(timestamp),
-                    getBasalRate(timestamp)
-                ]);
-
-                if (!profileInfo) throw new Error("No profile found.");
-
-                const store = getProfileStore(profileInfo.doc || undefined, profileInfo.activeProfileName, profileInfo.profileData || undefined);
-                if (!store) throw new Error(`Profile store '${profileInfo.activeProfileName}' not found.`);
-
+                const status = await getStatus(timestamp);
                 return {
                     content: [{
                         type: "text",
-                        text: JSON.stringify({
-                            timestamp,
-                            basal,
-                            iob,
-                            cob,
-                            activeProfile: profileInfo.activeProfileName,
-                            baseProfileDoc: profileInfo.doc?.startDate || "Overridden",
-                            units: store.units
-                        }, null, 2)
+                        text: JSON.stringify(status, null, 2)
                     }]
                 };
             }
@@ -200,7 +180,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 /**
- * Main entry point.
+ * Start the server.
  */
 async function main() {
     const transport = new StdioServerTransport();

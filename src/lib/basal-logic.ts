@@ -31,25 +31,37 @@ export function getBasalFromSchedule(basalSchedule: Array<{ time: string, value:
     return activeRate;
 }
 
+export interface IBasalResult {
+    activeRate: number;
+    scheduledRate: number;
+    isTemp: boolean;
+    expiration?: string; // ISO timestamp
+}
+
 /**
  * Service to get the current basal rate, accounting for active Temp Basals.
  */
-export async function getBasalRate(timestamp: string | Date): Promise<number> {
+export async function getBasalRate(timestamp: string | Date): Promise<IBasalResult> {
     const date = new Date(timestamp);
+    const isoTimestamp = date.toISOString();
+
+    // 1. Resolve profile and scheduled rate FIRST (as requested: always lookup profile)
     const profileInfo = await resolveActiveProfile(date);
-    if (!profileInfo) return 0;
+    let scheduledRate = 0;
 
-    const store = getProfileStore(profileInfo.doc, profileInfo.activeProfileName, profileInfo.profileData);
-    if (!store) return 0;
+    if (profileInfo) {
+        const store = getProfileStore(profileInfo.doc || undefined, profileInfo.activeProfileName, profileInfo.profileData || undefined);
+        if (store) {
+            scheduledRate = getBasalFromSchedule(store.basal, date);
+        }
+    }
 
-    const scheduledRate = getBasalFromSchedule(store.basal, date);
-
-    // Look for active Temp Basal in treatments
+    // 2. Look for active Temp Basal in treatments
     // We look back 24 hours to be safe, though temp basals are usually short.
     const lookback = new Date(date.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const treatments = await Treatment.find({
         eventType: "Temp Basal",
-        created_at: { $gte: lookback, $lte: date.toISOString() }
+        created_at: { $gte: lookback, $lte: isoTimestamp }
     }).sort({ created_at: -1 });
 
     for (const t of treatments) {
@@ -59,15 +71,26 @@ export async function getBasalRate(timestamp: string | Date): Promise<number> {
 
         if (date.getTime() >= createdMs && date.getTime() < endMs) {
             // Found an active temp basal
+            let activeRate = scheduledRate;
             if (t.rate !== undefined) {
-                return t.rate; // Absolute temp basal
+                activeRate = t.rate;
             } else if (t.percent !== undefined) {
-                // Percentage temp basal
                 const adjusted = scheduledRate * (1 + (t.percent / 100));
-                return Math.round(adjusted * 1000) / 1000;
+                activeRate = Math.round(adjusted * 1000) / 1000;
             }
+
+            return {
+                activeRate,
+                scheduledRate,
+                isTemp: true,
+                expiration: new Date(endMs).toISOString()
+            };
         }
     }
 
-    return scheduledRate;
+    return {
+        activeRate: scheduledRate,
+        scheduledRate,
+        isTemp: false
+    };
 }
