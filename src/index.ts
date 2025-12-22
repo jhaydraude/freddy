@@ -10,7 +10,7 @@ import { getBasalRate } from "./lib/basal-logic.js";
 import { getIOB } from "./lib/iob-logic.js";
 import { getCOB } from "./lib/cob-logic.js";
 import { getGlucose, getStatus } from "./lib/status-logic.js";
-import { getGraphData } from "./lib/history-logic.js";
+import { getStatusHistory } from "./lib/history-logic.js";
 import { Treatment, DeviceStatus } from "./db/models.js";
 
 const server = new Server(
@@ -93,15 +93,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
             },
             {
-                name: "get_history",
-                description: "Get glucose and treatment history for a date range",
+                name: "get_status_history",
+                description: "Get system status history over a window of time at regular intervals",
                 inputSchema: {
                     type: "object",
                     properties: {
-                        startDate: { type: "string", description: "ISO start date" },
-                        endDate: { type: "string", description: "ISO end date" }
-                    },
-                    required: ["startDate", "endDate"]
+                        startTime: { type: "string", description: "ISO timestamp (defaults to now)" },
+                        windowSize: { type: "number", description: "Window size in minutes (default 60)" },
+                        bucketSize: { type: "number", description: "Bucket size in minutes (default 5)" }
+                    }
                 },
             },
         ],
@@ -145,7 +145,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const timestamp = (args?.timestamp as string) || new Date().toISOString();
                 const [calcIOB, latestDS] = await Promise.all([
                     getIOB(timestamp),
-                    DeviceStatus.findOne().sort({ created_at: -1 })
+                    DeviceStatus.findOne({ created_at: { $lte: timestamp } }).sort({ created_at: -1 })
                 ]);
 
                 let pumpIOB: any = null;
@@ -184,10 +184,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
 
-            case "get_history": {
-                const { startDate, endDate } = args as { startDate: string, endDate: string };
-                const data = await getGraphData(startDate, endDate);
-                return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+            case "get_status_history": {
+                const { startTime, windowSize, bucketSize } = args as { startTime?: string, windowSize?: number, bucketSize?: number };
+                const history = await getStatusHistory({ startTime, windowSize, bucketSize });
+                return {
+                    content: [{
+                        type: "text",
+                        text: JSON.stringify(history, null, 2)
+                    }]
+                };
             }
 
             default:

@@ -34,7 +34,7 @@ The following core capabilities have been implemented and are available as MCP t
   - **Status Report**: `get_status` returns an aggregated view of Basal, IOB (with breakdown), and COB.
 
 ### D. History & Visualization
-- **Tools**: `get_history`, `get_latest_glucose`
+- **Tools**: `get_glucose`
 - **Status**: ✅ Complete
 - **Capabilities**:
   - Generic history fetching for separate axes (Glucose vs Treatments).

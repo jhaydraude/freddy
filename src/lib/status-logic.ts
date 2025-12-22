@@ -141,11 +141,11 @@ export async function getStatus(timestamp: string | Date): Promise<IStatusResult
     const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange] = await Promise.all([
         resolveActiveProfile(ts),
         getCOB(ts),
-        DeviceStatus.findOne().sort({ created_at: -1 }),
+        DeviceStatus.findOne({ created_at: { $lte: ts } }).sort({ created_at: -1 }),
         getGlucose({ timestamp: ts, count: 1 }),
         getIOB(ts),
         getBasalRate(ts),
-        Treatment.findOne({ eventType: "Site Change" }).sort({ created_at: -1 })
+        Treatment.findOne({ eventType: "Site Change", created_at: { $lte: ts } }).sort({ created_at: -1 })
     ]);
 
     if (!profileInfo) throw new Error("No profile found.");
