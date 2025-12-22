@@ -9,9 +9,9 @@ import { resolveActiveProfile } from "./lib/profile-logic.js";
 import { getBasalRate } from "./lib/basal-logic.js";
 import { getIOB } from "./lib/iob-logic.js";
 import { getCOB } from "./lib/cob-logic.js";
-import { getLatestGlucose, getStatus } from "./lib/status-logic.js";
+import { getGlucose, getStatus } from "./lib/status-logic.js";
 import { getGraphData } from "./lib/history-logic.js";
-import { Treatment } from "./db/models.js";
+import { Treatment, DeviceStatus } from "./db/models.js";
 
 const server = new Server(
     {
@@ -32,11 +32,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
         tools: [
             {
-                name: "get_latest_glucose",
-                description: "Get recent glucose readings with 5m/10m deltas and trend",
+                name: "get_glucose",
+                description: "Get glucose readings. Defaults to latest, or at a specific timestamp. Includes sensor age and device info.",
                 inputSchema: {
                     type: "object",
                     properties: {
+                        timestamp: { type: "string", description: "ISO timestamp for specific point in time" },
                         count: { type: "number", description: "Number of readings to fetch (default 1)" }
                     }
                 },
@@ -117,9 +118,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await connectToDatabase();
 
         switch (name) {
-            case "get_latest_glucose": {
+            case "get_glucose": {
                 const count = (args?.count as number) || 1;
-                const enrichedEntries = await getLatestGlucose(count);
+                const timestamp = (args?.timestamp as string);
+                const enrichedEntries = await getGlucose({ count, timestamp });
                 return { content: [{ type: "text", text: JSON.stringify(enrichedEntries, null, 2) }] };
             }
 
@@ -141,8 +143,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             case "get_iob": {
                 const timestamp = (args?.timestamp as string) || new Date().toISOString();
-                const iob = await getIOB(timestamp);
-                return { content: [{ type: "text", text: JSON.stringify({ ...iob, timestamp }, null, 2) }] };
+                const [calcIOB, latestDS] = await Promise.all([
+                    getIOB(timestamp),
+                    DeviceStatus.findOne().sort({ created_at: -1 })
+                ]);
+
+                let pumpIOB: any = null;
+                if (latestDS?.pump?.extended?.IOB !== undefined) {
+                    pumpIOB = { iob: latestDS.pump.extended.IOB, source: "pump.extended.IOB" };
+                } else if (latestDS?.openaps?.iob) {
+                    pumpIOB = { ...latestDS.openaps.iob, source: "openaps.iob" };
+                }
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: JSON.stringify({
+                            calculated: calcIOB,
+                            reported: pumpIOB,
+                            timestamp
+                        }, null, 2)
+                    }]
+                };
             }
 
             case "get_cob": {

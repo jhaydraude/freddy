@@ -1,4 +1,4 @@
-import { Entry } from '../db/models.js';
+import { Entry, DeviceStatus, Treatment } from '../db/models.js';
 import { resolveActiveProfile, getProfileStore } from './profile-logic.js';
 import { getBasalRate } from './basal-logic.js';
 import { getIOB } from './iob-logic.js';
@@ -7,35 +7,65 @@ import { getCOB } from './cob-logic.js';
 
 export interface IGlucoseResult {
     sgv: number;
-    date: number;
-    dateString: string;
+    timestamp: string;
     direction?: string;
     trend?: number;
     delta5m: number | null;
     delta10m: number | null;
     units: string;
+    sensorAge?: number | null;
+    device?: string;
 }
 
 export interface IStatusResult {
-    timestamp: string;
-    basal: number;
-    basalDetail: any;
-    iob: number;
-    iobDetail: IIOBResult;
-    cob: number;
-    activeProfile: string;
-    expiration?: string | undefined;
-    units: string;
+    pump: {
+        basal: any;
+        pumpAge: number | null;
+        reservoir: number | undefined;
+        clock: string | undefined;
+        status: any;
+    };
+    iob: {
+        calculated: any;
+        reported: any;
+        timestamp: string;
+    };
+    cob: {
+        cob: number;
+        timestamp: string;
+    };
+    glucose: any;
+    profile: any;
+    uploader: {
+        battery: number | undefined;
+        device: string;
+    };
+    meta: {
+        reported_date: string | undefined;
+        status_date: string;
+        created_date: string;
+        app: string;
+    };
 }
 
 /**
  * Fetches the latest glucose readings and calculates 5m/10m deltas.
  */
-export async function getLatestGlucose(count: number = 1): Promise<IGlucoseResult[]> {
+/**
+ * Fetches glucose readings. 
+ * If timestamp is given, finds the most recent entry at or before that time.
+ * If count is given, returns multiple recent entries.
+ */
+export async function getGlucose(options: { timestamp?: string | Date, count?: number } = {}): Promise<IGlucoseResult[]> {
+    const { timestamp, count = 1 } = options;
+    const dateObj = timestamp ? new Date(timestamp) : new Date();
+    const tsNumber = dateObj.getTime();
+
     const fetchCount = Math.max(count, 3);
-    const [entries, profileInfo] = await Promise.all([
-        Entry.find().sort({ date: -1 }).limit(fetchCount),
-        resolveActiveProfile(new Date())
+    const [entries, profileInfo, lastSensorChange] = await Promise.all([
+        Entry.find({ date: { $lte: tsNumber } }).sort({ date: -1 }).limit(fetchCount),
+        resolveActiveProfile(dateObj),
+        Treatment.findOne({ eventType: "Sensor Change" }).sort({ created_at: -1 })
     ]);
 
     if (entries.length === 0) return [];
@@ -49,6 +79,12 @@ export async function getLatestGlucose(count: number = 1): Promise<IGlucoseResul
     }
 
     const isMmol = units.toLowerCase().includes("mmol");
+
+    let sensorAge: number | null = null;
+    if (lastSensorChange) {
+        const diffMs = dateObj.getTime() - new Date(lastSensorChange.created_at).getTime();
+        sensorAge = Math.floor(diffMs / (60 * 60 * 1000)); // hours
+    }
 
     return entries.slice(0, count).map((entry, index) => {
         const entryIdx = index;
@@ -72,52 +108,94 @@ export async function getLatestGlucose(count: number = 1): Promise<IGlucoseResul
             if (delta5m !== null) delta5m = Math.round((delta5m / 18.018) * 10) / 10;
             if (delta10m !== null) delta10m = Math.round((delta10m / 18.018) * 10) / 10;
         } else {
-            // Keep as mg/dL, but ensure deltas are rounded to 1 decimal place if we had logic for that
-            // Previous logic did: delta5m = Math.round((entry.sgv - prev5m.sgv) * 10) / 10;
             if (delta5m !== null) delta5m = Math.round(delta5m * 10) / 10;
             if (delta10m !== null) delta10m = Math.round(delta10m * 10) / 10;
         }
 
         return {
             sgv,
-            date: entry.date,
-            dateString: entry.dateString,
+            timestamp: new Date(entry.date).toISOString(),
             direction: entry.direction,
             trend: entry.trend,
             delta5m,
             delta10m,
-            units
+            units,
+            sensorAge,
+            device: entry.device
         };
     });
 }
 
+// Alias for backward compatibility if needed within the file, but we will update getStatus.
+export const getLatestGlucose = (count: number = 1) => getGlucose({ count });
+
 /**
  * Aggregates current system status into a single report.
+ * Uses DeviceStatus (Pump) as the source of truth if available and fresh.
  */
 export async function getStatus(timestamp: string | Date): Promise<IStatusResult> {
     const ts = typeof timestamp === 'string' ? timestamp : timestamp.toISOString();
+    const dateObj = new Date(ts);
 
-    const [profileInfo, iob, cob, basalResult] = await Promise.all([
+    // Fetch necessary data
+    const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange] = await Promise.all([
         resolveActiveProfile(ts),
-        getIOB(ts),
         getCOB(ts),
-        getBasalRate(ts)
+        DeviceStatus.findOne().sort({ created_at: -1 }),
+        getGlucose({ timestamp: ts, count: 1 }),
+        getIOB(ts),
+        getBasalRate(ts),
+        Treatment.findOne({ eventType: "Site Change" }).sort({ created_at: -1 })
     ]);
 
     if (!profileInfo) throw new Error("No profile found.");
 
-    const store = getProfileStore(profileInfo.doc || undefined, profileInfo.activeProfileName, profileInfo.profileData || undefined);
-    if (!store) throw new Error(`Profile store '${profileInfo.activeProfileName}' not found.`);
+    // --- Pump Info ---
+    let pumpAge: number | null = null;
+    if (lastSiteChange) {
+        const diffMs = dateObj.getTime() - new Date(lastSiteChange.created_at).getTime();
+        pumpAge = Math.floor(diffMs / (60 * 60 * 1000)); // hours
+    }
+
+    // --- IOB Reported ---
+    let pumpIOB: any = null;
+    if (latestDeviceStatus?.pump?.extended?.IOB !== undefined) {
+        pumpIOB = { iob: latestDeviceStatus.pump.extended.IOB, source: "pump.extended.IOB" };
+    } else if (latestDeviceStatus?.openaps?.iob) {
+        pumpIOB = { ...latestDeviceStatus.openaps.iob, source: "openaps.iob" };
+    }
+
+    // --- Profile Clean ---
+    const { doc, ...cleanProfile } = profileInfo;
 
     return {
-        timestamp: ts,
-        basal: basalResult.activeRate,
-        basalDetail: basalResult,
-        iob: iob.deliveredIOB,
-        iobDetail: iob,
-        cob: cob,
-        activeProfile: profileInfo.activeProfileName,
-        expiration: profileInfo.expiration,
-        units: store.units
+        pump: {
+            basal: basalResult,
+            pumpAge,
+            reservoir: latestDeviceStatus?.pump?.reservoir,
+            clock: latestDeviceStatus?.pump?.clock,
+            status: latestDeviceStatus?.pump?.status || {}
+        },
+        iob: {
+            calculated: calcIOB,
+            reported: pumpIOB,
+            timestamp: ts
+        },
+        cob: {
+            cob: cob,
+            timestamp: ts
+        },
+        glucose: glucoseEntries[0] || null,
+        profile: cleanProfile,
+        uploader: {
+            battery: latestDeviceStatus?.uploaderBattery,
+            device: "phone"
+        },
+        meta: {
+            reported_date: latestDeviceStatus?.created_at,
+            status_date: ts,
+            created_date: new Date().toISOString(),
+            app: "NightManage"
+        }
     };
 }

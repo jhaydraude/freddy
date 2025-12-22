@@ -91,3 +91,90 @@ const ProfileSchema = new Schema({
 }, { collection: 'profile', strict: false });
 
 export const Profile = mongoose.model<IProfile>('Profile', ProfileSchema);
+
+// ---------------------------------------------------------------------------
+// DEVICE STATUS (Pump & Uploader Status)
+// ---------------------------------------------------------------------------
+export interface IDeviceStatus extends Document {
+    created_at: string;
+    pump?: {
+        battery?: {
+            percent?: number;
+            voltage?: number;
+            status?: string;
+        };
+        reservoir?: number;
+        clock?: string;
+        status?: {
+            status?: string;
+            timestamp?: string;
+        };
+        extended?: {
+            Version?: string;
+            ActiveProfile?: string;
+            TempBasalAbsoluteRate?: number;
+            TempBasalStart?: string;
+            TempBasalRemaining?: number; // minutes
+            LastBolus?: string;
+            LastBolusAmount?: number;
+            BaseBasalRate?: number;
+            IOB?: number;
+        };
+    };
+    openaps?: {
+        iob?: {
+            iob?: number;
+            activity?: number;
+            basaliob?: number;
+            bolusiob?: number;
+            timestamp?: string;
+        };
+        suggested?: any;
+        enacted?: any;
+    };
+    uploaderBattery?: number;
+    device?: string;
+}
+
+const DeviceStatusSchema = new Schema({
+    created_at: { type: String, required: true, index: true },
+    pump: {
+        battery: {
+            percent: Number,
+            voltage: Number,
+            status: String
+        },
+        reservoir: Number,
+        clock: String,
+        status: {
+            status: String,
+            timestamp: String
+        },
+        extended: {
+            Version: String,
+            ActiveProfile: String,
+            TempBasalAbsoluteRate: Number,
+            TempBasalStart: String,
+            TempBasalRemaining: Number,
+            LastBolus: String,
+            LastBolusAmount: Number,
+            BaseBasalRate: Number,
+            IOB: Number
+        }
+    },
+    openaps: {
+        iob: {
+            iob: Number,
+            activity: Number,
+            basaliob: Number,
+            bolusiob: Number,
+            timestamp: String
+        },
+        suggested: Schema.Types.Mixed,
+        enacted: Schema.Types.Mixed
+    },
+    uploaderBattery: Number,
+    device: String
+}, { collection: 'devicestatus', strict: false });
+
+export const DeviceStatus = mongoose.model<IDeviceStatus>('DeviceStatus', DeviceStatusSchema);
