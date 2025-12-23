@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import train, predict
+from app.routers import train, predict, glucose
 from app.utils.logging import setup_logging
 
 # Setup logging
@@ -32,6 +32,7 @@ app.add_middleware(
 # Include routers
 app.include_router(train.router, prefix="/api/v1", tags=["training"])
 app.include_router(predict.router, prefix="/api/v1", tags=["prediction"])
+app.include_router(glucose.router, prefix="/api/v1", tags=["glucose-prediction"])
 
 
 @app.get("/")
