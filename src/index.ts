@@ -11,6 +11,7 @@ import { getIOB } from "./lib/iob-logic.js";
 import { getCOB } from "./lib/cob-logic.js";
 import { getGlucose, getStatus } from "./lib/status-logic.js";
 import { getStatusHistory } from "./lib/history-logic.js";
+import { explainStatus } from "./lib/explain-logic.js";
 import { Treatment, DeviceStatus } from "./db/models.js";
 
 const server = new Server(
@@ -101,6 +102,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                         startTime: { type: "string", description: "ISO timestamp (defaults to now)" },
                         windowSize: { type: "number", description: "Window size in minutes (default 60)" },
                         bucketSize: { type: "number", description: "Bucket size in minutes (default 5)" }
+                    }
+                },
+            },
+            {
+                name: "explain_status",
+                description: "Generates a natural language explanation of the current glucose situation using AI analysis of history and projections.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        timestamp: { type: "string", description: "ISO timestamp (defaults to now)" }
                     }
                 },
             },
@@ -195,6 +206,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
 
+            case "explain_status": {
+                const timestamp = (args?.timestamp as string) || new Date().toISOString();
+                const explanation = await explainStatus(timestamp);
+                return {
+                    content: [{
+                        type: "text",
+                        text: explanation
+                    }]
+                };
+            }
+
             default:
                 throw new Error(`Unknown tool: ${name}`);
         }
@@ -212,7 +234,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("NightManager MCP Server running on stdio");
+    console.error("NightManager MCP Server running on stdio ");
 }
 
 main().catch((error) => {
