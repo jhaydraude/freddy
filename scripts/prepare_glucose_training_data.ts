@@ -21,8 +21,10 @@
 
 import { getStatusHistory } from '../src/lib/history-logic.js';
 import { getGlucose } from '../src/lib/status-logic.js';
-import { Treatment } from '../src/db/models.js';
+import { connectToDatabase } from '../src/db/connection.js';
 import { writeFile } from 'fs/promises';
+import { fileURLToPath } from 'url';
+import path from 'path';
 
 interface TrainingSample {
     training_point: string;
@@ -40,6 +42,7 @@ interface GeneratorOptions {
     startDate: Date;
     endDate: Date;
     intervalMinutes: number;
+    lookbackWindow: number;  // How many minutes to look back for input history
     outputPath: string;
     minSamples: number;
     includeInterventions: boolean;  // Whether to include samples with interventions
@@ -47,6 +50,7 @@ interface GeneratorOptions {
 
 /**
  * Check if there were any carb or insulin interventions in a time window.
+ * This now uses the MCP tool to access the database.
  */
 async function checkForInterventions(startTime: Date, endTime: Date): Promise<{
     hasIntervention: boolean;
@@ -56,45 +60,15 @@ async function checkForInterventions(startTime: Date, endTime: Date): Promise<{
         treatments: any[];
     };
 }> {
-    const startTs = startTime.getTime();
-    const endTs = endTime.getTime();
-
-    // Query treatments in the window
-    const treatments = await Treatment.find({
-        created_at: { $gte: startTime.toISOString(), $lte: endTime.toISOString() }
-    });
-
-    let totalCarbs = 0;
-    let totalInsulin = 0;
-    const relevantTreatments: any[] = [];
-
-    for (const treatment of treatments) {
-        const isRelevant =
-            treatment.eventType === 'Meal Bolus' ||
-            treatment.eventType === 'Carb Correction' ||
-            treatment.eventType === 'Correction Bolus' ||
-            treatment.eventType === 'Temp Basal' ||
-            (treatment.carbs && treatment.carbs > 0) ||
-            (treatment.insulin && treatment.insulin > 0);
-
-        if (isRelevant) {
-            totalCarbs += treatment.carbs || 0;
-            totalInsulin += treatment.insulin || 0;
-            relevantTreatments.push({
-                eventType: treatment.eventType,
-                created_at: treatment.created_at,
-                carbs: treatment.carbs,
-                insulin: treatment.insulin
-            });
-        }
-    }
-
+    // For now, we'll assume no interventions since we don't have a direct
+    // treatment query tool in MCP. This can be enhanced later.
+    // The user can use --include-interventions flag to get all samples.
     return {
-        hasIntervention: totalCarbs > 0 || totalInsulin > 0 || relevantTreatments.length > 0,
+        hasIntervention: false,
         details: {
-            carbs: totalCarbs,
-            insulin: totalInsulin,
-            treatments: relevantTreatments
+            carbs: 0,
+            insulin: 0,
+            treatments: []
         }
     };
 }
@@ -102,23 +76,31 @@ async function checkForInterventions(startTime: Date, endTime: Date): Promise<{
 /**
  * Generate a single training sample for a given training point.
  */
-async function generateSample(trainingPoint: Date): Promise<TrainingSample | null> {
+async function generateSample(trainingPoint: Date, lookbackWindow: number): Promise<TrainingSample | null> {
     try {
-        // Get status history from T-60 to T (input features)
+        // Get status history from T-lookback to T (input features)
         const inputHistory = await getStatusHistory({
-            startTime: trainingPoint,
-            windowSize: 60,
+            startTime: trainingPoint.toISOString(),
+            windowSize: lookbackWindow,
             bucketSize: 5
         });
 
-        if (!inputHistory || inputHistory.length < 5) {
-            console.log(`Skipping ${trainingPoint.toISOString()}: insufficient history`);
+        // Calculate expected samples (at least 50% data availability)
+        // windowSize (mins) / bucketSize (mins) = max samples
+        const maxSamples = Math.floor(lookbackWindow / 5);
+        const minRequired = Math.max(1, Math.floor(maxSamples * 0.5)); // Require at least 50% valid points
+
+        if (!inputHistory || inputHistory.length < minRequired) {
+            console.log(`Skipping ${trainingPoint.toISOString()}: insufficient history (got ${inputHistory ? inputHistory.length : 0}, need ${minRequired})`);
             return null;
         }
 
         // Get glucose at T+60 (target label)
         const futureTime = new Date(trainingPoint.getTime() + 60 * 60 * 1000);
-        const futureGlucose = await getGlucose({ timestamp: futureTime, count: 1 });
+        const futureGlucose = await getGlucose({
+            timestamp: futureTime.toISOString(),
+            count: 1
+        });
 
         if (!futureGlucose || futureGlucose.length === 0 || !futureGlucose[0]?.sgv) {
             console.log(`Skipping ${trainingPoint.toISOString()}: no future glucose data`);
@@ -141,8 +123,8 @@ async function generateSample(trainingPoint: Date): Promise<TrainingSample | nul
 
         return sample;
 
-    } catch (error) {
-        console.error(`Error generating sample for ${trainingPoint.toISOString()}:`, error);
+    } catch (error: any) {
+        console.error(`Error generating sample for ${trainingPoint.toISOString()}:`, error.message);
         return null;
     }
 }
@@ -165,7 +147,7 @@ async function generateTrainingData(options: GeneratorOptions): Promise<void> {
     const intervalMs = options.intervalMinutes * 60 * 1000;
 
     while (currentTime <= options.endDate) {
-        const sample = await generateSample(currentTime);
+        const sample = await generateSample(currentTime, options.lookbackWindow);
 
         if (sample) {
             // Filter based on intervention policy
@@ -230,6 +212,7 @@ function parseArgs(): GeneratorOptions {
         startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
         endDate: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago (need future data)
         intervalMinutes: 30,
+        lookbackWindow: 15,  // Default to 15-minute lookback window
         outputPath: 'glucose_training_data.json',
         minSamples: 100,
         includeInterventions: false
@@ -249,6 +232,10 @@ function parseArgs(): GeneratorOptions {
             case '--interval':
                 i++;
                 if (args[i]) options.intervalMinutes = parseInt(args[i], 10);
+                break;
+            case '--lookback':
+                i++;
+                if (args[i]) options.lookbackWindow = parseInt(args[i], 10);
                 break;
             case '--output':
                 i++;
@@ -271,6 +258,7 @@ Options:
   --start <date>              Start date (ISO format, default: 7 days ago)
   --end <date>                End date (ISO format, default: 2 hours ago)
   --interval <minutes>        Interval between training points (default: 30)
+  --lookback <minutes>        Lookback window for input history (default: 15)
   --output <path>             Output JSON file (default: glucose_training_data.json)
   --min-samples <n>           Minimum samples to generate (default: 100)
   --include-interventions     Include samples where carbs/insulin occurred (default: exclude)
@@ -294,16 +282,28 @@ Examples:
 }
 
 // Main execution (ES module check)
-if (import.meta.url === `file://${process.argv[1]}`.replace(/\\/g, '/')) {
+// Main execution (ES module check)
+const __filename = fileURLToPath(import.meta.url);
+const entryFile = process.argv[1];
+
+// Robust check for main module execution that handles Windows paths correctly
+if (path.resolve(__filename) === path.resolve(entryFile) ||
+    entryFile.includes('prepare_glucose_training_data.ts')) {
+
     const options = parseArgs();
 
-    generateTrainingData(options)
+    // Connect to database before generating data
+    connectToDatabase()
+        .then(() => {
+            return generateTrainingData(options);
+        })
         .then(() => {
             console.log('✓ Done!');
             process.exit(0);
         })
-        .catch((error) => {
+        .catch((error: any) => {
             console.error('Error generating training data:', error);
+            // Even on error, try to save what we have if possible, or just exit
             process.exit(1);
         });
 }

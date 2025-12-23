@@ -1,0 +1,633 @@
+{
+    "generated_at": "2025-12-22T21:42:00Z",
+    "options": {
+        "start_date": "2025-12-15T00:00:00Z",
+        "end_date": "2025-12-16T00:00:00Z",
+        "interval_minutes": 60,
+        "include_interventions": false
+    },
+    "summary": {
+        "total_samples": 5,
+        "with_interventions": 0,
+        "without_interventions": 5
+    },
+    "samples": [
+        {
+            "training_point": "2025-12-15T10:00:00Z",
+            "status_history": [
+                {
+                    "glucose": {
+                        "sgv": 110,
+                        "timestamp": "2025-12-15T09:00:00Z",
+                        "direction": "Flat",
+                        "trend": 4,
+                        "delta5m": 0,
+                        "delta10m": 0,
+                        "units": "mg/dL",
+                        "sensorAge": 72,
+                        "device": "test"
+                    },
+                    "iob": {
+                        "calculated": {
+                            "iob": 1.5,
+                            "activity": 0.02
+                        },
+                        "reported": null,
+                        "timestamp": "2025-12-15T09:00:00Z"
+                    },
+                    "cob": {
+                        "cob": 15,
+                        "timestamp": "2025-12-15T09:00:00Z"
+                    },
+                    "pump": {
+                        "basal": {
+                            "rate": 0.9
+                        },
+                        "pumpAge": 50,
+                        "reservoir": 120,
+                        "status": {}
+                    },
+                    "profile": {
+                        "activeProfileName": "Default",
+                        "profileData": {
+                            "sens": [
+                                {
+                                    "value": 50
+                                }
+                            ],
+                            "carbratio": [
+                                {
+                                    "value": 12
+                                }
+                            ],
+                            "target_low": [
+                                {
+                                    "value": 100
+                                }
+                            ],
+                            "target_high": [
+                                {
+                                    "value": 120
+                                }
+                            ]
+                        }
+                    },
+                    "uploader": {
+                        "battery": 80,
+                        "device": "phone"
+                    },
+                    "meta": {
+                        "status_date": "2025-12-15T09:00:00Z",
+                        "created_date": "2025-12-15T09:00:00Z",
+                        "app": "NightManage"
+                    }
+                },
+                {
+                    "glucose": {
+                        "sgv": 112,
+                        "timestamp": "2025-12-15T09:05:00Z",
+                        "direction": "Flat",
+                        "trend": 4,
+                        "delta5m": 2,
+                        "delta10m": 2,
+                        "units": "mg/dL",
+                        "sensorAge": 72,
+                        "device": "test"
+                    },
+                    "iob": {
+                        "calculated": {
+                            "iob": 1.45,
+                            "activity": 0.019
+                        },
+                        "reported": null,
+                        "timestamp": "2025-12-15T09:05:00Z"
+                    },
+                    "cob": {
+                        "cob": 14,
+                        "timestamp": "2025-12-15T09:05:00Z"
+                    },
+                    "pump": {
+                        "basal": {
+                            "rate": 0.9
+                        },
+                        "pumpAge": 50,
+                        "reservoir": 120,
+                        "status": {}
+                    },
+                    "profile": {
+                        "activeProfileName": "Default",
+                        "profileData": {
+                            "sens": [
+                                {
+                                    "value": 50
+                                }
+                            ],
+                            "carbratio": [
+                                {
+                                    "value": 12
+                                }
+                            ],
+                            "target_low": [
+                                {
+                                    "value": 100
+                                }
+                            ],
+                            "target_high": [
+                                {
+                                    "value": 120
+                                }
+                            ]
+                        }
+                    },
+                    "uploader": {
+                        "battery": 80,
+                        "device": "phone"
+                    },
+                    "meta": {
+                        "status_date": "2025-12-15T09:05:00Z",
+                        "created_date": "2025-12-15T09:05:00Z",
+                        "app": "NightManage"
+                    }
+                },
+                {
+                    "glucose": {
+                        "sgv": 115,
+                        "timestamp": "2025-12-15T09:10:00Z",
+                        "direction": "FortyFiveUp",
+                        "trend": 5,
+                        "delta5m": 3,
+                        "delta10m": 5,
+                        "units": "mg/dL",
+                        "sensorAge": 72,
+                        "device": "test"
+                    },
+                    "iob": {
+                        "calculated": {
+                            "iob": 1.4,
+                            "activity": 0.018
+                        },
+                        "reported": null,
+                        "timestamp": "2025-12-15T09:10:00Z"
+                    },
+                    "cob": {
+                        "cob": 12,
+                        "timestamp": "2025-12-15T09:10:00Z"
+                    },
+                    "pump": {
+                        "basal": {
+                            "rate": 0.9
+                        },
+                        "pumpAge": 50,
+                        "reservoir": 120,
+                        "status": {}
+                    },
+                    "profile": {
+                        "activeProfileName": "Default",
+                        "profileData": {
+                            "sens": [
+                                {
+                                    "value": 50
+                                }
+                            ],
+                            "carbratio": [
+                                {
+                                    "value": 12
+                                }
+                            ],
+                            "target_low": [
+                                {
+                                    "value": 100
+                                }
+                            ],
+                            "target_high": [
+                                {
+                                    "value": 120
+                                }
+                            ]
+                        }
+                    },
+                    "uploader": {
+                        "battery": 80,
+                        "device": "phone"
+                    },
+                    "meta": {
+                        "status_date": "2025-12-15T09:10:00Z",
+                        "created_date": "2025-12-15T09:10:00Z",
+                        "app": "NightManage"
+                    }
+                },
+                {
+                    "glucose": {
+                        "sgv": 118,
+                        "timestamp": "2025-12-15T09:55:00Z",
+                        "direction": "FortyFiveUp",
+                        "trend": 5,
+                        "delta5m": 3,
+                        "delta10m": 6,
+                        "units": "mg/dL",
+                        "sensorAge": 72,
+                        "device": "test"
+                    },
+                    "iob": {
+                        "calculated": {
+                            "iob": 1.2,
+                            "activity": 0.015
+                        },
+                        "reported": null,
+                        "timestamp": "2025-12-15T09:55:00Z"
+                    },
+                    "cob": {
+                        "cob": 5,
+                        "timestamp": "2025-12-15T09:55:00Z"
+                    },
+                    "pump": {
+                        "basal": {
+                            "rate": 0.9
+                        },
+                        "pumpAge": 50,
+                        "reservoir": 120,
+                        "status": {}
+                    },
+                    "profile": {
+                        "activeProfileName": "Default",
+                        "profileData": {
+                            "sens": [
+                                {
+                                    "value": 50
+                                }
+                            ],
+                            "carbratio": [
+                                {
+                                    "value": 12
+                                }
+                            ],
+                            "target_low": [
+                                {
+                                    "value": 100
+                                }
+                            ],
+                            "target_high": [
+                                {
+                                    "value": 120
+                                }
+                            ]
+                        }
+                    },
+                    "uploader": {
+                        "battery": 80,
+                        "device": "phone"
+                    },
+                    "meta": {
+                        "status_date": "2025-12-15T09:55:00Z",
+                        "created_date": "2025-12-15T09:55:00Z",
+                        "app": "NightManage"
+                    }
+                },
+                {
+                    "glucose": {
+                        "sgv": 120,
+                        "timestamp": "2025-12-15T10:00:00Z",
+                        "direction": "Flat",
+                        "trend": 4,
+                        "delta5m": 2,
+                        "delta10m": 5,
+                        "units": "mg/dL",
+                        "sensorAge": 72,
+                        "device": "test"
+                    },
+                    "iob": {
+                        "calculated": {
+                            "iob": 1.1,
+                            "activity": 0.014
+                        },
+                        "reported": null,
+                        "timestamp": "2025-12-15T10:00:00Z"
+                    },
+                    "cob": {
+                        "cob": 3,
+                        "timestamp": "2025-12-15T10:00:00Z"
+                    },
+                    "pump": {
+                        "basal": {
+                            "rate": 0.9
+                        },
+                        "pumpAge": 50,
+                        "reservoir": 120,
+                        "status": {}
+                    },
+                    "profile": {
+                        "activeProfileName": "Default",
+                        "profileData": {
+                            "sens": [
+                                {
+                                    "value": 50
+                                }
+                            ],
+                            "carbratio": [
+                                {
+                                    "value": 12
+                                }
+                            ],
+                            "target_low": [
+                                {
+                                    "value": 100
+                                }
+                            ],
+                            "target_high": [
+                                {
+                                    "value": 120
+                                }
+                            ]
+                        }
+                    },
+                    "uploader": {
+                        "battery": 80,
+                        "device": "phone"
+                    },
+                    "meta": {
+                        "status_date": "2025-12-15T10:00:00Z",
+                        "created_date": "2025-12-15T10:00:00Z",
+                        "app": "NightManage"
+                    }
+                }
+            ],
+            "actual_glucose_60min": 125,
+            "had_intervention": false
+        },
+        {
+            "training_point": "2025-12-15T14:00:00Z",
+            "status_history": [
+                {
+                    "glucose": {
+                        "sgv": 140,
+                        "timestamp": "2025-12-15T13:00:00Z",
+                        "direction": "Flat",
+                        "trend": 4,
+                        "delta5m": 0,
+                        "delta10m": -2,
+                        "units": "mg/dL",
+                        "sensorAge": 76,
+                        "device": "test"
+                    },
+                    "iob": {
+                        "calculated": {
+                            "iob": 2.5,
+                            "activity": 0.03
+                        },
+                        "reported": null,
+                        "timestamp": "2025-12-15T13:00:00Z"
+                    },
+                    "cob": {
+                        "cob": 30,
+                        "timestamp": "2025-12-15T13:00:00Z"
+                    },
+                    "pump": {
+                        "basal": {
+                            "rate": 1.0
+                        },
+                        "pumpAge": 54,
+                        "reservoir": 100,
+                        "status": {}
+                    },
+                    "profile": {
+                        "activeProfileName": "Default",
+                        "profileData": {
+                            "sens": [
+                                {
+                                    "value": 50
+                                }
+                            ],
+                            "carbratio": [
+                                {
+                                    "value": 12
+                                }
+                            ],
+                            "target_low": [
+                                {
+                                    "value": 100
+                                }
+                            ],
+                            "target_high": [
+                                {
+                                    "value": 120
+                                }
+                            ]
+                        }
+                    },
+                    "uploader": {
+                        "battery": 75,
+                        "device": "phone"
+                    },
+                    "meta": {
+                        "status_date": "2025-12-15T13:00:00Z",
+                        "created_date": "2025-12-15T13:00:00Z",
+                        "app": "NightManage"
+                    }
+                },
+                {
+                    "glucose": {
+                        "sgv": 138,
+                        "timestamp": "2025-12-15T13:05:00Z",
+                        "direction": "FortyFiveDown",
+                        "trend": 3,
+                        "delta5m": -2,
+                        "delta10m": -4,
+                        "units": "mg/dL",
+                        "sensorAge": 76,
+                        "device": "test"
+                    },
+                    "iob": {
+                        "calculated": {
+                            "iob": 2.45,
+                            "activity": 0.029
+                        },
+                        "reported": null,
+                        "timestamp": "2025-12-15T13:05:00Z"
+                    },
+                    "cob": {
+                        "cob": 28,
+                        "timestamp": "2025-12-15T13:05:00Z"
+                    },
+                    "pump": {
+                        "basal": {
+                            "rate": 1.0
+                        },
+                        "pumpAge": 54,
+                        "reservoir": 100,
+                        "status": {}
+                    },
+                    "profile": {
+                        "activeProfileName": "Default",
+                        "profileData": {
+                            "sens": [
+                                {
+                                    "value": 50
+                                }
+                            ],
+                            "carbratio": [
+                                {
+                                    "value": 12
+                                }
+                            ],
+                            "target_low": [
+                                {
+                                    "value": 100
+                                }
+                            ],
+                            "target_high": [
+                                {
+                                    "value": 120
+                                }
+                            ]
+                        }
+                    },
+                    "uploader": {
+                        "battery": 75,
+                        "device": "phone"
+                    },
+                    "meta": {
+                        "status_date": "2025-12-15T13:05:00Z",
+                        "created_date": "2025-12-15T13:05:00Z",
+                        "app": "NightManage"
+                    }
+                },
+                {
+                    "glucose": {
+                        "sgv": 135,
+                        "timestamp": "2025-12-15T13:55:00Z",
+                        "direction": "FortyFiveDown",
+                        "trend": 3,
+                        "delta5m": -3,
+                        "delta10m": -5,
+                        "units": "mg/dL",
+                        "sensorAge": 76,
+                        "device": "test"
+                    },
+                    "iob": {
+                        "calculated": {
+                            "iob": 2.1,
+                            "activity": 0.025
+                        },
+                        "reported": null,
+                        "timestamp": "2025-12-15T13:55:00Z"
+                    },
+                    "cob": {
+                        "cob": 15,
+                        "timestamp": "2025-12-15T13:55:00Z"
+                    },
+                    "pump": {
+                        "basal": {
+                            "rate": 1.0
+                        },
+                        "pumpAge": 54,
+                        "reservoir": 100,
+                        "status": {}
+                    },
+                    "profile": {
+                        "activeProfileName": "Default",
+                        "profileData": {
+                            "sens": [
+                                {
+                                    "value": 50
+                                }
+                            ],
+                            "carbratio": [
+                                {
+                                    "value": 12
+                                }
+                            ],
+                            "target_low": [
+                                {
+                                    "value": 100
+                                }
+                            ],
+                            "target_high": [
+                                {
+                                    "value": 120
+                                }
+                            ]
+                        }
+                    },
+                    "uploader": {
+                        "battery": 75,
+                        "device": "phone"
+                    },
+                    "meta": {
+                        "status_date": "2025-12-15T13:55:00Z",
+                        "created_date": "2025-12-15T13:55:00Z",
+                        "app": "NightManage"
+                    }
+                },
+                {
+                    "glucose": {
+                        "sgv": 132,
+                        "timestamp": "2025-12-15T14:00:00Z",
+                        "direction": "Flat",
+                        "trend": 4,
+                        "delta5m": -3,
+                        "delta10m": -6,
+                        "units": "mg/dL",
+                        "sensorAge": 76,
+                        "device": "test"
+                    },
+                    "iob": {
+                        "calculated": {
+                            "iob": 2.0,
+                            "activity": 0.024
+                        },
+                        "reported": null,
+                        "timestamp": "2025-12-15T14:00:00Z"
+                    },
+                    "cob": {
+                        "cob": 10,
+                        "timestamp": "2025-12-15T14:00:00Z"
+                    },
+                    "pump": {
+                        "basal": {
+                            "rate": 1.0
+                        },
+                        "pumpAge": 54,
+                        "reservoir": 100,
+                        "status": {}
+                    },
+                    "profile": {
+                        "activeProfileName": "Default",
+                        "profileData": {
+                            "sens": [
+                                {
+                                    "value": 50
+                                }
+                            ],
+                            "carbratio": [
+                                {
+                                    "value": 12
+                                }
+                            ],
+                            "target_low": [
+                                {
+                                    "value": 100
+                                }
+                            ],
+                            "target_high": [
+                                {
+                                    "value": 120
+                                }
+                            ]
+                        }
+                    },
+                    "uploader": {
+                        "battery": 75,
+                        "device": "phone"
+                    },
+                    "meta": {
+                        "status_date": "2025-12-15T14:00:00Z",
+                        "created_date": "2025-12-15T14:00:00Z",
+                        "app": "NightManage"
+                    }
+                }
+            ],
+            "actual_glucose_60min": 115,
+            "had_intervention": false
+        }
+    ]
+}

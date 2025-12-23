@@ -55,9 +55,28 @@ async def train_glucose_model(request: GlucoseTrainRequest):
         )
     except Exception as e:
         logger.error(f"Error training glucose model: {str(e)}", exc_info=True)
-        raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to train glucose model: {str(e)}"
+        )
+
+
+@router.get("/train/glucose/models")
+async def list_glucose_models():
+    """
+    List all trained glucose prediction models.
+    
+    Returns:
+        List of model metadata including ID, creation time, and metrics.
+    """
+    try:
+        service = GlucoseModelService()
+        models = service.list_models()
+        return models
+    except Exception as e:
+        logger.error(f"Error listing glucose models: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list models: {str(e)}"
         )
 
 
