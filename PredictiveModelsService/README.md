@@ -43,7 +43,27 @@ PredictiveModelsService/
 
 ## Quick Start
 
-### Local Development
+### Easy Start (Recommended)
+
+**Windows:**
+```bash
+cd PredictiveModelsService
+start.bat
+```
+
+**Linux/Mac:**
+```bash
+cd PredictiveModelsService
+chmod +x start.sh
+./start.sh
+```
+
+This will:
+- Create a virtual environment (if needed)
+- Install dependencies
+- Start the service on http://localhost:8000
+
+### Local Development (Manual)
 
 1. **Create a virtual environment**:
    ```bash
@@ -65,6 +85,8 @@ PredictiveModelsService/
 
 4. **Run the server**:
    ```bash
+   python -m app.main
+   # Or with auto-reload:
    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
 

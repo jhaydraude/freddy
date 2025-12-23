@@ -55,6 +55,7 @@ async def train_glucose_model(request: GlucoseTrainRequest):
         )
     except Exception as e:
         logger.error(f"Error training glucose model: {str(e)}", exc_info=True)
+        raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to train glucose model: {str(e)}"
         )
