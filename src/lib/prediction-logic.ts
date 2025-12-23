@@ -2,6 +2,11 @@ import { getIOB } from './iob-logic.js';
 import { getCOB } from './cob-logic.js';
 import { resolveActiveProfile, getProfileStore } from './profile-logic.js';
 import { getGlucose } from './status-logic.js';
+import { getStatusHistory } from './history-logic.js';
+
+// PredictiveModelsService configuration
+const PREDICTION_SERVICE_URL = process.env.PREDICTION_SERVICE_URL || 'http://localhost:8000';
+const PREDICTION_MODEL_NAME = process.env.PREDICTION_MODEL_NAME || 'glucose_predictor';
 
 export interface IProjectionResult {
     currentBg: number;
@@ -17,23 +22,119 @@ export interface IProjectionResult {
         isf: number;
         cr: number;
     };
+    source: 'ml_model' | 'local_calculation';
+    confidence?: number;
+    featuresUsed?: Record<string, number>;
 }
 
 /**
- * Calculates a projected glucose value X minutes into the future
- * based on the decay of currently active insulin and carbs.
+ * Response from the PredictiveModelsService /predict/glucose endpoint
+ */
+interface IPredictGlucoseResponse {
+    model_name: string;
+    predicted_glucose_60min: number;
+    current_glucose: number;
+    predicted_change: number;
+    features_used: Record<string, number>;
+    predicted_at: string;
+}
+
+/**
+ * Calls the PredictiveModelsService to get an ML-based glucose prediction.
+ * Returns null if the service is unavailable or returns an error.
+ */
+async function callPredictionService(statusHistory: any[]): Promise<IPredictGlucoseResponse | null> {
+    try {
+        const response = await fetch(`${PREDICTION_SERVICE_URL}/predict/glucose`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model_name: PREDICTION_MODEL_NAME,
+                status_history: statusHistory
+            })
+        });
+
+        if (!response.ok) {
+            console.warn(`PredictiveModelsService returned ${response.status}: ${response.statusText}`);
+            return null;
+        }
+
+        return await response.json() as IPredictGlucoseResponse;
+    } catch (error) {
+        console.warn('PredictiveModelsService unavailable, falling back to local calculation:', error);
+        return null;
+    }
+}
+
+/**
+ * Calculates a projected glucose value X minutes into the future.
  * 
- * Uses the formula: 
- * FutureBG = CurrentBG - (InsulinUsed * ISF) + (CarbsAbsorbed * ISF / CR)
+ * Primary approach: Uses the PredictiveModelsService ML model for prediction.
+ * Fallback: Local calculation based on IOB/COB decay if the service is unavailable.
  * 
- * Where InsulinUsed = Current_Net_IOB - Future_Net_IOB
- * And CarbsAbsorbed = Current_COB - Future_COB
+ * The ML model uses XGBoost trained on historical status_history data to predict
+ * glucose 60 minutes ahead, considering glucose trends, IOB, COB, basal rates, etc.
  */
 export async function calculateProjectedGlucose(minutesAhead: number = 30): Promise<IProjectionResult | null> {
     const now = new Date();
     const future = new Date(now.getTime() + minutesAhead * 60 * 1000);
 
-    // 1. Fetch Current State & Future State in parallel
+    // 1. Try ML-based prediction first (for 60-minute prediction)
+    // Note: The ML model is trained for 60-minute predictions
+    if (minutesAhead === 60 || minutesAhead === 30) {
+        try {
+            // Fetch status history for the ML model (60 minutes, 5-minute buckets)
+            const statusHistory = await getStatusHistory({
+                startTime: now,
+                windowSize: 60,
+                bucketSize: 5
+            });
+
+            if (statusHistory.length > 0) {
+                const mlResult = await callPredictionService(statusHistory);
+
+                if (mlResult) {
+                    // Get current glucose for the response
+                    const currentBg = mlResult.current_glucose;
+                    let projectedBg = mlResult.predicted_glucose_60min;
+
+                    // If user requested 30 minutes, interpolate (simple linear)
+                    if (minutesAhead === 30) {
+                        projectedBg = currentBg + (mlResult.predicted_change / 2);
+                    }
+
+                    // Extract IOB/COB deltas from features if available
+                    const features = mlResult.features_used;
+                    const currentIOB = features.iob || 0;
+                    const currentCOB = features.cob || 0;
+
+                    return {
+                        currentBg,
+                        projectedBg: Math.round(projectedBg * 10) / 10,
+                        minutesAhead,
+                        deltaIOB: 0, // ML model handles this internally
+                        deltaCOB: 0, // ML model handles this internally
+                        activityLines: {
+                            insulinDrop: 0, // Not calculated separately in ML approach
+                            carbRise: 0
+                        },
+                        factors: {
+                            isf: features.isf || 0,
+                            cr: features.carb_ratio || 0
+                        },
+                        source: 'ml_model',
+                        featuresUsed: features
+                    };
+                }
+            }
+        } catch (error) {
+            console.warn('Error using ML prediction, falling back to local calculation:', error);
+        }
+    }
+
+    // 2. Fallback: Local calculation based on IOB/COB decay
     const [
         glucoseEntries,
         profileInfo,
@@ -47,78 +148,36 @@ export async function calculateProjectedGlucose(minutesAhead: number = 30): Prom
         getIOB(now),
         getIOB(future),
         getCOB(now),
-        getCOB(future) // "Simulate" future state by asking for COB at future time (assuming no new carbs)
+        getCOB(future)
     ]);
 
     if (!glucoseEntries.length || !profileInfo) {
         return null;
     }
 
-    const currentBg = glucoseEntries[0]!.sgv;
+    const currentBg = glucoseEntries[0]!.current.sgv;
 
     // Resolve Factors (ISF, CR)
     const store = getProfileStore(profileInfo.doc || undefined, profileInfo.activeProfileName, profileInfo.profileData || undefined);
     if (!store) return null;
 
-    // Get simple average ISF/CR for calculation (or active at time)
-    // For simplicity, we use the values active NOW. 
-    // A more advanced engine would step through profile changes.
-    const isf = store.sens?.[0]?.value || 50; // default 50 mg/dL/U
-    const cr = store.carbratio?.[0]?.value || 10; // default 10 g/U
-
-    // Note: If units are mmol, ISF might be small (e.g., 3.0), we should handle that.
-    // However, the system seems to standardize on mg/dL internally or at least the profile stores what is entered.
-    // If the profile is mmol, the user enters ~3.0.
-    // If the glucose is mg/dL, we have a mismatch.
-    // Typically existing logic in Nightscout/NightManager assumes consistency.
-    // status-logic.ts checks units: if (isMmol) sgv = ...
-
-    // We assume the profile values match the display units preference or are standardized to mg/dL?
-    // Looking at profile-logic, it just returns values.
-    // Looking at status-logic, it converts SGV based on units string. 
-    // IMPORTANT: ISF and CR in the profile are usually in the User's preferred units.
-    // If the profile says "units": "mmol/L", then ISF is in mmol/L/U.
-    // The `currentBg` from `getGlucose` is RAW from the entry?
-    // Let's check status-logic.ts:89 `let sgv = entry.sgv`. 
-    // SGV in Nightscout mongo is ALWAYS mg/dL.
-    // So if the profile is in mmol/L, we must convert ISF to mg/dL for math, OR convert SGV to mmol/L.
+    const isf = store.sens?.[0]?.value || 50;
+    const cr = store.carbratio?.[0]?.value || 10;
 
     const isMmol = glucoseEntries[0]!.units.toLowerCase().includes("mmol");
-
-    // ISF and CR from profile
     let activeISF = isf;
     const activeCR = cr;
 
-    // Check if Profile Units match Glucose Units
-    // The profile store 'units' field tells us what the user entered.
-    // getGlucose returns values converted to that preference.
-    // So 'currentBg' is in 'store.units'.
-    // 'isf' (sens) is in 'store.units'.
-    // 'cr' is in g/U (universal).
+    // Calculate Actives
+    const insulinUsed = currentIOB.calculated.totalIOB - futureIOB.calculated.totalIOB;
+    const carbsAbsorbed = currentCOB.calculated.cob - futureCOB.calculated.cob;
 
-    // So we just need to use them as is!
-    // The only edge case is if data is mixed, but getGlucose handles normalization to profile units.
-    // AND resolveActiveProfile returns raw profile data.
-    // Does resolveActiveProfile normalize ISF? No.
-    // Does getGlucose normalize SGV? Yes, to match profile units.
-
-    // So 'currentBg' and 'activeISF' should ALREADY be in the same units (e.g. mmol/L).
-    // The previous code explicitly converted ISF to mg/dL if isMmol was true. This was the bug.
-    // We should trust the profile value matches the expected unit.
-
-    // 2. Calculate Actives
-    // IOB
-    const insulinUsed = currentIOB.netIOB - futureIOB.netIOB;
-
-    // COB
-    const carbsAbsorbed = currentCOB - futureCOB;
-
-    // 3. Calculate Impact
+    // Calculate Impact
     const insulinDrop = insulinUsed * activeISF;
     const carbRise = carbsAbsorbed * (activeISF / activeCR);
 
     let projectedBg = currentBg - insulinDrop + carbRise;
-    projectedBg = Math.round(projectedBg * 10) / 10; // Keep 1 decimal for mmol
+    projectedBg = Math.round(projectedBg * 10) / 10;
 
     return {
         currentBg,
@@ -133,6 +192,7 @@ export async function calculateProjectedGlucose(minutesAhead: number = 30): Prom
         factors: {
             isf: activeISF,
             cr: activeCR
-        }
+        },
+        source: 'local_calculation'
     };
 }

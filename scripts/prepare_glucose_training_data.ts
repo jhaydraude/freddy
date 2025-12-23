@@ -102,7 +102,7 @@ async function generateSample(trainingPoint: Date, lookbackWindow: number): Prom
             count: 1
         });
 
-        if (!futureGlucose || futureGlucose.length === 0 || !futureGlucose[0]?.sgv) {
+        if (!futureGlucose || futureGlucose.length === 0 || !futureGlucose[0]?.current?.sgv) {
             console.log(`Skipping ${trainingPoint.toISOString()}: no future glucose data`);
             return null;
         }
@@ -113,7 +113,7 @@ async function generateSample(trainingPoint: Date, lookbackWindow: number): Prom
         const sample: TrainingSample = {
             training_point: trainingPoint.toISOString(),
             status_history: inputHistory,
-            actual_glucose_60min: futureGlucose[0].sgv,
+            actual_glucose_60min: futureGlucose[0].current.sgv,
             had_intervention: interventionCheck.hasIntervention
         };
 

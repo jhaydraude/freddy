@@ -148,3 +148,35 @@ export function getProfileStore(profileDoc?: IProfile, profileName?: string, pro
 
     return store || null;
 }
+
+/**
+ * Gets the active value from a time-based schedule (ISF, CR, etc.) at a specific time of day.
+ * schedule: Array of { time: "HH:mm", value: number }
+ */
+export function getValueAtTime(schedule: Array<{ time: string, value: number }>, date: Date): number {
+    if (!schedule || schedule.length === 0) return 0;
+
+    // Convert current time to "minutes from midnight"
+    const minutes = date.getHours() * 60 + date.getMinutes();
+
+    // Sort schedule by time
+    const sorted = [...schedule].sort((a, b) => {
+        const [aH, aM] = (a.time || "0:0").split(':').map(Number);
+        const [bH, bM] = (b.time || "0:0").split(':').map(Number);
+        return ((aH || 0) * 60 + (aM || 0)) - ((bH || 0) * 60 + (bM || 0));
+    });
+
+    // Find the last entry that is <= current minutes
+    let activeValue = sorted[0]?.value || 0;
+    for (const entry of sorted) {
+        const [h, m] = (entry.time || "0:0").split(':').map(Number);
+        const entryMinutes = (h || 0) * 60 + (m || 0);
+        if (entryMinutes <= minutes) {
+            activeValue = entry.value;
+        } else {
+            break;
+        }
+    }
+
+    return activeValue;
+}

@@ -12,6 +12,7 @@ import { getCOB } from "./lib/cob-logic.js";
 import { getGlucose, getStatus } from "./lib/status-logic.js";
 import { getStatusHistory } from "./lib/history-logic.js";
 import { explainStatus } from "./lib/explain-logic.js";
+import { generateTrainingData } from "./lib/training-data-logic.js";
 import { Treatment, DeviceStatus } from "./db/models.js";
 
 const server = new Server(
@@ -115,6 +116,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     }
                 },
             },
+            {
+                name: "generate_training_data",
+                description: "Generate training samples for the glucose prediction ML model. Returns status_history inputs paired with actual glucose 60min later.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        startDate: { type: "string", description: "Start date ISO format (default: 1 day ago)" },
+                        endDate: { type: "string", description: "End date ISO format (default: now)" },
+                        intervalMinutes: { type: "number", description: "Interval between samples in minutes (default: 5)" },
+                        lookbackWindow: { type: "number", description: "Lookback window for input history in minutes (default: 20)" },
+                        includeInterventions: { type: "boolean", description: "Include samples with carb/insulin interventions (default: false)" }
+                    }
+                },
+            },
         ],
     };
 });
@@ -180,8 +195,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
             case "get_cob": {
                 const timestamp = (args?.timestamp as string) || new Date().toISOString();
-                const cob = await getCOB(timestamp);
-                return { content: [{ type: "text", text: JSON.stringify({ cob, timestamp }, null, 2) }] };
+                const cobResult = await getCOB(timestamp);
+                return { content: [{ type: "text", text: JSON.stringify({ ...cobResult, timestamp }, null, 2) }] };
             }
 
             case "get_status": {
@@ -213,6 +228,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     content: [{
                         type: "text",
                         text: explanation
+                    }]
+                };
+            }
+
+            case "generate_training_data": {
+                const options: any = {};
+                if (args?.startDate) options.startDate = new Date(args.startDate as string);
+                if (args?.endDate) options.endDate = new Date(args.endDate as string);
+                if (args?.intervalMinutes !== undefined) options.intervalMinutes = args.intervalMinutes as number;
+                if (args?.lookbackWindow !== undefined) options.lookbackWindow = args.lookbackWindow as number;
+                if (args?.includeInterventions !== undefined) options.includeInterventions = args.includeInterventions as boolean;
+
+                const result = await generateTrainingData(options);
+                return {
+                    content: [{
+                        type: "text",
+                        text: JSON.stringify(result, null, 2)
                     }]
                 };
             }

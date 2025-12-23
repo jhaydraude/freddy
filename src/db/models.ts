@@ -128,12 +128,21 @@ export interface IDeviceStatus extends Document {
             basaliob?: number;
             bolusiob?: number;
             timestamp?: string;
+            time?: string;
         };
         suggested?: any;
         enacted?: any;
     };
     uploaderBattery?: number;
     device?: string;
+    configuration?: {
+        sensitivityConfiguration?: {
+            openaps_smb_min_5m_carbimpact?: number;
+            absorption_cutoff?: number;
+            autosens_min?: number;
+            autosens_max?: number;
+        };
+    };
 }
 
 const DeviceStatusSchema = new Schema({
@@ -168,7 +177,8 @@ const DeviceStatusSchema = new Schema({
             activity: Number,
             basaliob: Number,
             bolusiob: Number,
-            timestamp: String
+            timestamp: String,
+            time: String
         },
         suggested: Schema.Types.Mixed,
         enacted: Schema.Types.Mixed

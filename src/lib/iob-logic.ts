@@ -1,76 +1,314 @@
-import { Treatment } from '../db/models.js';
-import { resolveActiveProfile, getProfileStore } from './profile-logic.js';
-import { getBasalRate, getBasalFromSchedule } from './basal-logic.js';
+import { Treatment, DeviceStatus } from '../db/models.js';
+import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
+import { getBasalFromSchedule } from './basal-logic.js';
 import { decayIOB } from './insulin-math.js';
 
+/** Result for a single insulin event's IOB curve */
+export interface IInsulinEventCurve {
+    eventTime: Date;           // When the insulin event occurred
+    eventType: string;         // 'Bolus', 'Basal Bucket', etc.
+    initialInsulin: number;    // Original insulin amount
+    iobAtInterval: number[];   // IOB at each 5-min interval (index 0 = target time)
+}
+
+/** Extended IOB result with detailed metrics */
 export interface IIOBResult {
-    deliveredIOB: number;
-    scheduledBasalIOB: number;
-    netIOB: number;
+    timestamp: string;
+    units: string;
+    lookbackMinutes: number;
+
+    settings: {
+        isf: number;
+        dia: number;
+        autosensRatio: number;
+        effectiveISF: number;
+    };
+
+    calculated: {
+        totalIOB: number;     // Net IOB (Delivered - Scheduled Basal)
+        bolusIOB: number;
+        basalIOB: number;     // Net Basal IOB (Delivered - Scheduled)
+        glucoseImpact: number;
+        bolusCount: number;
+    };
+
+    reported: {
+        totalIOB: number;
+        bolusIOB: number;
+        basalIOB: number;
+        timestamp: string;
+    };
+}
+
+/** Constants for IOB calculation */
+const INTERVAL_MINUTES = 5;
+
+/**
+ * Calculates the IOB curve for a single insulin event.
+ * Creates an array indexed at 5-minute intervals with IOB.
+ * 
+ * @param initialInsulin - The initial insulin amount in units
+ * @param eventTime - When the insulin event occurred
+ * @param targetTime - The time to calculate from (index 0 = target time)
+ * @param dia - Duration of insulin action in hours
+ * @returns Curve with IOB at each 5-min interval
+ */
+export function calculateInsulinEventCurve(
+    initialInsulin: number,
+    eventTime: Date,
+    targetTime: Date,
+    dia: number,
+    eventType: string = 'Bolus'
+): IInsulinEventCurve {
+    const targetMs = targetTime.getTime();
+    const eventMs = eventTime.getTime();
+
+    // Calculate number of intervals needed (full DIA duration)
+    const diaMinutes = dia * 60;
+    const numIntervals = Math.ceil(diaMinutes / INTERVAL_MINUTES) + 1;
+
+    const iobAtInterval: number[] = [];
+
+    // Build arrays from target time backwards
+    for (let i = 0; i < numIntervals; i++) {
+        // Age at this interval (going backwards from target)
+        const intervalTargetMs = targetMs - (i * INTERVAL_MINUTES * 60 * 1000);
+        const ageMinutes = (intervalTargetMs - eventMs) / (1000 * 60);
+
+        if (ageMinutes < 0) {
+            // Insulin event hasn't occurred yet at this interval
+            iobAtInterval.push(0);
+        } else {
+            // Calculate IOB using decay function
+            const iob = initialInsulin * decayIOB(ageMinutes, dia);
+            iobAtInterval.push(Math.round(iob * 1000) / 1000);
+        }
+    }
+
+    return {
+        eventTime,
+        eventType,
+        initialInsulin,
+        iobAtInterval
+    };
 }
 
 /**
- * Service to get IOB at a specific time.
- * Calculates both Bolus IOB and Delivered/Scheduled Basal IOB.
+ * Service to get detailed IOB at a specific time.
+ * Calculates IOB from boluses and basal, with glucose impact.
+ * 
+ * @param timestamp - ISO timestamp or Date
+ * @returns Detailed IOB result with glucose impact
  */
 export async function getIOB(timestamp: string | Date): Promise<IIOBResult> {
     const endWindow = new Date(timestamp);
     const profileInfo = await resolveActiveProfile(endWindow);
-    if (!profileInfo) return { deliveredIOB: 0, scheduledBasalIOB: 0, netIOB: 0 };
 
-    const store = getProfileStore(profileInfo.doc || undefined, profileInfo.activeProfileName, profileInfo.profileData || undefined);
-    if (!store) return { deliveredIOB: 0, scheduledBasalIOB: 0, netIOB: 0 };
+    // Default values
+    let isf = 50;
+    let units = 'mg/dL';
+    let dia = 5; // Default DIA in hours
+    let autosensRatio = 1.0;
 
-    const dia = store.dia; // hours
+    // 1. Get Autosens Ratio from latest DeviceStatus
+    const statusDoc = await DeviceStatus.findOne({
+        "openaps.suggested.sensitivityRatio": { $exists: true }
+    }).sort({ created_at: -1 });
+
+    if (statusDoc?.openaps?.suggested?.sensitivityRatio) {
+        autosensRatio = statusDoc.openaps.suggested.sensitivityRatio;
+    }
+
+    if (!profileInfo) {
+        return {
+            timestamp: endWindow.toISOString(),
+            units,
+            lookbackMinutes: dia * 60,
+            settings: { isf, dia, autosensRatio, effectiveISF: isf },
+            calculated: { totalIOB: 0, bolusIOB: 0, basalIOB: 0, glucoseImpact: 0, bolusCount: 0 },
+            reported: { totalIOB: 0, bolusIOB: 0, basalIOB: 0, timestamp: '' }
+        };
+    }
+
+    const store = getProfileStore(
+        profileInfo.doc || undefined,
+        profileInfo.activeProfileName,
+        profileInfo.profileData || undefined
+    );
+
+    if (store) {
+        dia = store.dia;
+        isf = getValueAtTime(store.sens, endWindow);
+        units = store.units || 'mg/dL';
+    }
+
     const diaMs = dia * 60 * 60 * 1000;
     const startWindow = new Date(endWindow.getTime() - diaMs);
 
-    // 1. Bolus IOB (Meal Bolus, Correction Bolus)
+    // 1. Fetch Boluses and calculate IOB curves
     const boluses = await Treatment.find({
         eventType: { $in: ["Meal Bolus", "Correction Bolus"] },
         created_at: { $lte: endWindow.toISOString(), $gte: startWindow.toISOString() }
     });
 
+    const bolusCurves: IInsulinEventCurve[] = [];
     let bolusIOB = 0;
+    let bolusCount = 0;
+
     for (const b of boluses) {
         const insulin = b.insulin || 0;
         if (insulin <= 0) continue;
 
-        const ageMinutes = (endWindow.getTime() - new Date(b.created_at).getTime()) / (1000 * 60);
-        bolusIOB += insulin * decayIOB(ageMinutes, dia);
+        const eventTime = new Date(b.created_at);
+        const curve = calculateInsulinEventCurve(insulin, eventTime, endWindow, dia, 'Bolus');
+        bolusCurves.push(curve);
+
+        bolusIOB += curve.iobAtInterval[0] || 0;
+        if ((curve.iobAtInterval[0] || 0) > 0) {
+            bolusCount++;
+        }
     }
 
-    // 2. Basal IOB (Delivered & Scheduled)
-    const basalRes = await getBasalIOB(startWindow, endWindow);
+    // 2. Basal IOB (Delivered & Scheduled) using existing logic
+    const basalRes = await getBasalIOB(startWindow, endWindow, dia);
 
-    // Delivered IOB = Bolus IOB + Delivered Basal IOB
+    // 3. Calculate totals
     const deliveredIOB = bolusIOB + basalRes.deliveredIOB;
     const scheduledBasalIOB = basalRes.scheduledIOB;
     const netIOB = deliveredIOB - scheduledBasalIOB;
 
+    // 4. Calculate glucose impact
+    // Activity = how much insulin will be absorbed in the next 5 minutes
+    // glucoseImpact = activity * Effective ISF
+    const impactISF = isf / autosensRatio;
+    const insulinActivityRate = await calculateInsulinActivityRate(endWindow, dia);
+    const glucoseImpact = insulinActivityRate * impactISF;
+
+    // 5. Construct Result
+    // Reported data from IDeviceStatus (if available)
+    const reported = {
+        totalIOB: statusDoc?.openaps?.iob?.iob || 0,
+        bolusIOB: statusDoc?.openaps?.iob?.bolusiob || 0,
+        basalIOB: statusDoc?.openaps?.iob?.basaliob || 0,
+        timestamp: statusDoc?.openaps?.iob?.timestamp || statusDoc?.openaps?.iob?.time || ''
+    };
+
     return {
-        deliveredIOB: Math.round(deliveredIOB * 1000) / 1000,
-        scheduledBasalIOB: Math.round(scheduledBasalIOB * 1000) / 1000,
-        netIOB: Math.round(netIOB * 1000) / 1000
+        timestamp: endWindow.toISOString(),
+        units,
+        lookbackMinutes: Math.round(dia * 60),
+
+        settings: {
+            isf: Math.round(isf * 100) / 100,
+            dia,
+            autosensRatio: Math.round(autosensRatio * 100) / 100,
+            effectiveISF: Math.round(impactISF * 100) / 100
+        },
+
+        calculated: {
+            totalIOB: Math.round(netIOB * 1000) / 1000,
+            bolusIOB: Math.round(bolusIOB * 1000) / 1000,
+            basalIOB: Math.round((deliveredIOB - bolusIOB - scheduledBasalIOB) * 1000) / 1000, // Net Basal
+            glucoseImpact: Math.round(glucoseImpact * 100) / 100,
+            bolusCount
+        },
+
+        reported
     };
 }
 
 /**
- * Calculates both Scheduled and Delivered Basal IOB for a given time window.
- * Returns { scheduledIOB: number, deliveredIOB: number }
+ * Calculates insulin activity rate (units being absorbed in the next 5 minutes).
+ * This represents how much insulin will be "used" and thus how much it will lower glucose.
+ * 
+ * Activity = IOB(now) - IOB(now + 5min)
+ * This is the insulin that will be absorbed in the next 5-minute interval.
  */
-export async function getBasalIOB(startTime: Date, endTime: Date): Promise<{ scheduledIOB: number, deliveredIOB: number }> {
+export async function calculateInsulinActivityRate(
+    timestamp: Date,
+    dia: number
+): Promise<number> {
+    const now = timestamp;
+    const future = new Date(now.getTime() + INTERVAL_MINUTES * 60 * 1000);
+
+    // Get IOB at current time
+    const profileInfo = await resolveActiveProfile(now);
+    if (!profileInfo) return 0;
+
+    const store = getProfileStore(
+        profileInfo.doc || undefined,
+        profileInfo.activeProfileName,
+        profileInfo.profileData || undefined
+    );
+    if (!store) return 0;
+
+    const diaMs = dia * 60 * 60 * 1000;
+    const startWindow = new Date(now.getTime() - diaMs);
+
+    // Fetch boluses
+    const boluses = await Treatment.find({
+        eventType: { $in: ["Meal Bolus", "Correction Bolus"] },
+        created_at: { $lte: now.toISOString(), $gte: startWindow.toISOString() }
+    });
+
+    // Calculate bolus IOB at now and at future
+    let bolusIobNow = 0;
+    let bolusIobFuture = 0;
+
+    for (const b of boluses) {
+        const insulin = b.insulin || 0;
+        if (insulin <= 0) continue;
+
+        const eventMs = new Date(b.created_at).getTime();
+        const ageNow = (now.getTime() - eventMs) / (1000 * 60);
+        const ageFuture = (future.getTime() - eventMs) / (1000 * 60);
+
+        if (ageNow >= 0) {
+            bolusIobNow += insulin * decayIOB(ageNow, dia);
+        }
+        if (ageFuture >= 0) {
+            bolusIobFuture += insulin * decayIOB(ageFuture, dia);
+        }
+    }
+
+    // Calculate basal IOB at now and future
+    const basalNow = await getBasalIOB(startWindow, now, dia);
+    const basalFuture = await getBasalIOB(startWindow, future, dia);
+
+    const totalIobNow = bolusIobNow + basalNow.deliveredIOB;
+    const totalIobFuture = bolusIobFuture + basalFuture.deliveredIOB;
+
+    // Activity is how much IOB decreases (i.e., insulin absorbed)
+    const activity = Math.max(0, totalIobNow - totalIobFuture);
+
+    return activity;
+}
+
+/**
+ * Calculates both Scheduled and Delivered Basal IOB for a given time window.
+ * Creates IOB curves for each 5-minute bucket of basal delivery.
+ */
+export async function getBasalIOB(
+    startTime: Date,
+    endTime: Date,
+    profileDia?: number
+): Promise<{ scheduledIOB: number, deliveredIOB: number, deliveredRate: number }> {
     const startMs = startTime.getTime();
     const endMs = endTime.getTime();
 
     // 1. Initial Resolution for DIA
     const initialRes = await resolveActiveProfile(startTime);
-    if (!initialRes) return { scheduledIOB: 0, deliveredIOB: 0 };
+    if (!initialRes) return { scheduledIOB: 0, deliveredIOB: 0, deliveredRate: 0 };
 
-    const initialStore = getProfileStore(initialRes.doc || undefined, initialRes.activeProfileName, initialRes.profileData || undefined);
-    if (!initialStore) return { scheduledIOB: 0, deliveredIOB: 0 };
+    const initialStore = getProfileStore(
+        initialRes.doc || undefined,
+        initialRes.activeProfileName,
+        initialRes.profileData || undefined
+    );
+    if (!initialStore) return { scheduledIOB: 0, deliveredIOB: 0, deliveredRate: 0 };
 
-    const diaMs = initialStore.dia * 60 * 60 * 1000;
+    const dia = profileDia ?? initialStore.dia;
+    const diaMs = dia * 60 * 60 * 1000;
     const windowStartMs = Math.max(startMs, endMs - diaMs);
 
     // 2. Build Unified Timeline Events
@@ -117,10 +355,11 @@ export async function getBasalIOB(startTime: Date, endTime: Date): Promise<{ sch
 
     const sortedEvents = Array.from(eventTimes).sort((a, b) => a - b);
 
-    // 3. Process Segments
+    // 3. Process Segments and build IOB curves for each bucket
     let scheduledIOB = 0;
     let deliveredIOB = 0;
-    const stepMin = 5;
+    let currentDeliveredRate = 0;
+    const stepMin = INTERVAL_MINUTES;
     const stepMs = stepMin * 60 * 1000;
 
     for (let i = 0; i < sortedEvents.length - 1; i++) {
@@ -148,22 +387,34 @@ export async function getBasalIOB(startTime: Date, endTime: Date): Promise<{ sch
                 } else if (t.percent !== undefined) {
                     deliveredRate = Math.round(scheduledRate * (1 + t.percent / 100) * 1000) / 1000;
                 }
-                break; // Found the active temp for this segment
+                break;
             }
         }
 
-        // c. Iterate sub-windows
+        // Track current delivered rate for the most recent segment
+        if (segEnd === endMs || (i === sortedEvents.length - 2)) {
+            currentDeliveredRate = deliveredRate;
+        }
+
+        // c. Iterate sub-windows and calculate IOB for each bucket
         for (let tMs = segStart; tMs < segEnd; tMs += stepMs) {
-            const ageMin = (endMs - (tMs + stepMs / 2)) / 60000;
+            const bucketMidpoint = tMs + stepMs / 2;
+            const ageMin = (endMs - bucketMidpoint) / 60000;
             const decayFactor = decayIOB(ageMin, currentDia);
 
-            scheduledIOB += (scheduledRate * (stepMin / 60)) * decayFactor;
-            deliveredIOB += (deliveredRate * (stepMin / 60)) * decayFactor;
+            // Insulin delivered in this 5-min bucket
+            const scheduledInsulin = scheduledRate * (stepMin / 60);
+            const deliveredInsulin = deliveredRate * (stepMin / 60);
+
+            // IOB contribution from this bucket
+            scheduledIOB += scheduledInsulin * decayFactor;
+            deliveredIOB += deliveredInsulin * decayFactor;
         }
     }
 
     return {
         scheduledIOB: Math.round(scheduledIOB * 1000) / 1000,
-        deliveredIOB: Math.round(deliveredIOB * 1000) / 1000
+        deliveredIOB: Math.round(deliveredIOB * 1000) / 1000,
+        deliveredRate: currentDeliveredRate
     };
 }
