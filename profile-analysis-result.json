@@ -1,0 +1,171 @@
+{
+  "current_profile": {
+    "dia": 7,
+    "carbratio": [
+      {
+        "time": "00:00",
+        "timeAsSeconds": 0,
+        "value": 16
+      }
+    ],
+    "sens": [
+      {
+        "time": "00:00",
+        "timeAsSeconds": 0,
+        "value": 7.6
+      }
+    ],
+    "basal": [
+      {
+        "time": "00:00",
+        "timeAsSeconds": 0,
+        "value": 0.45
+      },
+      {
+        "time": "04:00",
+        "timeAsSeconds": 14400,
+        "value": 0.4
+      },
+      {
+        "time": "14:00",
+        "timeAsSeconds": 50400,
+        "value": 0.35
+      },
+      {
+        "time": "20:00",
+        "timeAsSeconds": 72000,
+        "value": 0.4
+      }
+    ],
+    "target_low": [
+      {
+        "time": "00:00",
+        "timeAsSeconds": 0,
+        "value": 5.5
+      }
+    ],
+    "target_high": [
+      {
+        "time": "00:00",
+        "timeAsSeconds": 0,
+        "value": 5.5
+      }
+    ],
+    "units": "mmol"
+  },
+  "recommended_profile": {
+    "dia": 7,
+    "carbratio": [
+      {
+        "time": "00:00",
+        "value": 7.1,
+        "timeAsSeconds": 0
+      }
+    ],
+    "sens": [
+      {
+        "time": "00:00",
+        "value": 10,
+        "timeAsSeconds": 0
+      }
+    ],
+    "basal": [
+      {
+        "time": "00:00",
+        "value": 0.25,
+        "timeAsSeconds": 0
+      },
+      {
+        "time": "04:00",
+        "value": 0.805,
+        "timeAsSeconds": 14400
+      },
+      {
+        "time": "08:00",
+        "value": 1.026,
+        "timeAsSeconds": 28800
+      },
+      {
+        "time": "12:00",
+        "value": 0.683,
+        "timeAsSeconds": 43200
+      },
+      {
+        "time": "16:00",
+        "value": 0.193,
+        "timeAsSeconds": 57600
+      },
+      {
+        "time": "20:00",
+        "value": 0.241,
+        "timeAsSeconds": 72000
+      }
+    ],
+    "target_low": [
+      {
+        "time": "00:00",
+        "timeAsSeconds": 0,
+        "value": 5.5
+      }
+    ],
+    "target_high": [
+      {
+        "time": "00:00",
+        "timeAsSeconds": 0,
+        "value": 5.5
+      }
+    ],
+    "units": "mmol"
+  },
+  "estimated_isf": 10,
+  "estimated_icr": 7.079280837667955,
+  "estimated_basal_rates": [
+    0.25013095880816333,
+    0.805104433489744,
+    1.0257295259831014,
+    0.6825678944246764,
+    0.19335545561352935,
+    0.24113974028427282
+  ],
+  "isf_confidence": [
+    10,
+    14.530105120059451
+  ],
+  "icr_confidence": [
+    5.364921169010752,
+    12.052456703558688
+  ],
+  "basal_confidence": [
+    [
+      0.15846672314568097,
+      0.44686154766035735
+    ],
+    [
+      0.7333339504400168,
+      0.8933413421160468
+    ],
+    [
+      0.9413968259609651,
+      1.0937828587721792
+    ],
+    [
+      0.5484294909960341,
+      0.7967992934723822
+    ],
+    [
+      0.1,
+      0.42461482131171774
+    ],
+    [
+      0.1,
+      0.45730799476614264
+    ]
+  ],
+  "r_squared": 0.03985132049937623,
+  "rmse": 33.58341258766103,
+  "mae": 24.895518059635116,
+  "windows_analyzed": 5751,
+  "stable_windows": 2981,
+  "meal_windows": 0,
+  "recommendation": "Low confidence estimates based on 5751 windows. ISF: 10.0 mg/dL/U, ICR: 7.1 g/U, Avg Basal: 0.53 U/hr. Model fit: R²=0.040, RMSE=33.6 mg/dL."
+}

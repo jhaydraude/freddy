@@ -1,4 +1,5 @@
 import { Entry, Treatment } from '../db/models.js';
+import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
 
 /**
  * Time window for holistic profile analysis
@@ -30,13 +31,14 @@ export interface ITimeWindow {
     has_corrections: boolean;
 }
 
+
 /**
  * Options for generating time windows
  */
 export interface ITimeWindowOptions {
-    startDate: Date;
-    endDate: Date;
-    windowHours?: number;  // Default: 4
+    endDate?: Date;         // Default: now
+    daysBack?: number;      // Default: 30
+    windowHours?: number;   // Default: 2
 }
 
 /**
@@ -46,16 +48,19 @@ export interface ITimeWindowOptions {
  * all relevant metrics for each window.
  */
 export async function generateTimeWindows(
-    options: ITimeWindowOptions
+    options: ITimeWindowOptions = {}
 ): Promise<ITimeWindow[]> {
     const {
-        startDate,
-        endDate,
-        windowHours = 4
+        endDate = new Date(),
+        daysBack = 30,
+        windowHours = 2
     } = options;
 
+    // Calculate start date from end date and days back
+    const startDate = new Date(endDate.getTime() - daysBack * 24 * 60 * 60 * 1000);
+
     console.log(`\n📊 Generating ${windowHours}-hour time windows...`);
-    console.log(`Period: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    console.log(`Period: ${startDate.toISOString()} to ${endDate.toISOString()} (${daysBack} days)`);
 
     const windows: ITimeWindow[] = [];
     const windowMs = windowHours * 60 * 60 * 1000;
@@ -81,7 +86,19 @@ export async function generateTimeWindows(
     ]);
 
     console.log(`  Loaded ${glucoseEntries.length} glucose readings`);
-    console.log(`  Loaded ${treatments.length} treatments\n`);
+    console.log(`  Loaded ${treatments.length} treatments`);
+
+    // === FETCH ACTIVE PROFILE ===
+    console.log('  Fetching active profile for basal rates...');
+    const profileInfo = await resolveActiveProfile(startDate);
+    const profileData = profileInfo?.profileData ||
+        (profileInfo?.doc ? getProfileStore(profileInfo.doc, profileInfo.activeProfileName) : null);
+
+    if (!profileData?.basal) {
+        console.warn('  ⚠️  No basal schedule found, using default 1.0 U/hr');
+    } else {
+        console.log(`  Loaded basal schedule with ${profileData.basal.length} entries\n`);
+    }
 
     // === GENERATE WINDOWS ===
     let currentTime = startDate.getTime();
@@ -138,12 +155,14 @@ export async function generateTimeWindows(
                 if (t.carbs && t.carbs > 0) {
                     carbsConsumed += t.carbs;
                     carbEvents++;
+                    hasMeals = true;  // Mark as meal window if ANY carbs present
                 }
             }
 
-            // Estimate basal insulin delivered
-            // TODO: Get actual basal delivery from treatments or calculate from profile
-            const basalRate = 1.0; // Placeholder - should get from profile
+            // Get actual basal rate from profile for this window's time
+            const basalRate = profileData?.basal
+                ? getValueAtTime(profileData.basal, windowStart)
+                : 1.0; // Fallback if no profile data
             const basalInsulin = basalRate * windowHours;
 
             const totalInsulin = bolusInsulin + basalInsulin;
