@@ -188,3 +188,31 @@ const DeviceStatusSchema = new Schema({
 }, { collection: 'devicestatus', strict: false });
 
 export const DeviceStatus = mongoose.model<IDeviceStatus>('DeviceStatus', DeviceStatusSchema);
+
+// ---------------------------------------------------------------------------
+// COMPUTED STATUS (Cached Status Snapshots - WRITE ALLOWED)
+// ---------------------------------------------------------------------------
+export interface IComputedStatus extends Document {
+    timestamp: Date;          // Bucketed to 5-minute intervals (floor)
+    status: any;              // Complete IStatusResult from getStatus()
+    attribution?: {           // Optional: Added by attribution tool
+        "5min"?: any;
+        "10min"?: any;
+        "15min"?: any;
+        "30min"?: any;
+    };
+    created_at: Date;         // When first computed
+    updated_at: Date;         // When last recalculated
+    version: string;          // Schema version
+}
+
+const ComputedStatusSchema = new Schema({
+    timestamp: { type: Date, required: true, unique: true, index: true },
+    status: { type: Schema.Types.Mixed, required: true },
+    attribution: { type: Schema.Types.Mixed },
+    created_at: { type: Date, required: true, index: true },
+    updated_at: { type: Date, required: true, index: true },
+    version: { type: String, default: "1.0" }
+}, { collection: 'computedstatus' });
+
+export const ComputedStatus = mongoose.model<IComputedStatus>('ComputedStatus', ComputedStatusSchema);

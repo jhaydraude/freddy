@@ -35,6 +35,19 @@ export interface ICOBResult {
         cob: number;
         timestamp: string;
     };
+
+    // Optional timeseries data
+    timeseries?: {
+        intervalMinutes: 5;
+        startTime: string;            // MAX_LOOKBACK_HOURS ago (4 hours)
+        endTime: string;              // Current timestamp
+        length: number;               // Array length
+
+        timestamps: string[];         // ISO timestamps [oldest → newest]
+        totalCOB: number[];           // Total COB at each interval
+        carbAbsorption: number[];     // Carbs absorbed in NEXT 5 min (g/5min)
+        glucoseImpact: number[];      // Expected BG rise (absorption × ISF/CR)
+    };
 }
 
 /** Constants for carb absorption calculation */
@@ -245,9 +258,10 @@ export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: n
  * Fetches carb treatments and calculates COB with glucose impact from profile.
  * 
  * @param timestamp - ISO timestamp or Date (defaults to now)
+ * @param includeTimeseries - If true, include historical timeseries arrays
  * @returns Detailed COB result with cob, glucose impact, event count, and avg size
  */
-export async function getCOB(timestamp: string | Date): Promise<ICOBResult> {
+export async function getCOB(timestamp: string | Date, includeTimeseries: boolean = false): Promise<ICOBResult> {
     const date = new Date(timestamp);
     const lookbackMs = MAX_LOOKBACK_HOURS * 60 * 60 * 1000;
 
@@ -303,7 +317,7 @@ export async function getCOB(timestamp: string | Date): Promise<ICOBResult> {
     const reportedCOB = latestStatus?.openaps?.suggested?.COB || 0;
     const reportedTime = latestStatus?.created_at || '';
 
-    return {
+    const result: ICOBResult = {
         timestamp: date.toISOString(),
         units,
         lookbackMinutes: MAX_LOOKBACK_HOURS * 60,
@@ -328,4 +342,56 @@ export async function getCOB(timestamp: string | Date): Promise<ICOBResult> {
             timestamp: reportedTime
         }
     };
+
+    // Build timeseries if requested
+    if (includeTimeseries) {
+        const numIntervals = Math.ceil((MAX_LOOKBACK_HOURS * 60) / INTERVAL_MINUTES) + 1;
+        const timestamps: string[] = [];
+        const totalCOBArray: number[] = [];
+        const carbAbsorptionArray: number[] = [];
+        const glucoseImpactArray: number[] = [];
+
+        // Create curves ONCE for all treatments
+        const curves: ICarbEventCurve[] = [];
+        for (const t of treatments) {
+            if (!t.carbs || t.carbs <= 0) continue;
+            const eventTime = new Date(t.created_at);
+            const curve = calculateCarbEventCurve(t.carbs, eventTime, date);
+            curves.push(curve);
+        }
+
+        // Build arrays from oldest to newest by indexing into pre-calculated curves
+        for (let i = numIntervals - 1; i >= 0; i--) {
+            const intervalTime = new Date(date.getTime() - (i * INTERVAL_MINUTES * 60 * 1000));
+            timestamps.push(intervalTime.toISOString());
+
+            // Sum COB from all curves at this interval index
+            let totalCOBAtInterval = 0;
+            let totalAbsorptionAtInterval = 0;
+
+            for (const curve of curves) {
+                totalCOBAtInterval += curve.cobAtInterval[i] || 0;
+                totalAbsorptionAtInterval += curve.carbAbsorptionAtInterval[i] || 0;
+            }
+
+            totalCOBArray.push(Math.round(totalCOBAtInterval * 10) / 10);
+            carbAbsorptionArray.push(Math.round(totalAbsorptionAtInterval * 100) / 100);
+
+            const glucoseImpactAtInterval = totalAbsorptionAtInterval * (isf / cr);
+            glucoseImpactArray.push(Math.round(glucoseImpactAtInterval * 100) / 100);
+        }
+
+        result.timeseries = {
+            intervalMinutes: 5,
+            startTime: timestamps[0] || date.toISOString(),
+            endTime: timestamps[timestamps.length - 1] || date.toISOString(),
+            length: timestamps.length,
+            timestamps,
+            totalCOB: totalCOBArray,
+            carbAbsorption: carbAbsorptionArray,
+            glucoseImpact: glucoseImpactArray
+        };
+    }
+
+    return result;
 }
