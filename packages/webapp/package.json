@@ -1,19 +1,30 @@
 {
-    "name": "@nightmanager/webapp",
-    "version": "0.1.0",
-    "description": "Web application interface for NightManager powered by MCP server",
-    "private": true,
-    "type": "module",
-    "scripts": {
-        "dev": "echo 'WebApp not yet implemented'",
-        "build": "echo 'WebApp not yet implemented'",
-        "start": "echo 'WebApp not yet implemented'"
-    },
-    "keywords": [
-        "nightscout",
-        "diabetes",
-        "web-app"
-    ],
-    "author": "",
-    "license": "ISC"
+  "name": "webapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@nightmanager/mcp-server": "*",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.562.0",
+    "next": "15.1.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "recharts": "^2.15.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.1",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
 }

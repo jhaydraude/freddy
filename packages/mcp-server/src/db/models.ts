@@ -23,7 +23,7 @@ const EntrySchema = new Schema({
     type: { type: String, default: 'sgv' }
 }, { collection: 'entries', strict: false });
 
-export const Entry = mongoose.model<IEntry>('Entry', EntrySchema);
+export const Entry = mongoose.models.Entry || mongoose.model<IEntry>('Entry', EntrySchema);
 
 // ---------------------------------------------------------------------------
 // TREATMENTS (Insulin, Carbs, Temp Basals)
@@ -61,7 +61,7 @@ const TreatmentSchema = new Schema({
     percentage: { type: Number }
 }, { collection: 'treatments', strict: false });
 
-export const Treatment = mongoose.model<ITreatment>('Treatment', TreatmentSchema);
+export const Treatment = mongoose.models.Treatment || mongoose.model<ITreatment>('Treatment', TreatmentSchema);
 
 // ---------------------------------------------------------------------------
 // PROFILE (User Settings)
@@ -90,7 +90,7 @@ const ProfileSchema = new Schema({
     created_at: { type: String }
 }, { collection: 'profile', strict: false });
 
-export const Profile = mongoose.model<IProfile>('Profile', ProfileSchema);
+export const Profile = mongoose.models.Profile || mongoose.model<IProfile>('Profile', ProfileSchema);
 
 // ---------------------------------------------------------------------------
 // DEVICE STATUS (Pump & Uploader Status)
@@ -187,7 +187,7 @@ const DeviceStatusSchema = new Schema({
     device: String
 }, { collection: 'devicestatus', strict: false });
 
-export const DeviceStatus = mongoose.model<IDeviceStatus>('DeviceStatus', DeviceStatusSchema);
+export const DeviceStatus = mongoose.models.DeviceStatus || mongoose.model<IDeviceStatus>('DeviceStatus', DeviceStatusSchema);
 
 // ---------------------------------------------------------------------------
 // COMPUTED STATUS (Cached Status Snapshots - WRITE ALLOWED)
@@ -215,4 +215,4 @@ const ComputedStatusSchema = new Schema({
     version: { type: String, default: "1.0" }
 }, { collection: 'computedstatus' });
 
-export const ComputedStatus = mongoose.model<IComputedStatus>('ComputedStatus', ComputedStatusSchema);
+export const ComputedStatus = mongoose.models.ComputedStatus || mongoose.model<IComputedStatus>('ComputedStatus', ComputedStatusSchema);
