@@ -1,0 +1,19 @@
+{
+    "name": "@nightmanager/webapp",
+    "version": "0.1.0",
+    "description": "Web application interface for NightManager powered by MCP server",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "echo 'WebApp not yet implemented'",
+        "build": "echo 'WebApp not yet implemented'",
+        "start": "echo 'WebApp not yet implemented'"
+    },
+    "keywords": [
+        "nightscout",
+        "diabetes",
+        "web-app"
+    ],
+    "author": "",
+    "license": "ISC"
+}

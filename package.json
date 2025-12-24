@@ -1,25 +1,28 @@
 {
-  "name": "nightmanager",
-  "version": "1.0.0",
-  "description": "NightManager is an MCP (Model Context Protocol) server designed to interface directly with a Nightscout MongoDB database.",
-  "main": "index.js",
+  "name": "nightmanager-monorepo",
+  "version": "2.0.0",
+  "description": "NightManager monorepo - MCP server, Predictive Models service, and WebApp for Nightscout diabetes management",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "mcp": "cd packages/mcp-server && npm start",
+    "webapp": "cd packages/webapp && npm run dev",
+    "test": "echo \"Run tests in individual packages\""
   },
-  "keywords": [],
+  "keywords": [
+    "nightscout",
+    "diabetes",
+    "mcp",
+    "monorepo"
+  ],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "devDependencies": {
     "@types/node": "^25.0.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "@modelcontextprotocol/sdk": "^1.25.1",
-    "dotenv": "^17.2.3",
-    "mongoose": "^9.0.2",
-    "zod": "^4.2.1"
   }
 }

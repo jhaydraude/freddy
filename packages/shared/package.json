@@ -1,0 +1,23 @@
+{
+    "name": "@nightmanager/shared",
+    "version": "1.0.0",
+    "description": "Shared types and utilities for NightManager packages",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "type": "module",
+    "scripts": {
+        "build": "tsc",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [
+        "nightscout",
+        "shared",
+        "types"
+    ],
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "@types/node": "^25.0.3",
+        "typescript": "^5.9.3"
+    }
+}
