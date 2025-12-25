@@ -216,3 +216,48 @@ const ComputedStatusSchema = new Schema({
 }, { collection: 'computedstatus' });
 
 export const ComputedStatus = mongoose.models.ComputedStatus || mongoose.model<IComputedStatus>('ComputedStatus', ComputedStatusSchema);
+
+// ---------------------------------------------------------------------------
+// PROFILE ANALYSIS (Analysis History)
+// ---------------------------------------------------------------------------
+export interface IProfileAnalysis extends Document {
+    timestamp: Date;
+    current_profile?: IProfileStore;
+    recommended_profile?: IProfileStore;
+    estimated_isf: number[];
+    estimated_icr: number[];
+    estimated_basal_rates: number[];
+    isf_confidence: number[][];       // [[lower, upper], ...]
+    icr_confidence: number[][];       // [[lower, upper], ...]
+    basal_confidence: number[][];   // [[lower, upper], ...]
+    r_squared: number;
+    rmse: number;
+    mae: number;
+    windows_analyzed: number;
+    windows_filtered_out: number;
+    stable_windows: number;
+    meal_windows: number;
+    recommendation: string;
+}
+
+const ProfileAnalysisSchema = new Schema({
+    timestamp: { type: Date, required: true, default: Date.now, index: true },
+    current_profile: { type: Schema.Types.Mixed },
+    recommended_profile: { type: Schema.Types.Mixed },
+    estimated_isf: [{ type: Number }],
+    estimated_icr: [{ type: Number }],
+    estimated_basal_rates: [{ type: Number }],
+    isf_confidence: { type: Schema.Types.Mixed },
+    icr_confidence: { type: Schema.Types.Mixed },
+    basal_confidence: { type: Schema.Types.Mixed }, // Array of arrays
+    r_squared: { type: Number },
+    rmse: { type: Number },
+    mae: { type: Number },
+    windows_analyzed: { type: Number },
+    windows_filtered_out: { type: Number },
+    stable_windows: { type: Number },
+    meal_windows: { type: Number },
+    recommendation: { type: String }
+}, { collection: 'profile_analysis' });
+
+export const ProfileAnalysis = mongoose.models.ProfileAnalysis || mongoose.model<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema);

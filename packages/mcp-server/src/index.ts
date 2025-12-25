@@ -17,6 +17,7 @@ import * as generateTrainingData from "./tools/generate-training-data.js";
 import * as generateProfileTrainingData from "./tools/generate-profile-training-data.js";
 import * as estimateISF from "./tools/estimate-isf.js";
 import * as analyzeProfile from "./tools/analyze-profile.js";
+import * as getProfileAnalysisHistory from "./tools/get-profile-analysis-history.js";
 
 // Register all tools
 const tools = [
@@ -28,7 +29,9 @@ const tools = [
     generateTrainingData,
     generateProfileTrainingData,
     estimateISF,
-    analyzeProfile
+    estimateISF,
+    analyzeProfile,
+    getProfileAnalysisHistory
 ];
 
 const server = new Server(

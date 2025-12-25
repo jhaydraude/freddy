@@ -1,5 +1,6 @@
 import { generateTimeWindows } from '../lib/profile-analysis-logic.js';
 import { resolveActiveProfile, getProfileStore } from '../lib/profile-logic.js';
+import { ProfileAnalysis } from '../db/models.js';
 
 export const toolDefinition = {
     name: "analyze_profile",
@@ -73,6 +74,19 @@ export async function handler(args: any) {
         }
 
         const analysis = await response.json();
+
+        // Save analysis result to database
+        try {
+            const analysisRecord = new ProfileAnalysis({
+                timestamp: new Date(),
+                ...analysis
+            });
+            await analysisRecord.save();
+            console.log("Analysis result saved to database");
+        } catch (dbError) {
+            console.error("Failed to save analysis to database:", dbError);
+            // Don't fail the tool call if saving fails, just log it
+        }
 
         return {
             content: [{

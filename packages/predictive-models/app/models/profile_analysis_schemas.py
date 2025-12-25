@@ -30,13 +30,13 @@ class ProfileAnalysisResponse(BaseModel):
     recommended_profile: Optional[ProfileStore] = None
     
     # Estimated parameters (raw values)
-    estimated_isf: float
-    estimated_icr: float
+    estimated_isf: List[float]  # 6 four-hour blocks
+    estimated_icr: List[float]  # 6 four-hour blocks
     estimated_basal_rates: List[float]  # 6 four-hour blocks
     
     # Confidence intervals (95%)
-    isf_confidence: List[float]  # [lower, upper]
-    icr_confidence: List[float]  # [lower, upper]
+    isf_confidence: List[List[float]]  # [[lower, upper] for each block]
+    icr_confidence: List[List[float]]  # [[lower, upper] for each block]
     basal_confidence: List[List[float]]  # [[lower, upper] for each 4-hour block]
     
     # Confidence metrics
@@ -46,6 +46,7 @@ class ProfileAnalysisResponse(BaseModel):
     
     # Data summary
     windows_analyzed: int
+    windows_filtered_out: int
     stable_windows: int
     meal_windows: int
     

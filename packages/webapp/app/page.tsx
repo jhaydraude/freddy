@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Header from '@/components/Header';
 import GlucoseChart from '@/components/GlucoseChart';
-import { Activity, Clock, RefreshCw, Battery, Moon } from 'lucide-react';
+import { Activity, Clock, RefreshCw, Battery } from 'lucide-react';
 
 const TIME_RANGES = [
   { label: '3h', value: 3 * 60 },
@@ -69,16 +70,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 pb-20 relative">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-black/80 backdrop-blur-md border-b border-zinc-900">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center text-black shadow-[0_0_15px_-3px_rgba(16,185,129,0.5)]">
-              <Moon size={20} className="fill-current" />
-            </div>
-            <h1 className="font-bold text-lg tracking-tight">NightManager</h1>
-          </div>
-
+      <Header
+        action={
           <button
             onClick={() => fetchData()}
             className="p-2 transition-colors hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white"
@@ -86,8 +79,8 @@ export default function Home() {
           >
             <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
           </button>
-        </div>
-      </div>
+        }
+      />
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
 
@@ -196,8 +189,8 @@ export default function Home() {
               <button
                 onClick={() => toggleLine('carbImpact')}
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.carbImpact
-                    ? 'bg-rose-500/10 border-rose-500 text-rose-400'
-                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  ? 'bg-rose-500/10 border-rose-500 text-rose-400'
+                  : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
                   }`}
               >
                 Carb Impact
@@ -205,8 +198,8 @@ export default function Home() {
               <button
                 onClick={() => toggleLine('basal')}
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.basal
-                    ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400'
-                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400'
+                  : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
                   }`}
               >
                 Basal

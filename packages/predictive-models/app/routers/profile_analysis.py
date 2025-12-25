@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 def _create_recommended_profile(
     current_profile: dict,
-    estimated_isf: float,
-    estimated_icr: float,
+    estimated_isf: List[float],
+    estimated_icr: List[float],
     estimated_basal_rates: List[float]
 ):
     """
@@ -25,8 +25,8 @@ def _create_recommended_profile(
     
     Args:
         current_profile: Current profile dict
-        estimated_isf: Estimated ISF value
-        estimated_icr: Estimated ICR value
+        estimated_isf: List of 6 four-hour ISF block estimates
+        estimated_icr: List of 6 four-hour ICR block estimates
         estimated_basal_rates: List of 6 four-hour basal block rates
         
     Returns:
@@ -34,23 +34,34 @@ def _create_recommended_profile(
     """
     from app.models.profile_analysis_schemas import ProfileStore
     
-    # Create 4-hour basal schedule (6 blocks)
+    # Create 4-hour schedule (6 blocks) for Basal, ISF, ICR
     # Blocks: 0-3hr, 4-7hr, 8-11hr, 12-15hr, 16-19hr, 20-23hr
     basal_schedule = []
+    sens_schedule = []
+    carbratio_schedule = []
+    
     for block_idx in range(6):
         hour = block_idx * 4
         time_str = f"{hour:02d}:00"
+        seconds = hour * 3600
+        
         basal_schedule.append({
             "time": time_str,
             "value": round(estimated_basal_rates[block_idx], 3),
-            "timeAsSeconds": hour * 3600
+            "timeAsSeconds": seconds
         })
-    
-    # Create single-value ISF schedule (can be expanded to hourly if needed)
-    sens_schedule = [{"time": "00:00", "value": round(estimated_isf, 1), "timeAsSeconds": 0}]
-    
-    # Create single-value ICR schedule (can be expanded to hourly if needed)
-    carbratio_schedule = [{"time": "00:00", "value": round(estimated_icr, 1), "timeAsSeconds": 0}]
+        
+        sens_schedule.append({
+            "time": time_str,
+            "value": round(estimated_isf[block_idx], 1),
+            "timeAsSeconds": seconds
+        })
+        
+        carbratio_schedule.append({
+            "time": time_str,
+            "value": round(estimated_icr[block_idx], 1),
+            "timeAsSeconds": seconds
+        })
     
     # Preserve target ranges from current profile
     target_low = current_profile.get("target_low", [{"time": "00:00", "value": 100, "timeAsSeconds": 0}])
@@ -115,17 +126,19 @@ async def analyze_profile(request: ProfileAnalysisRequest):
         else:
             quality = "Low"
         
-        avg_basal = sum(result.estimated_basal_rates) / 6  # 6 four-hour blocks
+        avg_basal = sum(result.estimated_basal_rates) / 6
+        avg_isf = sum(result.estimated_isf) / 6
+        avg_icr = sum(result.estimated_icr) / 6
         
         recommendation = (
             f"{quality} confidence estimates based on {result.windows_analyzed} windows. "
-            f"ISF: {result.estimated_isf:.1f} mg/dL/U, "
-            f"ICR: {result.estimated_icr:.1f} g/U, "
+            f"Avg ISF: {avg_isf:.1f} mg/dL/U, "
+            f"Avg ICR: {avg_icr:.1f} g/U, "
             f"Avg Basal: {avg_basal:.2f} U/hr. "
             f"Model fit: R²={result.r_squared:.3f}, RMSE={result.rmse:.1f} mg/dL."
         )
         
-        logger.info(f"Analysis complete: ISF={result.estimated_isf:.1f}, ICR={result.estimated_icr:.1f}, R²={result.r_squared:.3f}")
+        logger.info(f"Analysis complete: ISF(avg)={avg_isf:.1f}, ICR(avg)={avg_icr:.1f}, R²={result.r_squared:.3f}")
         
         # Format current profile (if provided)
         current_profile_formatted = None
@@ -157,6 +170,7 @@ async def analyze_profile(request: ProfileAnalysisRequest):
             rmse=result.rmse,
             mae=result.mae,
             windows_analyzed=result.windows_analyzed,
+            windows_filtered_out=result.windows_filtered_out,
             stable_windows=result.stable_windows,
             meal_windows=result.meal_windows,
             recommendation=recommendation
