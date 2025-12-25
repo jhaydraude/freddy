@@ -45,8 +45,16 @@ export default function Home() {
   const trend = current?.glucose?.current?.trend; // Add trend arrow logic later
   const delta = current?.glucose?.current?.delta5m;
 
+  // Selected point state
+  const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
+
+  // Clear selection when data updates or window changes
+  useEffect(() => {
+    setSelectedPoint(null);
+  }, [data, windowSize]);
+
   return (
-    <div className="min-h-screen bg-black text-zinc-100 pb-20">
+    <div className="min-h-screen bg-black text-zinc-100 pb-20 relative">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-black/80 backdrop-blur-md border-b border-zinc-900">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -135,7 +143,38 @@ export default function Home() {
             </div>
           </div>
 
-          <GlucoseChart data={data} isLoading={loading} />
+          <div className="relative">
+            <GlucoseChart
+              data={data}
+              isLoading={loading}
+              onClick={(point) => setSelectedPoint(point)}
+            />
+
+            {/* Selected Point Pill Overlay */}
+            {selectedPoint && (
+              <div
+                className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-zinc-950/90 border border-zinc-700/50 rounded-full px-4 py-2 shadow-2xl backdrop-blur-md flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-200"
+                onClick={() => setSelectedPoint(null)} // Dismiss on click
+              >
+                <div className="text-xs font-mono text-zinc-500 border-r border-zinc-800 pr-3">
+                  {selectedPoint.meta?.status_date ? new Date(selectedPoint.meta.status_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400 font-bold">{selectedPoint.glucose?.current?.sgv}</span>
+                  <span className="text-xs text-zinc-600 hidden sm:inline">{units}</span>
+                </div>
+
+                <div className="flex items-center gap-2 pl-3 border-l border-zinc-800">
+                  <span className="text-blue-400 text-xs font-mono">I: {(selectedPoint.iob?.total ?? 0).toFixed(1)}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-400 text-xs font-mono">C: {(selectedPoint.cob?.total ?? 0).toFixed(0)}</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>

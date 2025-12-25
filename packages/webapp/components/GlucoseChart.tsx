@@ -23,9 +23,10 @@ interface GlucoseDataPoint {
 interface GlucoseChartProps {
     data: any[];
     isLoading?: boolean;
+    onClick?: (data: any) => void;
 }
 
-export default function GlucoseChart({ data, isLoading }: GlucoseChartProps) {
+export default function GlucoseChart({ data, isLoading, onClick }: GlucoseChartProps) {
     const chartData = useMemo(() => {
         return data.map(item => ({
             timestamp: item.meta?.status_date || item.glucose?.timestamp,
@@ -81,7 +82,15 @@ export default function GlucoseChart({ data, isLoading }: GlucoseChartProps) {
     return (
         <div className="w-full h-[350px] bg-zinc-900/40 rounded-xl border border-zinc-800/50 p-4 shadow-sm backdrop-blur-sm">
             <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={sortedData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <LineChart
+                    data={sortedData}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    onClick={(e) => {
+                        if (e && e.activePayload && e.activePayload.length > 0) {
+                            onClick?.(e.activePayload[0].payload.raw);
+                        }
+                    }}
+                >
                     <defs>
                         <linearGradient id="colorSgv" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
@@ -118,7 +127,10 @@ export default function GlucoseChart({ data, isLoading }: GlucoseChartProps) {
                         width={40}
                     />
 
-                    <Tooltip content={<CustomTooltip units={units} />} />
+                    <Tooltip
+                        content={<CustomTooltip units={units} />}
+                        cursor={{ stroke: '#52525b', strokeWidth: 1, strokeDasharray: '4 4' }}
+                    />
 
                     <Line
                         type="monotone"
