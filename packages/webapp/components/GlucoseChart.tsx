@@ -20,6 +20,7 @@ export interface VisibleLines {
     cob: boolean;
     insulinImpact: boolean;
     carbImpact: boolean;
+    basal: boolean;
 }
 
 interface GlucoseChartProps {
@@ -38,6 +39,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
             cob: item.cob?.calculated?.cob ?? null,
             insulinImpact: item.iob?.calculated?.glucoseImpact ?? null,
             carbImpact: item.cob?.calculated?.glucoseImpact ?? null,
+            basal: item.pump?.basal?.scheduledRate ?? null,
             raw: item
         })).filter(d => d.timestamp).reverse();
     }, [data]);
@@ -74,6 +76,12 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
                             <div className="flex items-center justify-between gap-4">
                                 <span className="text-amber-400 font-medium">COB</span>
                                 <span className="font-mono text-zinc-200">{(point.cob?.calculated?.cob ?? 0).toFixed(0)} g</span>
+                            </div>
+                        )}
+                        {visibleLines.basal && (
+                            <div className="flex items-center justify-between gap-4">
+                                <span className="text-cyan-400 font-medium">Basal</span>
+                                <span className="font-mono text-zinc-200">{(point.pump?.basal?.scheduledRate ?? 0).toFixed(2)} u/hr</span>
                             </div>
                         )}
                         {visibleLines.insulinImpact && (
@@ -176,7 +184,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
                         tickLine={false}
                         width={40}
                         // Only show if secondary metrics are visible
-                        hide={!visibleLines.iob && !visibleLines.cob && !visibleLines.insulinImpact && !visibleLines.carbImpact}
+                        hide={!visibleLines.iob && !visibleLines.cob && !visibleLines.insulinImpact && !visibleLines.carbImpact && !visibleLines.basal}
                     />
 
                     <Tooltip
@@ -218,6 +226,20 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
                             type="monotone"
                             dataKey="cob"
                             stroke="#f59e0b"
+                            strokeWidth={2}
+                            dot={false}
+                            activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}
+                            animationDuration={1000}
+                            connectNulls
+                        />
+                    )}
+
+                    {visibleLines.basal && (
+                        <Line
+                            yAxisId="right"
+                            type="stepAfter"
+                            dataKey="basal"
+                            stroke="#06b6d4"
                             strokeWidth={2}
                             dot={false}
                             activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}

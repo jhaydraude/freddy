@@ -54,7 +54,8 @@ export default function Home() {
     iob: false,
     cob: false,
     insulinImpact: false,
-    carbImpact: false
+    carbImpact: false,
+    basal: false
   });
 
   const toggleLine = (key: keyof typeof visibleLines) => {
@@ -159,8 +160,8 @@ export default function Home() {
               <button
                 onClick={() => toggleLine('glucose')}
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.glucose
-                    ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400'
-                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400'
+                  : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
                   }`}
               >
                 Glucose
@@ -168,8 +169,8 @@ export default function Home() {
               <button
                 onClick={() => toggleLine('iob')}
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.iob
-                    ? 'bg-blue-500/10 border-blue-500 text-blue-400'
-                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  ? 'bg-blue-500/10 border-blue-500 text-blue-400'
+                  : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
                   }`}
               >
                 IOB
@@ -177,8 +178,8 @@ export default function Home() {
               <button
                 onClick={() => toggleLine('cob')}
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.cob
-                    ? 'bg-amber-500/10 border-amber-500 text-amber-400'
-                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                  : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
                   }`}
               >
                 COB
@@ -186,8 +187,8 @@ export default function Home() {
               <button
                 onClick={() => toggleLine('insulinImpact')}
                 className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.insulinImpact
-                    ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400'
-                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400'
+                  : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
                   }`}
               >
                 Ins. Impact
@@ -200,6 +201,15 @@ export default function Home() {
                   }`}
               >
                 Carb Impact
+              </button>
+              <button
+                onClick={() => toggleLine('basal')}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.basal
+                    ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400'
+                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  }`}
+              >
+                Basal
               </button>
             </div>
           </div>
