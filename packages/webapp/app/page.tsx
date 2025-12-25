@@ -48,6 +48,19 @@ export default function Home() {
   // Selected point state
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
 
+  // Line visibility state
+  const [visibleLines, setVisibleLines] = useState({
+    glucose: true,
+    iob: false,
+    cob: false,
+    insulinImpact: false,
+    carbImpact: false
+  });
+
+  const toggleLine = (key: keyof typeof visibleLines) => {
+    setVisibleLines(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
   // Clear selection when data updates or window changes
   useEffect(() => {
     setSelectedPoint(null);
@@ -125,14 +138,13 @@ export default function Home() {
 
         {/* Chart Section */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-200">History</h2>
-            <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 overflow-x-auto no-scrollbar">
               {TIME_RANGES.map((range) => (
                 <button
                   key={range.label}
                   onClick={() => setWindowSize(range.value)}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all ${windowSize === range.value
+                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all whitespace-nowrap ${windowSize === range.value
                     ? 'bg-zinc-800 text-white shadow-sm'
                     : 'text-zinc-500 hover:text-zinc-300'
                     }`}
@@ -141,12 +153,62 @@ export default function Home() {
                 </button>
               ))}
             </div>
+
+            {/* Line Toggles */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => toggleLine('glucose')}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.glucose
+                    ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400'
+                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  }`}
+              >
+                Glucose
+              </button>
+              <button
+                onClick={() => toggleLine('iob')}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.iob
+                    ? 'bg-blue-500/10 border-blue-500 text-blue-400'
+                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  }`}
+              >
+                IOB
+              </button>
+              <button
+                onClick={() => toggleLine('cob')}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.cob
+                    ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  }`}
+              >
+                COB
+              </button>
+              <button
+                onClick={() => toggleLine('insulinImpact')}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.insulinImpact
+                    ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400'
+                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  }`}
+              >
+                Ins. Impact
+              </button>
+              <button
+                onClick={() => toggleLine('carbImpact')}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${visibleLines.carbImpact
+                    ? 'bg-rose-500/10 border-rose-500 text-rose-400'
+                    : 'bg-transparent border-zinc-800 text-zinc-500 hover:border-zinc-700'
+                  }`}
+              >
+                Carb Impact
+              </button>
+            </div>
           </div>
 
           <div className="relative">
             <GlucoseChart
               data={data}
               isLoading={loading}
+              visibleLines={visibleLines}
               onClick={(point) => setSelectedPoint(point)}
             />
 
