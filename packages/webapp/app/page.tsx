@@ -108,7 +108,7 @@ export default function Home() {
               <span className="text-xs font-uppercase font-bold">IOB</span>
             </div>
             <div className="text-2xl font-mono font-bold text-blue-400">
-              {current?.iob?.total?.toFixed(1) || '0.0'} u
+              {(current?.iob?.calculated?.totalIOB ?? 0).toFixed(1)} u
             </div>
           </div>
 
@@ -118,7 +118,7 @@ export default function Home() {
               <span className="text-xs font-uppercase font-bold">COB</span>
             </div>
             <div className="text-2xl font-mono font-bold text-amber-400">
-              {current?.cob?.total?.toFixed(0) || '0'} g
+              {(current?.cob?.calculated?.cob ?? 0).toFixed(0)} g
             </div>
           </div>
         </div>
@@ -166,11 +166,11 @@ export default function Home() {
                 </div>
 
                 <div className="flex items-center gap-2 pl-3 border-l border-zinc-800">
-                  <span className="text-blue-400 text-xs font-mono">I: {(selectedPoint.iob?.total ?? 0).toFixed(1)}</span>
+                  <span className="text-blue-400 text-xs font-mono">I: {(selectedPoint.iob?.calculated?.totalIOB ?? 0).toFixed(1)}</span>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-amber-400 text-xs font-mono">C: {(selectedPoint.cob?.total ?? 0).toFixed(0)}</span>
+                  <span className="text-amber-400 text-xs font-mono">C: {(selectedPoint.cob?.calculated?.cob ?? 0).toFixed(0)}</span>
                 </div>
               </div>
             )}
