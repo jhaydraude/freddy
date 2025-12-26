@@ -9,6 +9,7 @@ export const toolDefinition = {
         type: "object",
         properties: {
             timestamp: { type: "string", description: "ISO timestamp (defaults to now)" },
+            durationMinutes: { type: "number", description: "How many minutes to project into the future (default: 120)", default: 120 },
             forceRecalculate: { type: "boolean", description: "Force recalculation even if cached (default: false)" }
         }
     }
@@ -16,6 +17,7 @@ export const toolDefinition = {
 
 export async function handler(args: any) {
     const timestamp = (args?.timestamp as string) || new Date().toISOString();
+    const durationMinutes = args?.durationMinutes !== undefined ? Number(args.durationMinutes) : 120;
     const forceRecalculate = args?.forceRecalculate === true;
 
     const targetDate = new Date(timestamp);
@@ -38,7 +40,7 @@ export async function handler(args: any) {
     }
 
     // 2. Generate prediction
-    const prediction = await getGlucosePrediction(bucketedDate);
+    const prediction = await getGlucosePrediction(bucketedDate, durationMinutes);
 
     // 3. Save to cache (upsert)
     const now = new Date();

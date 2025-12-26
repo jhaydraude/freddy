@@ -6,12 +6,13 @@ import { getStatusHistory } from './history-logic.js';
 
 /**
  * Generates a glucose prediction array by projecting glucose into the future
- * until current IOB and COB impacts are zero.
+ * until current IOB and COB impacts are zero, or a specified duration is reached.
  * 
  * @param timestamp - The point in time to start the prediction from
+ * @param durationMinutes - Optional: specify how many minutes to project (default: based on DIA and active impacts)
  * @returns Array of { timestamp: string, sgv: number }
  */
-export async function getGlucosePrediction(timestamp: string | Date): Promise<Array<{ timestamp: string, sgv: number }>> {
+export async function getGlucosePrediction(timestamp: string | Date, durationMinutes?: number): Promise<Array<{ timestamp: string, sgv: number }>> {
     // 1. Get current status with timeseries
     const status = await getStatus(timestamp, true);
     if (!status.glucose || !status.iob?.timeseries || !status.cob?.timeseries) {
@@ -56,7 +57,38 @@ export async function getGlucosePrediction(timestamp: string | Date): Promise<Ar
         calculateInsulinEventCurve(d.amount, d.time, now, dia, peak, 'Basal', true)
     );
 
-    // 3. Project into the future
+    // 3. Calculate "unexplained" trend from recent attribution
+    // This trend represents factors like activity, stress, or inaccurate ISF/CR
+    let unexplainedTrendPerInterval = 0;
+    let momentumFactor = 1.0;
+
+    if (status.attribution?.timeframes) {
+        // Look at the 30min timeframe for a more stable base trend
+        const attr30m = status.attribution.timeframes.find(tf => tf.minutes === 30);
+        if (attr30m) {
+            // unexplained units are mg/dL per 30 mins. Convert to per INTERVAL_MINUTES (5 min)
+            unexplainedTrendPerInterval = attr30m.components.unexplained / (30 / INTERVAL_MINUTES);
+        }
+    }
+
+    // Analyze momentum from 30m history
+    if (status.attribution?.history && status.attribution.history.length >= 3) {
+        const history = status.attribution.history;
+        const latest = history[history.length - 1];
+        const earlier = history[Math.max(0, history.length - 4)]; // ~15 mins ago
+
+        if (latest && earlier) {
+            const trendChange = latest.unexplained - earlier.unexplained;
+            // If the unexplained trend is accelerating in the same direction, boost momentum
+            if (Math.sign(trendChange) === Math.sign(latest.unexplained) && Math.abs(trendChange) > 0.5) {
+                momentumFactor = 1.02; // Slower decay
+            } else if (Math.sign(trendChange) !== Math.sign(latest.unexplained)) {
+                momentumFactor = 0.95; // Faster decay
+            }
+        }
+    }
+
+    // 4. Project into the future
     const prediction: Array<{ timestamp: string, sgv: number }> = [];
     let runningSgv = currentSgv;
 
@@ -64,8 +96,16 @@ export async function getGlucosePrediction(timestamp: string | Date): Promise<Ar
     prediction.push({ timestamp: nowIso, sgv: Math.round(runningSgv * 10) / 10 });
 
     // Iterate future intervals
-    // The timeseries usually goes up to DIA hours into the future
-    const maxIntervals = Math.max(iobTs.length, cobTs.length);
+    // The health timeseries usually goes up to DIA hours into the future.
+    // We iterate until we reach durationMinutes OR impacts are zero (minimum DIA).
+    const diaMinutes = dia * 60;
+    const targetDurationMin = durationMinutes !== undefined ? durationMinutes : diaMinutes;
+    const targetIntervals = Math.ceil(targetDurationMin / INTERVAL_MINUTES);
+
+    // We might need to go further than targetIntervals if dia is longer and impacts are still active,
+    // or if the user requested a very long duration.
+    // The iobTs/cobTs length is a good baseline for "physiological end".
+    const maxIntervals = Math.max(nowIdx + targetIntervals, iobTs.length, cobTs.length);
 
     for (let i = nowIdx + 1; i < maxIntervals; i++) {
         const intervalTime = i < iobTs.length ? new Date(iobTs.timestamps[i]) : new Date(now.getTime() + (i - nowIdx) * INTERVAL_MINUTES * 60 * 1000);
@@ -94,7 +134,14 @@ export async function getGlucosePrediction(timestamp: string | Date): Promise<Ar
             }
         }
 
-        runningSgv = runningSgv - iobImpact + cobImpact - futureBasalImpact;
+        // Apply unexplained trend, decaying it over time
+        const intervalsSinceNow = i - nowIdx;
+        const baseDecay = 0.95;
+        const adjustedDecay = Math.max(0.8, Math.min(0.99, baseDecay * momentumFactor));
+        const decayFactor = Math.pow(adjustedDecay, intervalsSinceNow - 1);
+        const currentUnexplainedImpact = unexplainedTrendPerInterval * decayFactor;
+
+        runningSgv = runningSgv - iobImpact + cobImpact - futureBasalImpact + currentUnexplainedImpact;
 
         // Safety: don't let glucose go negative in projection
         if (runningSgv < 0) runningSgv = 0;
@@ -104,10 +151,19 @@ export async function getGlucosePrediction(timestamp: string | Date): Promise<Ar
             sgv: Math.round(runningSgv * 10) / 10
         });
 
-        // Loop breaker: stop if we are past DIA and impacts are negligible
-        if (i > nowIdx + (dia * 60 / INTERVAL_MINUTES)) {
-            const totalRemainingImpact = Math.abs(iobImpact) + Math.abs(cobImpact) + Math.abs(futureBasalImpact);
-            if (totalRemainingImpact < 0.1) break;
+        // Loop breaker: stop if we are past the requested duration
+        const minutesSinceNow = (i - nowIdx) * INTERVAL_MINUTES;
+        if (durationMinutes !== undefined) {
+            if (minutesSinceNow >= durationMinutes) break;
+        } else {
+            // Physiological breaker: stop if past DIA and impacts are negligible
+            if (minutesSinceNow >= dia * 60) {
+                const totalRemainingImpact = Math.abs(iobImpact) + Math.abs(cobImpact) + Math.abs(futureBasalImpact);
+                if (totalRemainingImpact < 0.1) break;
+
+                // Absolute hard cap for safety (12 hours)
+                if (minutesSinceNow > 12 * 60) break;
+            }
         }
     }
 

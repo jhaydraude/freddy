@@ -137,6 +137,25 @@ class GlucoseFeatureExtractor:
         # --- Sensor Age ---
         features['sensor_age_hours'] = float(current_glucose.get('sensorAge', 0) or 0)
         
+        # --- Attribution Features ---
+        attribution = current_status.get('attribution', {})
+        timeframes = attribution.get('timeframes', [])
+        
+        # Find 30min attribution
+        attr_30m = next((tf for tf in timeframes if tf.get('minutes') == 30), {})
+        
+        if attr_30m:
+            comp = attr_30m.get('components', {})
+            features['unexplained_30m'] = float(comp.get('unexplained', 0) or 0)
+            features['insulin_impact_30m'] = float(comp.get('insulin', {}).get('value', 0) or 0)
+            features['carb_impact_30m'] = float(comp.get('carbs', {}).get('value', 0) or 0)
+            features['basal_impact_30m'] = float(comp.get('basal', {}).get('value', 0) or 0)
+        else:
+            features['unexplained_30m'] = 0.0
+            features['insulin_impact_30m'] = 0.0
+            features['carb_impact_30m'] = 0.0
+            features['basal_impact_30m'] = 0.0
+            
         return features
     
     @staticmethod
@@ -167,7 +186,11 @@ class GlucoseFeatureExtractor:
             'target_high',
             'hour_sin',
             'hour_cos',
-            'sensor_age_hours'
+            'sensor_age_hours',
+            'unexplained_30m',
+            'insulin_impact_30m',
+            'carb_impact_30m',
+            'basal_impact_30m'
         ]
 
 

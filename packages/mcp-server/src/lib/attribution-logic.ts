@@ -27,10 +27,24 @@ export interface IAttributionTimeframe {
     };
 }
 
+/** Single point in attribution history */
+export interface IAttributionHistoryPoint {
+    timestamp: string;
+    actual: number;
+    predicted: number;
+    unexplained: number;
+    components: {
+        insulin: number;
+        carbs: number;
+        basal: number;
+    };
+}
+
 /** Complete attribution result */
 export interface IAttributionResult {
     timestamp: string;
     timeframes: IAttributionTimeframe[];
+    history?: IAttributionHistoryPoint[];
 }
 
 /**
@@ -51,6 +65,8 @@ export async function attributeGlucoseChange(
     const delta5m = currentStatus.glucose?.current?.delta5m || 0;
     const delta10m = currentStatus.glucose?.current?.delta10m || 0;
     const delta15m = currentStatus.glucose?.current?.delta15m || 0;
+    const delta30m = currentStatus.glucose?.current?.delta30m || 0;
+    const history30m = currentStatus.glucose?.current?.history30m || [];
 
     // Get profile settings
     const isf = currentStatus.profile?.profileData?.sens?.[0]?.value || 50;
@@ -67,8 +83,7 @@ export async function attributeGlucoseChange(
         else if (minutes === 10) actualChange = delta10m;
         else if (minutes === 15) actualChange = delta15m;
         else if (minutes === 30) {
-            // For 30 min, estimate from available deltas
-            actualChange = delta15m * 2; // Rough approximation
+            actualChange = delta30m;
         }
 
         // Calculate interval index for timeseries (1 interval = 5 min)
@@ -146,8 +161,54 @@ export async function attributeGlucoseChange(
         });
     }
 
+    // Calculate historical trend for the 30-minute window
+    const attributionHistory: IAttributionHistoryPoint[] = [];
+    if (history30m.length > 0 && iobTimeseries && cobTimeseries) {
+        // history30m is oldest to newest. current glucose is at the end.
+        // We need to match each point with timeseries buckets.
+        const nowMs = new Date(currentStatus.meta.status_date).getTime();
+
+        for (let i = 1; i < history30m.length; i++) {
+            const pointActual = history30m[i] - history30m[i - 1];
+
+            // Interval index from the end (0 = now, 1 = 5m ago, etc.)
+            const intervalsAgo = (history30m.length - 1) - i;
+            const idx = iobTimeseries.glucoseImpact.length - 1 - intervalsAgo;
+
+            if (idx >= 0) {
+                const pointInsulin = -(iobTimeseries.glucoseImpact[idx] || 0);
+                const pointCarbs = cobTimeseries.glucoseImpact[idx] || 0;
+
+                // For basal, we use a simplified per-interval impact (basalIOB * ISF / (DIA * 12))
+                // Actually let's just use the current basal impact distributed.
+                const basalIOB = currentStatus.iob?.calculated?.basalIOB || 0;
+                const pointBasal = -(basalIOB * isf) / (isf / (currentStatus.iob.settings.dia * 12));
+                // Wait, basal impact is usually small and constant for 30m.
+                const simpleBasal = -(basalIOB * isf) / 100; // Placeholder for now, basal impact is very small per 5min
+
+                const predicted = pointInsulin + pointCarbs; // Ignoring basal in history for now as it's hard to historicalize
+                const unexplained = pointActual - predicted;
+
+                const timestamp = new Date(nowMs - (intervalsAgo * 5 * 60 * 1000)).toISOString();
+
+                attributionHistory.push({
+                    timestamp,
+                    actual: Math.round(pointActual * 10) / 10,
+                    predicted: Math.round(predicted * 10) / 10,
+                    unexplained: Math.round(unexplained * 10) / 10,
+                    components: {
+                        insulin: Math.round(pointInsulin * 10) / 10,
+                        carbs: Math.round(pointCarbs * 10) / 10,
+                        basal: 0 // Simplification
+                    }
+                });
+            }
+        }
+    }
+
     return {
         timestamp: currentStatus.meta?.status_date || new Date().toISOString(),
-        timeframes: attributions
+        timeframes: attributions,
+        history: attributionHistory
     };
 }

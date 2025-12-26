@@ -13,7 +13,7 @@ export const toolDefinition = {
         properties: {
             timestamp: { type: "string", description: "ISO timestamp (defaults to now)" },
             forceRecalculate: { type: "boolean", description: "Force recalculation even if cached (default: false)" },
-            includeAttribution: { type: "boolean", description: "Include glucose change attribution analysis (default: false)" },
+            includeAttribution: { type: "boolean", description: "Include glucose change attribution analysis (default: true)" },
             includeTimeseries: { type: "boolean", description: "Include IOB/COB timeseries data (default: true)" }
         }
     }
@@ -22,7 +22,7 @@ export const toolDefinition = {
 export async function handler(args: any) {
     const timestamp = (args?.timestamp as string) || new Date().toISOString();
     const forceRecalculate = args?.forceRecalculate === true;
-    const includeAttribution = args?.includeAttribution === true;
+    const includeAttribution = args?.includeAttribution !== false;
     const includeTimeseries = args?.includeTimeseries !== false;
 
     const targetDate = new Date(timestamp);

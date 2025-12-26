@@ -3,6 +3,7 @@ import { resolveActiveProfile, getProfileStore } from './profile-logic.js';
 import { getBasalRate } from './basal-logic.js';
 import { getIOB, type IIOBResult } from './iob-logic.js';
 import { getCOB, type ICOBResult } from './cob-logic.js';
+import { attributeGlucoseChange, type IAttributionResult } from './attribution-logic.js';
 
 export interface IGlucoseResult {
     timestamp: string;
@@ -15,6 +16,8 @@ export interface IGlucoseResult {
         delta5m: number | null;
         delta10m: number | null;
         delta15m: number | null;
+        delta30m: number | null;
+        history30m: number[]; // Historical SGVs over last 30m
         rateOfChange: number | null;  // mg/dL per minute
     };
 
@@ -42,6 +45,7 @@ export interface IStatusResult {
     cob: ICOBResult;
     glucose: any;
     profile: any;
+    attribution?: IAttributionResult;
     uploader: {
         battery: number | undefined;
         device: string;
@@ -68,7 +72,8 @@ export async function getGlucose(options: { timestamp?: string | Date, count?: n
     const tsNumber = dateObj.getTime();
 
     // Fetch entries for delta calculations
-    const fetchCount = Math.max(count + 3, 6);
+    // 30 mins = 6 entries, + buffer for gaps = 10 entries
+    const fetchCount = Math.max(count + 9, 12);
     const [entries, profileInfo, lastSensorChange, lastCalibration] = await Promise.all([
         Entry.find({ date: { $lte: tsNumber } }).sort({ date: -1 }).limit(fetchCount).lean(),
         resolveActiveProfile(dateObj),
@@ -128,6 +133,7 @@ export async function getGlucose(options: { timestamp?: string | Date, count?: n
         let delta5m: number | null = null;
         let delta10m: number | null = null;
         let delta15m: number | null = null;
+        let delta30m: number | null = null;
         let rateOfChange: number | null = null;
 
         let sgv = entry.sgv;
@@ -144,6 +150,13 @@ export async function getGlucose(options: { timestamp?: string | Date, count?: n
         }
         if (prev15m && Math.abs(entry.date - prev15m.date) <= 17 * 60 * 1000) {
             delta15m = entry.sgv - prev15m.sgv;
+        }
+
+        // Find entry near 30m ago for delta30m
+        const target30m = entry.date - (30 * 60 * 1000);
+        const prev30m = entries.find((e: any) => e.date <= target30m + (2 * 60 * 1000) && e.date >= target30m - (5 * 60 * 1000));
+        if (prev30m) {
+            delta30m = entry.sgv - prev30m.sgv;
         }
 
         // Calculate 30-min statistics
@@ -177,18 +190,30 @@ export async function getGlucose(options: { timestamp?: string | Date, count?: n
             timeInRangeHigh = Math.round((highCount / totalReadings) * 100);
         }
 
+        const history30m = recent30m.map((e: any) => e.sgv).reverse(); // Oldest to newest
+
         // Convert to user units
         if (isMmol) {
             sgv = Math.round((sgv / 18.018) * 10) / 10;
             if (delta5m !== null) delta5m = Math.round((delta5m / 18.018) * 10) / 10;
             if (delta10m !== null) delta10m = Math.round((delta10m / 18.018) * 10) / 10;
             if (delta15m !== null) delta15m = Math.round((delta15m / 18.018) * 10) / 10;
+            if (delta30m !== null) delta30m = Math.round((delta30m / 18.018) * 10) / 10;
             if (rateOfChange !== null) rateOfChange = Math.round((rateOfChange / 18.018) * 100) / 100;
+            // history30m remains in original values or should be converted? 
+            // Let's convert history30m to user units too.
+            for (let i = 0; i < history30m.length; i++) {
+                history30m[i] = Math.round((history30m[i] / 18.018) * 10) / 10;
+            }
         } else {
             if (delta5m !== null) delta5m = Math.round(delta5m * 10) / 10;
             if (delta10m !== null) delta10m = Math.round(delta10m * 10) / 10;
             if (delta15m !== null) delta15m = Math.round(delta15m * 10) / 10;
+            if (delta30m !== null) delta30m = Math.round(delta30m * 10) / 10;
             if (rateOfChange !== null) rateOfChange = Math.round(rateOfChange * 100) / 100;
+            for (let i = 0; i < history30m.length; i++) {
+                history30m[i] = Math.round(history30m[i] * 10) / 10;
+            }
         }
 
         return {
@@ -202,6 +227,8 @@ export async function getGlucose(options: { timestamp?: string | Date, count?: n
                 delta5m,
                 delta10m,
                 delta15m,
+                delta30m,
+                history30m,
                 rateOfChange
             },
 
@@ -223,7 +250,7 @@ export const getLatestGlucose = (count: number = 1) => getGlucose({ count });
  * Aggregates current system status into a single report.
  * Uses DeviceStatus (Pump) as the source of truth if available and fresh.
  */
-export async function getStatus(timestamp: string | Date, includeTimeseries: boolean = true): Promise<IStatusResult> {
+export async function getStatus(timestamp: string | Date, includeTimeseries: boolean = true, includeAttribution: boolean = true): Promise<IStatusResult> {
     const ts = typeof timestamp === 'string' ? timestamp : timestamp.toISOString();
     const dateObj = new Date(ts);
 
@@ -258,7 +285,7 @@ export async function getStatus(timestamp: string | Date, includeTimeseries: boo
     // --- Profile Clean ---
     const { doc, ...cleanProfile } = profileInfo;
 
-    return {
+    const statusResult: IStatusResult = {
         pump: {
             basal: basalResult,
             pumpAge,
@@ -281,4 +308,15 @@ export async function getStatus(timestamp: string | Date, includeTimeseries: boo
             app: "NightManage"
         }
     };
+
+    // Calculate attribution if requested
+    if (includeAttribution) {
+        try {
+            statusResult.attribution = await attributeGlucoseChange(statusResult);
+        } catch (error) {
+            console.warn('Failed to calculate glucose attribution:', error);
+        }
+    }
+
+    return statusResult;
 }
