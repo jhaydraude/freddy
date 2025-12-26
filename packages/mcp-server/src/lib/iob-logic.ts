@@ -20,8 +20,10 @@ export interface IIOBResult {
         totalIOB: number;     // Net IOB (Delivered - Scheduled Basal)
         bolusIOB: number;
         basalIOB: number;     // Net Basal IOB (Delivered - Scheduled)
+        smbIOB: number;       // IOB from Small Boluses (< 0.5 U)
         glucoseImpact: number;
         bolusCount: number;
+        smbCount: number;
     };
 
     reported: {
@@ -55,7 +57,7 @@ export interface IIOBResult {
  * @param includeTimeseries - If true, include historical timeseries arrays
  * @returns Detailed IOB result with glucose impact and optional timeseries
  */
-export async function getIOB(timestamp: string | Date, includeTimeseries: boolean = false): Promise<IIOBResult> {
+export async function getIOB(timestamp: string | Date, includeTimeseries: boolean = true): Promise<IIOBResult> {
     const endWindow = new Date(timestamp);
     const profileInfo = await resolveActiveProfile(endWindow);
 
@@ -63,6 +65,7 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
     let isf = 50;
     let units = 'mg/dL';
     let dia = 5; // Default DIA in hours
+    let peak = 45; // Default Peak in minutes (Assume Fiasp/45m if unknown as per user request)
     let autosensRatio = 1.0;
 
     // 1. Get Autosens Ratio from latest DeviceStatus
@@ -80,7 +83,8 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
             units,
             lookbackMinutes: dia * 60,
             settings: { isf, dia, autosensRatio, effectiveISF: isf },
-            calculated: { totalIOB: 0, bolusIOB: 0, basalIOB: 0, glucoseImpact: 0, bolusCount: 0 },
+            settings: { isf, dia, autosensRatio, effectiveISF: isf },
+            calculated: { totalIOB: 0, bolusIOB: 0, basalIOB: 0, smbIOB: 0, glucoseImpact: 0, bolusCount: 0, smbCount: 0 },
             reported: { totalIOB: 0, bolusIOB: 0, basalIOB: 0, timestamp: '' }
         };
     }
@@ -95,6 +99,13 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
         dia = store.dia;
         isf = getValueAtTime(store.sens, endWindow);
         units = store.units || 'mg/dL';
+
+        // Dynamic Peak Detection
+        // @ts-ignore - 'curve' might not be in interface yet
+        const curve = store.curve || 'ultra-rapid';
+        if (curve === 'rapid-acting') peak = 55; // Humalog/Novolog
+        else if (curve === 'ultra-rapid') peak = 45; // Fiasp/Lyumjev
+        else peak = 45; // Default to Fiasp if unsure/custom
     }
 
     const diaMs = dia * 60 * 60 * 1000;
@@ -108,24 +119,34 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
 
     const bolusCurves: IInsulinEventCurve[] = [];
     let bolusIOB = 0;
+    let smbIOB = 0;
     let bolusCount = 0;
+    let smbCount = 0;
 
     for (const b of boluses) {
         const insulin = b.insulin || 0;
         if (insulin <= 0) continue;
 
         const eventTime = new Date(b.created_at);
-        const curve = calculateInsulinEventCurve(insulin, eventTime, endWindow, dia, 'Bolus');
+        const curve = calculateInsulinEventCurve(insulin, eventTime, endWindow, dia, peak, 'Bolus');
         bolusCurves.push(curve);
 
-        bolusIOB += curve.iobAtInterval[0] || 0;
-        if ((curve.iobAtInterval[0] || 0) > 0) {
+        // Use nowIndex to get IOB at "now" (not index 0 which is oldest)
+        const iobNow = curve.iobAtInterval[curve.nowIndex] || 0;
+        bolusIOB += iobNow;
+        if (iobNow > 0) {
             bolusCount++;
+
+            // Check for SMB (heuristic: < 0.7U)
+            if (insulin < 0.7) {
+                smbIOB += iobNow;
+                smbCount++;
+            }
         }
     }
 
     // 3. Basal IOB (Delivered & Scheduled)
-    const basalRes = await getBasalIOB(startWindow, endWindow, dia);
+    const basalRes = await getBasalIOB(startWindow, endWindow, dia, peak);
 
     // 4. Calculate totals
     const deliveredIOB = bolusIOB + basalRes.deliveredIOB;
@@ -134,7 +155,7 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
 
     // 5. Calculate glucose impact
     const impactISF = isf / autosensRatio;
-    const insulinActivityRate = await calculateInsulinActivityRate(endWindow, dia);
+    const insulinActivityRate = await calculateInsulinActivityRate(endWindow, dia, peak);
     const glucoseImpact = insulinActivityRate * impactISF;
 
     // 6. Construct result
@@ -161,16 +182,19 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
             totalIOB: Math.round(netIOB * 1000) / 1000,
             bolusIOB: Math.round(bolusIOB * 1000) / 1000,
             basalIOB: Math.round((deliveredIOB - bolusIOB - scheduledBasalIOB) * 1000) / 1000,
+            smbIOB: Math.round(smbIOB * 1000) / 1000,
             glucoseImpact: Math.round(glucoseImpact * 100) / 100,
-            bolusCount
+            bolusCount,
+            smbCount
         },
 
         reported
     };
 
-    // 7. Build timeseries if requested (OPTIMIZED!)
+    // 7. Build timeseries if requested (NOW WITH FUTURE PROJECTION!)
     if (includeTimeseries) {
-        const numIntervals = Math.ceil((dia * 60) / INTERVAL_MINUTES) + 1;
+        const numIntervalsPast = Math.ceil((dia * 60) / INTERVAL_MINUTES) + 1;
+        const numIntervalsFuture = Math.ceil((dia * 60) / INTERVAL_MINUTES);
         const timestamps: string[] = [];
         const totalIOBArray: number[] = [];
         const bolusIOBArray: number[] = [];
@@ -178,40 +202,61 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
         const activityArray: number[] = [];
         const glucoseImpactArray: number[] = [];
 
-        // Pre-calculate basal curves ONCE (fast!)
+        // Pre-calculate basal curves ONCE with future projection
         const { deliveredCurves, scheduledCurves } = await createBasalCurvesForTimeseries(
             startWindow,
             endWindow,
             dia,
-            profileInfo
+            peak,
+            profileInfo,
+            true // includeFuture
         );
 
-        // Build arrays from oldest to newest
-        for (let i = numIntervals - 1; i >= 0; i--) {
-            const intervalTime = new Date(endWindow.getTime() - (i * INTERVAL_MINUTES * 60 * 1000));
+        // Recalculate bolus curves with future projection
+        const bolusCurvesWithFuture: IInsulinEventCurve[] = [];
+        for (const b of boluses) {
+            const insulin = b.insulin || 0;
+            if (insulin <= 0) continue;
+            const eventTime = new Date(b.created_at);
+            const curve = calculateInsulinEventCurve(insulin, eventTime, endWindow, dia, peak, 'Bolus', true);
+            bolusCurvesWithFuture.push(curve);
+        }
+
+        // Get the nowIndex from any curve (they all have the same structure)
+        const nowIndex = bolusCurvesWithFuture.length > 0
+            ? bolusCurvesWithFuture[0].nowIndex
+            : (deliveredCurves.length > 0 ? deliveredCurves[0].nowIndex : numIntervalsPast - 1);
+
+        const totalIntervals = numIntervalsPast + numIntervalsFuture;
+
+        // Build arrays from oldest (past) to newest (future)
+        for (let arrayIdx = 0; arrayIdx < totalIntervals; arrayIdx++) {
+            // Convert arrayIdx to time offset from "now"
+            const offsetFromNow = arrayIdx - nowIndex;
+            const intervalTime = new Date(endWindow.getTime() + (offsetFromNow * INTERVAL_MINUTES * 60 * 1000));
             timestamps.push(intervalTime.toISOString());
 
             // Sum bolus IOB at this interval
             let bolusIOBAtInterval = 0;
-            for (const curve of bolusCurves) {
-                if (curve.iobAtInterval[i] !== undefined) {
-                    bolusIOBAtInterval += curve.iobAtInterval[i]!;
+            for (const curve of bolusCurvesWithFuture) {
+                if (curve.iobAtInterval[arrayIdx] !== undefined) {
+                    bolusIOBAtInterval += curve.iobAtInterval[arrayIdx]!;
                 }
             }
 
             // Sum delivered basal IOB at this interval
             let deliveredBasalIOBAtInterval = 0;
             for (const curve of deliveredCurves) {
-                if (curve.iobAtInterval[i] !== undefined) {
-                    deliveredBasalIOBAtInterval += curve.iobAtInterval[i]!;
+                if (curve.iobAtInterval[arrayIdx] !== undefined) {
+                    deliveredBasalIOBAtInterval += curve.iobAtInterval[arrayIdx]!;
                 }
             }
 
             // Sum scheduled basal IOB at this interval
             let scheduledBasalIOBAtInterval = 0;
             for (const curve of scheduledCurves) {
-                if (curve.iobAtInterval[i] !== undefined) {
-                    scheduledBasalIOBAtInterval += curve.iobAtInterval[i]!;
+                if (curve.iobAtInterval[arrayIdx] !== undefined) {
+                    scheduledBasalIOBAtInterval += curve.iobAtInterval[arrayIdx]!;
                 }
             }
 
@@ -260,7 +305,8 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
  */
 export async function calculateInsulinActivityRate(
     timestamp: Date,
-    dia: number
+    dia: number,
+    peak: number = 45
 ): Promise<number> {
     const now = timestamp;
     const nowPlus5 = new Date(now.getTime() + 5 * 60 * 1000);
@@ -284,17 +330,17 @@ export async function calculateInsulinActivityRate(
         const eventTime = new Date(b.created_at);
 
         // IOB at now
-        const curveNow = calculateInsulinEventCurve(insulin, eventTime, now, dia, 'Bolus');
+        const curveNow = calculateInsulinEventCurve(insulin, eventTime, now, dia, peak, 'Bolus');
         iobNow += curveNow.iobAtInterval[0] || 0;
 
         // IOB at now+5min
-        const curveFuture = calculateInsulinEventCurve(insulin, eventTime, nowPlus5, dia, 'Bolus');
+        const curveFuture = calculateInsulinEventCurve(insulin, eventTime, nowPlus5, dia, peak, 'Bolus');
         iobFuture += curveFuture.iobAtInterval[0] || 0;
     }
 
     // Add basal contribution (simplified - uses current rates)
-    const basalNow = await getBasalIOB(startWindow, now, dia);
-    const basalFuture = await getBasalIOB(new Date(startWindow.getTime() + 5 * 60 * 1000), nowPlus5, dia);
+    const basalNow = await getBasalIOB(startWindow, now, dia, peak);
+    const basalFuture = await getBasalIOB(new Date(startWindow.getTime() + 5 * 60 * 1000), nowPlus5, dia, peak);
 
     const totalIOBNow = iobNow + basalNow.deliveredIOB - basalNow.scheduledIOB;
     const totalIOBFuture = iobFuture + basalFuture.deliveredIOB - basalFuture.scheduledIOB;

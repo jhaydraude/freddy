@@ -8,14 +8,14 @@ export const toolDefinition = {
         type: "object",
         properties: {
             timestamp: { type: "string", description: "ISO timestamp (defaults to now)" },
-            includeTimeseries: { type: "boolean", description: "Include historical IOB/activity arrays (default: false)" }
+            includeTimeseries: { type: "boolean", description: "Include historical IOB/activity arrays (default: true)" }
         }
     }
 };
 
 export async function handler(args: any) {
     const timestamp = (args?.timestamp as string) || new Date().toISOString();
-    const includeTimeseries = args?.includeTimeseries === true;
+    const includeTimeseries = args?.includeTimeseries !== false;
 
     const [calcIOB, latestDS] = await Promise.all([
         getIOB(timestamp, includeTimeseries),

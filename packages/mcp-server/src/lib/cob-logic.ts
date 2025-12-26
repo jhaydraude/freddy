@@ -8,6 +8,7 @@ export interface ICarbEventCurve {
     initialCarbs: number;     // Original carb amount
     cobAtInterval: number[];  // COB at each 5-min interval (index 0 = target time)
     carbAbsorptionAtInterval: number[]; // Carbs absorbing (g/5min) at each interval
+    nowIndex: number;          // Index in array that represents "target time" (NOW)
 }
 
 /** Extended COB result with detailed metrics */
@@ -89,15 +90,17 @@ export function calculateMinAbsorptionRate(isf: number, cr: number, minCarbImpac
  * 
  * @param initialCarbs - The initial carbs in grams
  * @param eventTime - When the carb event occurred
- * @param targetTime - The time to calculate from (index 0 = target time)
- * @param absorptionRate - Absorption rate in grams per 5 minutes (optional, defaults to 30g/hr equivalent)
- * @returns Curve with COB and carb absorption at each 5-min interval
+ * @param targetTime - The time to calculate from (this becomes the "now" point)
+ * @param absorptionRate - Absorption rate in grams per 5 minutes (optional)
+ * @param includeFuture - If true, also calculate into the future until COB is 0
+ * @returns Curve with COB and carb absorption at each 5-min interval, and the index of "now"
  */
 export function calculateCarbEventCurve(
     initialCarbs: number,
     eventTime: Date,
     targetTime: Date,
-    absorptionRate?: number
+    absorptionRate?: number,
+    includeFuture: boolean = false
 ): ICarbEventCurve {
     const targetMs = targetTime.getTime();
     const eventMs = eventTime.getTime();
@@ -107,17 +110,17 @@ export function calculateCarbEventCurve(
     const rate = absorptionRate && absorptionRate > 0 ? absorptionRate : defaultRate;
 
     // Time needed to fully absorb this carb event
-    // Total minutes = (Total Grams / Grams per 5 min) * 5
     const totalAbsorptionMinutes = (initialCarbs / rate) * INTERVAL_MINUTES;
-    const numIntervals = Math.ceil(totalAbsorptionMinutes / INTERVAL_MINUTES) + 1;
+    const numIntervalsPast = Math.ceil((MAX_LOOKBACK_HOURS * 60) / INTERVAL_MINUTES) + 1;
+    const numIntervalsFuture = includeFuture ? Math.ceil(totalAbsorptionMinutes / INTERVAL_MINUTES) : 0;
 
     const cobAtInterval: number[] = [];
     const carbAbsorptionAtInterval: number[] = [];
 
-    // Build arrays from target time backwards
-    for (let i = 0; i < numIntervals; i++) {
-        // Age at this interval (going backwards from target)
-        const intervalTargetMs = targetMs - (i * INTERVAL_MINUTES * 60 * 1000);
+    // Build array from oldest (past) to newest (future)
+    // Negative offset = past, positive offset = future
+    for (let offset = -(numIntervalsPast - 1); offset <= numIntervalsFuture; offset++) {
+        const intervalTargetMs = targetMs + (offset * INTERVAL_MINUTES * 60 * 1000);
         const ageMinutes = (intervalTargetMs - eventMs) / (1000 * 60);
 
         if (ageMinutes < 0) {
@@ -126,12 +129,8 @@ export function calculateCarbEventCurve(
             carbAbsorptionAtInterval.push(0);
         } else {
             // Calculate absorbed carbs using linear model
-            // Absorbed = (Age / 5) * Rate
             const intervalsPassed = ageMinutes / INTERVAL_MINUTES;
-            const carbsAbsorbed = Math.min(
-                initialCarbs,
-                intervalsPassed * rate
-            );
+            const carbsAbsorbed = Math.min(initialCarbs, intervalsPassed * rate);
             const remaining = Math.max(0, initialCarbs - carbsAbsorbed);
             cobAtInterval.push(Math.round(remaining * 100) / 100);
 
@@ -142,11 +141,15 @@ export function calculateCarbEventCurve(
         }
     }
 
+    // The "now" index is where offset=0, which is at position (numIntervalsPast - 1)
+    const nowIndex = numIntervalsPast - 1;
+
     return {
         carbEventTime: eventTime,
         initialCarbs,
         cobAtInterval,
-        carbAbsorptionAtInterval
+        carbAbsorptionAtInterval,
+        nowIndex
     };
 }
 
@@ -296,7 +299,7 @@ export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: n
  * @param includeTimeseries - If true, include historical timeseries arrays
  * @returns Detailed COB result with cob, glucose impact, event count, and avg size
  */
-export async function getCOB(timestamp: string | Date, includeTimeseries: boolean = false): Promise<ICOBResult> {
+export async function getCOB(timestamp: string | Date, includeTimeseries: boolean = true): Promise<ICOBResult> {
     const date = new Date(timestamp);
     const lookbackMs = MAX_LOOKBACK_HOURS * 60 * 60 * 1000;
 
@@ -382,26 +385,38 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
         }
     };
 
-    // Build timeseries if requested
+    // Build timeseries if requested (NOW WITH FUTURE PROJECTION!)
     if (includeTimeseries) {
-        const numIntervals = Math.ceil((MAX_LOOKBACK_HOURS * 60) / INTERVAL_MINUTES) + 1;
+        const numIntervalsPast = Math.ceil((MAX_LOOKBACK_HOURS * 60) / INTERVAL_MINUTES) + 1;
         const timestamps: string[] = [];
         const totalCOBArray: number[] = [];
         const carbAbsorptionArray: number[] = [];
         const glucoseImpactArray: number[] = [];
 
-        // Create curves ONCE for all treatments
+        // Create curves ONCE for all treatments with future projection
         const curves: ICarbEventCurve[] = [];
         for (const t of treatments) {
             if (!t.carbs || t.carbs <= 0) continue;
             const eventTime = new Date(t.created_at);
-            const curve = calculateCarbEventCurve(t.carbs, eventTime, date, absorptionRate);
+            const curve = calculateCarbEventCurve(t.carbs, eventTime, date, absorptionRate, true);
             curves.push(curve);
         }
 
-        // Build arrays from oldest to newest by indexing into pre-calculated curves
-        for (let i = numIntervals - 1; i >= 0; i--) {
-            const intervalTime = new Date(date.getTime() - (i * INTERVAL_MINUTES * 60 * 1000));
+        // Get the nowIndex from any curve (they all have the same structure)
+        const nowIndex = curves.length > 0 ? curves[0].nowIndex : numIntervalsPast - 1;
+
+        // Calculate how far into the future we need to go (until all carbs are absorbed)
+        let maxFutureIndex = nowIndex;
+        for (const curve of curves) {
+            maxFutureIndex = Math.max(maxFutureIndex, curve.cobAtInterval.length - 1);
+        }
+        const totalIntervals = maxFutureIndex + 1;
+
+        // Build arrays from oldest (past) to newest (future)
+        for (let arrayIdx = 0; arrayIdx < totalIntervals; arrayIdx++) {
+            // Convert arrayIdx to time offset from "now"
+            const offsetFromNow = arrayIdx - nowIndex;
+            const intervalTime = new Date(date.getTime() + (offsetFromNow * INTERVAL_MINUTES * 60 * 1000));
             timestamps.push(intervalTime.toISOString());
 
             // Sum COB from all curves at this interval index
@@ -409,8 +424,8 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
             let totalAbsorptionAtInterval = 0;
 
             for (const curve of curves) {
-                totalCOBAtInterval += curve.cobAtInterval[i] || 0;
-                totalAbsorptionAtInterval += curve.carbAbsorptionAtInterval[i] || 0;
+                totalCOBAtInterval += curve.cobAtInterval[arrayIdx] || 0;
+                totalAbsorptionAtInterval += curve.carbAbsorptionAtInterval[arrayIdx] || 0;
             }
 
             totalCOBArray.push(Math.round(totalCOBAtInterval * 10) / 10);

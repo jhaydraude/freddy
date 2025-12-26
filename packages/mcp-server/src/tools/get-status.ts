@@ -7,13 +7,14 @@ import { bucketTimestamp } from '../lib/time-utils.js';
 
 export const toolDefinition = {
     name: "get_status",
-    description: "Get current diabetes management status including glucose, IOB, COB, and pump settings. Optionally include glucose change attribution. Results are cached in 5-minute buckets for performance.",
+    description: "Get current diabetes management status including glucose, IOB (with timeseries), COB (with timeseries), and pump settings. Optionally include glucose change attribution. Results are cached in 5-minute buckets for performance.",
     inputSchema: {
         type: "object",
         properties: {
             timestamp: { type: "string", description: "ISO timestamp (defaults to now)" },
             forceRecalculate: { type: "boolean", description: "Force recalculation even if cached (default: false)" },
-            includeAttribution: { type: "boolean", description: "Include glucose change attribution analysis (default: false)" }
+            includeAttribution: { type: "boolean", description: "Include glucose change attribution analysis (default: false)" },
+            includeTimeseries: { type: "boolean", description: "Include IOB/COB timeseries data (default: true)" }
         }
     }
 };
@@ -22,6 +23,7 @@ export async function handler(args: any) {
     const timestamp = (args?.timestamp as string) || new Date().toISOString();
     const forceRecalculate = args?.forceRecalculate === true;
     const includeAttribution = args?.includeAttribution === true;
+    const includeTimeseries = args?.includeTimeseries !== false;
 
     const targetDate = new Date(timestamp);
     const bucketedDate = bucketTimestamp(targetDate);
@@ -30,8 +32,11 @@ export async function handler(args: any) {
     if (!forceRecalculate) {
         const cached = await ComputedStatus.findOne({ timestamp: bucketedDate });
         if (cached) {
-            // If we need attribution but cached doesn't have it, recalculate
-            if (includeAttribution && !cached.attribution) {
+            // Check if cached version has timeseries (they almost always will now, but safety first)
+            const hasTimeseries = cached.status?.iob?.timeseries !== undefined;
+
+            // If we need attribution but cached doesn't have it, OR if timeseries preference doesn't match, recalculate
+            if ((includeAttribution && !cached.attribution) || (includeTimeseries && !hasTimeseries)) {
                 // Fall through to recalculation
             } else {
                 // Return cached status (with or without attribution)
@@ -48,26 +53,13 @@ export async function handler(args: any) {
         }
     }
 
-    // Calculate base status
-    let status = await getStatusLogic(bucketedDate);
+    // Calculate base status - force timeseries if attribution requested
+    let status = await getStatusLogic(bucketedDate, includeTimeseries || includeAttribution);
 
-    // If attribution requested, enhance status with timeseries and calculate attribution
+    // If attribution requested, calculate it
     let attribution = undefined;
     if (includeAttribution) {
-        // Get IOB and COB with timeseries for attribution
-        const [iobWithTimeseries, cobWithTimeseries] = await Promise.all([
-            getIOB(bucketedDate, true),  // includeTimeseries = true
-            getCOB(bucketedDate, true)   // includeTimeseries = true
-        ]);
-
-        // Replace IOB and COB in status with timeseries versions
-        status = {
-            ...status,
-            iob: iobWithTimeseries,
-            cob: cobWithTimeseries
-        };
-
-        // Calculate attribution
+        // Calculate attribution using the status we just got
         const attributionResult = await attributeGlucoseChange(status);
         attribution = {
             "5min": attributionResult.timeframes.find(t => t.timeframe === '5min'),

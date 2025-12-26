@@ -11,7 +11,8 @@ import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve }
 export async function getBasalIOB(
     startTime: Date,
     endTime: Date,
-    profileDia?: number
+    profileDia?: number,
+    peak: number = 45,
 ): Promise<{ scheduledIOB: number, deliveredIOB: number, deliveredRate: number }> {
     const startMs = startTime.getTime();
     const endMs = endTime.getTime();
@@ -149,7 +150,9 @@ export async function createBasalCurvesForTimeseries(
     startWindow: Date,
     endWindow: Date,
     dia: number,
-    profileInfo: any
+    peak: number,
+    profileInfo: any,
+    includeFuture: boolean = false
 ): Promise<{ deliveredCurves: IInsulinEventCurve[], scheduledCurves: IInsulinEventCurve[] }> {
     const deliveredCurves: IInsulinEventCurve[] = [];
     const scheduledCurves: IInsulinEventCurve[] = [];
@@ -237,10 +240,10 @@ export async function createBasalCurvesForTimeseries(
             const deliveredInsulin = deliveredRate * (5 / 60);
 
             if (scheduledInsulin > 0) {
-                scheduledCurves.push(calculateInsulinEventCurve(scheduledInsulin, bucketTime, endWindow, dia, 'Basal'));
+                scheduledCurves.push(calculateInsulinEventCurve(scheduledInsulin, bucketTime, endWindow, dia, peak, 'Basal', includeFuture));
             }
             if (deliveredInsulin > 0) {
-                deliveredCurves.push(calculateInsulinEventCurve(deliveredInsulin, bucketTime, endWindow, dia, 'Basal'));
+                deliveredCurves.push(calculateInsulinEventCurve(deliveredInsulin, bucketTime, endWindow, dia, peak, 'Basal', includeFuture));
             }
         }
     }

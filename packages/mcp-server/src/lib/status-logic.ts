@@ -223,17 +223,17 @@ export const getLatestGlucose = (count: number = 1) => getGlucose({ count });
  * Aggregates current system status into a single report.
  * Uses DeviceStatus (Pump) as the source of truth if available and fresh.
  */
-export async function getStatus(timestamp: string | Date): Promise<IStatusResult> {
+export async function getStatus(timestamp: string | Date, includeTimeseries: boolean = true): Promise<IStatusResult> {
     const ts = typeof timestamp === 'string' ? timestamp : timestamp.toISOString();
     const dateObj = new Date(ts);
 
     // Fetch necessary data
     const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange] = await Promise.all([
         resolveActiveProfile(ts),
-        getCOB(ts),
+        getCOB(ts, includeTimeseries),
         DeviceStatus.findOne({ created_at: { $lte: ts } }).sort({ created_at: -1 }),
         getGlucose({ timestamp: ts, count: 1 }),
-        getIOB(ts),
+        getIOB(ts, includeTimeseries),
         getBasalRate(ts),
         Treatment.findOne({ eventType: "Site Change", created_at: { $lte: ts } }).sort({ created_at: -1 })
     ]);

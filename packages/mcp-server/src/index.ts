@@ -12,6 +12,7 @@ import * as getGlucose from "./tools/get-glucose.js";
 import * as getStatus from "./tools/get-status.js";
 import * as getStatusHistory from "./tools/get-status-history.js";
 import * as getIOB from "./tools/get-iob.js";
+import * as getCOB from "./tools/get-cob.js";
 import * as explainStatus from "./tools/explain-status.js";
 import * as generateTrainingData from "./tools/generate-training-data.js";
 import * as generateProfileTrainingData from "./tools/generate-profile-training-data.js";
@@ -25,6 +26,7 @@ const tools = [
     getStatus,
     getStatusHistory,
     getIOB,
+    getCOB,
     explainStatus,
     generateTrainingData,
     generateProfileTrainingData,
