@@ -10,9 +10,20 @@ import { getStatusHistory } from './history-logic.js';
  * 
  * @param timestamp - The point in time to start the prediction from
  * @param durationMinutes - Optional: specify how many minutes to project (default: based on DIA and active impacts)
- * @returns Array of { timestamp: string, sgv: number }
+ * @returns Array of { timestamp: string, sgv: number, components: { insulin, carbs, unexplained, basal } }
  */
-export async function getGlucosePrediction(timestamp: string | Date, durationMinutes?: number): Promise<Array<{ timestamp: string, sgv: number }>> {
+export interface IPredictionPoint {
+    timestamp: string;
+    sgv: number;
+    components?: {
+        insulin: number;
+        carbs: number;
+        unexplained: number;
+        basal: number;
+    };
+}
+
+export async function getGlucosePrediction(timestamp: string | Date, durationMinutes?: number): Promise<IPredictionPoint[]> {
     // 1. Get current status with timeseries
     const status = await getStatus(timestamp, true);
     if (!status.glucose || !status.iob?.timeseries || !status.cob?.timeseries) {
@@ -58,75 +69,68 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
     );
 
     // 3. Calculate "unexplained" trend from recent attribution
-    // This trend represents factors like activity, stress, or inaccurate ISF/CR
     let unexplainedTrendPerInterval = 0;
     let momentumFactor = 1.0;
 
     if (status.attribution?.timeframes) {
-        // Look at the 30min timeframe for a more stable base trend
         const attr30m = status.attribution.timeframes.find(tf => tf.minutes === 30);
         if (attr30m) {
-            // unexplained units are mg/dL per 30 mins. Convert to per INTERVAL_MINUTES (5 min)
             unexplainedTrendPerInterval = attr30m.components.unexplained / (30 / INTERVAL_MINUTES);
         }
     }
 
-    // Analyze momentum from 30m history
+    // Analyze momentum
     if (status.attribution?.history && status.attribution.history.length >= 3) {
         const history = status.attribution.history;
         const latest = history[history.length - 1];
-        const earlier = history[Math.max(0, history.length - 4)]; // ~15 mins ago
+        const earlier = history[Math.max(0, history.length - 4)];
 
         if (latest && earlier) {
             const trendChange = latest.unexplained - earlier.unexplained;
-            // If the unexplained trend is accelerating in the same direction, boost momentum
             if (Math.sign(trendChange) === Math.sign(latest.unexplained) && Math.abs(trendChange) > 0.5) {
-                momentumFactor = 1.02; // Slower decay
+                momentumFactor = 1.02;
             } else if (Math.sign(trendChange) !== Math.sign(latest.unexplained)) {
-                momentumFactor = 0.95; // Faster decay
+                momentumFactor = 0.95;
             }
         }
     }
 
     // 4. Project into the future
-    const prediction: Array<{ timestamp: string, sgv: number }> = [];
+    const prediction: IPredictionPoint[] = [];
     let runningSgv = currentSgv;
 
-    // Add current point
-    prediction.push({ timestamp: nowIso, sgv: Math.round(runningSgv * 10) / 10 });
+    // Add current point (no impacts applied yet)
+    prediction.push({
+        timestamp: nowIso,
+        sgv: Math.round(runningSgv * 10) / 10,
+        components: {
+            insulin: 0,
+            carbs: 0,
+            unexplained: 0,
+            basal: 0
+        }
+    });
 
     // Iterate future intervals
-    // The health timeseries usually goes up to DIA hours into the future.
-    // We iterate until we reach durationMinutes OR impacts are zero (minimum DIA).
     const diaMinutes = dia * 60;
     const targetDurationMin = durationMinutes !== undefined ? durationMinutes : diaMinutes;
     const targetIntervals = Math.ceil(targetDurationMin / INTERVAL_MINUTES);
-
-    // We might need to go further than targetIntervals if dia is longer and impacts are still active,
-    // or if the user requested a very long duration.
-    // The iobTs/cobTs length is a good baseline for "physiological end".
     const maxIntervals = Math.max(nowIdx + targetIntervals, iobTs.length, cobTs.length);
 
     for (let i = nowIdx + 1; i < maxIntervals; i++) {
         const intervalTime = i < iobTs.length ? new Date(iobTs.timestamps[i]) : new Date(now.getTime() + (i - nowIdx) * INTERVAL_MINUTES * 60 * 1000);
 
-        // IOB Impact (Glucose dropped in this interval)
+        // IOB Impact
         const iobImpact = i < iobTs.glucoseImpact.length ? iobTs.glucoseImpact[i] : 0;
 
-        // COB Impact (Glucose raised in this interval)
+        // COB Impact
         const cobImpact = i < cobTs.glucoseImpact.length ? cobTs.glucoseImpact[i] : 0;
 
-        // Future Basal Impact (from temp basal delivery AFTER 'now')
+        // Future Basal Impact
         let futureBasalImpact = 0;
         if (futureBasalCurves.length > 0) {
-            // Find index in futureBasalCurves corresponding to this interval
-            // nowIdx is offset 0. i is offset i - nowIdx.
             const offset = i - nowIdx;
-
             for (const curve of futureBasalCurves) {
-                // Calculate activity in this interval
-                // curve.iobAtInterval[offset] is IOB at the START of this interval relative to 'now'
-                // Wait, I need activity: iobPrevious - iobCurrent
                 if (offset > 0 && curve.iobAtInterval[offset - 1] !== undefined && curve.iobAtInterval[offset] !== undefined) {
                     const activity = Math.max(0, curve.iobAtInterval[offset - 1]! - curve.iobAtInterval[offset]!);
                     futureBasalImpact += activity * isf;
@@ -143,25 +147,27 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
 
         runningSgv = runningSgv - iobImpact + cobImpact - futureBasalImpact + currentUnexplainedImpact;
 
-        // Safety: don't let glucose go negative in projection
         if (runningSgv < 0) runningSgv = 0;
 
         prediction.push({
             timestamp: intervalTime.toISOString(),
-            sgv: Math.round(runningSgv * 10) / 10
+            sgv: Math.round(runningSgv * 10) / 10,
+            components: {
+                insulin: Math.round(iobImpact * 10) / 10,
+                carbs: Math.round(cobImpact * 10) / 10,
+                unexplained: Math.round(currentUnexplainedImpact * 10) / 10,
+                basal: Math.round(futureBasalImpact * 10) / 10
+            }
         });
 
-        // Loop breaker: stop if we are past the requested duration
+        // Loop breaker
         const minutesSinceNow = (i - nowIdx) * INTERVAL_MINUTES;
         if (durationMinutes !== undefined) {
             if (minutesSinceNow >= durationMinutes) break;
         } else {
-            // Physiological breaker: stop if past DIA and impacts are negligible
             if (minutesSinceNow >= dia * 60) {
                 const totalRemainingImpact = Math.abs(iobImpact) + Math.abs(cobImpact) + Math.abs(futureBasalImpact);
                 if (totalRemainingImpact < 0.1) break;
-
-                // Absolute hard cap for safety (12 hours)
                 if (minutesSinceNow > 12 * 60) break;
             }
         }
