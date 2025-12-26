@@ -23,9 +23,11 @@ class TimeWindow(BaseModel):
     bolus_insulin: float
     basal_insulin_delivered: float
     total_insulin: float
+    insulin_activity: float  # Units actually absorbed in window
     
     carbs_consumed: float
     carb_events_count: int
+    carb_absorption: float   # Grams actually absorbed in window
     
     hour_of_day: int
     is_stable: bool
@@ -366,13 +368,13 @@ class HolisticProfileAnalyzer:
         """
         Predict glucose change for a window given parameters.
         
-        Model:
-          ΔG = -(net_insulin) × ISF + (carbs/ICR) × ISF
+        Improved Model:
+          ΔG = -(net_activity) × ISF + (carb_req) × ISF
           
-        Where net_insulin = bolus + basal_delivered - basal_needed
+        Where net_activity = insulin_activity - basal_needed
+        And carb_req = carb_absorption / ICR
         """
         # Determine block index for this time window (4-hour blocks)
-        # Blocks: 0-3hr, 4-7hr, 8-11hr, 12-15hr, 16-19hr, 20-23hr
         hour = window.hour_of_day
         block_index = hour // 4  # 0-5
         
@@ -381,20 +383,17 @@ class HolisticProfileAnalyzer:
         isf = isf_rates[block_index]
         icr = icr_rates[block_index]
         
-        # Net insulin effect (excess insulin lowers glucose)
-        net_insulin = (
-            window.bolus_insulin + 
-            window.basal_insulin_delivered - 
-            (basal_rate_needed * window.duration_hours)
-        )
+        # Net activity (excess insulin activity lowers glucose)
+        # window.insulin_activity is the total units actually absorbed in this window
+        net_activity = window.insulin_activity - (basal_rate_needed * window.duration_hours)
         
-        # Carb effect (raises glucose, needs insulin to cover)
-        carb_insulin_needed = window.carbs_consumed / icr
+        # Carb effect (grams entering blood needing ICR-equivalent insulin)
+        carb_insulin_req = window.carb_absorption / icr
         
         # Total glucose change
         glucose_change = (
-            -(net_insulin * isf) +      # Insulin lowers glucose
-            (carb_insulin_needed * isf)  # Carbs raise glucose
+            -(net_activity * isf) +      # Insulin activity lowers glucose
+            (carb_insulin_req * isf)     # Carb absorption raises glucose
         )
         
         return glucose_change
