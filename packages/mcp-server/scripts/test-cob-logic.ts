@@ -21,6 +21,8 @@ async function main() {
     console.log(`    ISF: ${cobResult.settings.isf} ${cobResult.units}/U`);
     console.log(`    CR: ${cobResult.settings.cr} g/U`);
     console.log(`    Min Carb Impact: ${cobResult.settings.minCarbImpact} mg/dL/5min`);
+    // @ts-ignore
+    console.log(`    Calculated Rate: ${cobResult.settings.absorptionRate} g/5min`);
 
     console.log('\n  Calculated:');
     console.log(`    COB: ${cobResult.calculated.cob} g`);
@@ -34,16 +36,22 @@ async function main() {
     console.log(`    Timestamp: ${cobResult.reported.timestamp}`);
     console.log('');
 
-    // Test curve calculation for a sample carb event
-    // 10g at 30g/hour = 20 min to absorb. At 10 min, ~5g absorbed, 5g remaining
-    console.log('Sample Curve (10g carbs, 10 min ago):');
+    // Test curve calculation for a sample carb event with DEFAULT rate
+    // 10g at 30g/hour = 20 min to absorb.
+    console.log('Sample Curve (Default 30g/hr):');
     const sampleEvent = new Date(now.getTime() - 10 * 60 * 1000);
     const curve = calculateCarbEventCurve(10, sampleEvent, now);
     console.log(`  Initial carbs: ${curve.initialCarbs}g`);
-    console.log(`  Event time: ${curve.carbEventTime.toISOString()}`);
-    console.log(`  COB at target: ${curve.cobAtInterval[0]}g`);
-    console.log(`  Carb absorption at target: ${curve.carbAbsorptionAtInterval[0]}g/5min`);
-    console.log(`  Curve length: ${curve.cobAtInterval.length} intervals`);
+    console.log(`  COB at target (10min): ${curve.cobAtInterval[0]}g`);
+    console.log(`  Absorbed (10min): ${10 - curve.cobAtInterval[0]!}g`);
+
+    // Test curve calculation with CUSTOM rate (e.g. 60g/hr = 5g/5min)
+    console.log('\nSample Curve (Fast 60g/hr = 5g/5min):');
+    const curveFast = calculateCarbEventCurve(10, sampleEvent, now, 5);
+    console.log(`  Initial carbs: ${curveFast.initialCarbs}g`);
+    console.log(`  COB at target (10min): ${curveFast.cobAtInterval[0]}g`);
+    // Should be 0 because 10g absorbs in 10 mins at 60g/hr
+    console.log(`  Absorbed (10min): ${10 - curveFast.cobAtInterval[0]!}g`);
 
     await disconnectFromDatabase();
 }

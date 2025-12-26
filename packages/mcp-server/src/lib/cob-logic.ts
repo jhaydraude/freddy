@@ -20,6 +20,7 @@ export interface ICOBResult {
         isf: number;
         cr: number;
         minCarbImpact: number;
+        absorptionRate?: number;
     };
 
     calculated: {
@@ -51,9 +52,36 @@ export interface ICOBResult {
 }
 
 /** Constants for carb absorption calculation */
-const ABSORPTION_RATE_G_PER_HOUR = 30; // Linear absorption rate
+const DEFAULT_ABSORPTION_RATE_G_PER_HOUR = 30; // Fallback linear absorption rate
 const INTERVAL_MINUTES = 5;
 const MAX_LOOKBACK_HOURS = 4; // Maximum time to look back (120g @ 30g/hr = 4hrs)
+
+/**
+ * Calculates the minimum absorption rate (g/5min) based on settings.
+ * Rate = min_5m_carbimpact / (ISF / CR)
+ * 
+ * @param isf - Insulin Sensitivity Factor (mg/dL/U)
+ * @param cr - Carb Ratio (g/U)
+ * @param minCarbImpact - Minimum carb impact (mg/dL/5min)
+ * @returns Rate in grams per 5 minutes
+ */
+export function calculateMinAbsorptionRate(isf: number, cr: number, minCarbImpact: number, units: string = 'mg/dL'): number {
+    if (!isf || !cr || isf <= 0 || cr <= 0) {
+        return (DEFAULT_ABSORPTION_RATE_G_PER_HOUR / 60) * INTERVAL_MINUTES;
+    }
+    // Normalize ISF to mg/dL for calculation because minCarbImpact is typically mg/dL
+    let isfMgdl = isf;
+    if (units.toLowerCase().includes('mmol')) {
+        isfMgdl = isf * 18.01559;
+    }
+
+    const sensitivity = isfMgdl / cr; // Rise (mg/dL) per gram
+    if (sensitivity <= 0) return (DEFAULT_ABSORPTION_RATE_G_PER_HOUR / 60) * INTERVAL_MINUTES;
+
+    // grams = impact / sensitivity
+    const rate = minCarbImpact / sensitivity;
+    return rate;
+}
 
 /**
  * Calculates the absorption curve for a single carb event.
@@ -62,21 +90,25 @@ const MAX_LOOKBACK_HOURS = 4; // Maximum time to look back (120g @ 30g/hr = 4hrs
  * @param initialCarbs - The initial carbs in grams
  * @param eventTime - When the carb event occurred
  * @param targetTime - The time to calculate from (index 0 = target time)
+ * @param absorptionRate - Absorption rate in grams per 5 minutes (optional, defaults to 30g/hr equivalent)
  * @returns Curve with COB and carb absorption at each 5-min interval
  */
 export function calculateCarbEventCurve(
     initialCarbs: number,
     eventTime: Date,
-    targetTime: Date
+    targetTime: Date,
+    absorptionRate?: number
 ): ICarbEventCurve {
     const targetMs = targetTime.getTime();
     const eventMs = eventTime.getTime();
 
     // Absorption per 5-minute interval
-    const absorptionPer5Min = (ABSORPTION_RATE_G_PER_HOUR / 60) * INTERVAL_MINUTES;
+    const defaultRate = (DEFAULT_ABSORPTION_RATE_G_PER_HOUR / 60) * INTERVAL_MINUTES;
+    const rate = absorptionRate && absorptionRate > 0 ? absorptionRate : defaultRate;
 
     // Time needed to fully absorb this carb event
-    const totalAbsorptionMinutes = (initialCarbs / ABSORPTION_RATE_G_PER_HOUR) * 60;
+    // Total minutes = (Total Grams / Grams per 5 min) * 5
+    const totalAbsorptionMinutes = (initialCarbs / rate) * INTERVAL_MINUTES;
     const numIntervals = Math.ceil(totalAbsorptionMinutes / INTERVAL_MINUTES) + 1;
 
     const cobAtInterval: number[] = [];
@@ -94,16 +126,18 @@ export function calculateCarbEventCurve(
             carbAbsorptionAtInterval.push(0);
         } else {
             // Calculate absorbed carbs using linear model
+            // Absorbed = (Age / 5) * Rate
+            const intervalsPassed = ageMinutes / INTERVAL_MINUTES;
             const carbsAbsorbed = Math.min(
                 initialCarbs,
-                (ageMinutes / 60) * ABSORPTION_RATE_G_PER_HOUR
+                intervalsPassed * rate
             );
             const remaining = Math.max(0, initialCarbs - carbsAbsorbed);
             cobAtInterval.push(Math.round(remaining * 100) / 100);
 
             // Carb absorption: rate of absorption (g/5min) if still absorbing
             const isAbsorbing = remaining > 0;
-            const absorption = isAbsorbing ? Math.min(absorptionPer5Min, remaining) : 0;
+            const absorption = isAbsorbing ? Math.min(rate, remaining) : 0;
             carbAbsorptionAtInterval.push(Math.round(absorption * 100) / 100);
         }
     }
@@ -200,9 +234,10 @@ async function calculateDynamicAbsorption(
  * @param atTime - The target time for COB calculation
  * @param isf - Insulin sensitivity factor (in user's preferred units)
  * @param cr - Carb ratio (grams per unit)
+ * @param absorptionRate - Optional absorption rate (g/5min)
  * @returns Object containing calculated COB, glucose impact, event count, and avg size
  */
-export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: number): {
+export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: number, absorptionRate?: number): {
     cob: number;
     glucoseImpact: number;
     eventCount: number;
@@ -216,7 +251,7 @@ export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: n
         if (!t.carbs || t.carbs <= 0) continue;
 
         const eventTime = new Date(t.created_at);
-        const curve = calculateCarbEventCurve(t.carbs, eventTime, atTime);
+        const curve = calculateCarbEventCurve(t.carbs, eventTime, atTime, absorptionRate);
         curves.push(curve);
 
         // Track events that still have COB at target time (index 0)
@@ -304,7 +339,10 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
         }
     });
 
-    const baseResult = calculateCOB(treatments, date, isf, cr);
+    // Calculate dynamic rate from settings
+    const absorptionRate = calculateMinAbsorptionRate(isf, cr, minCarbImpact, units);
+
+    const baseResult = calculateCOB(treatments, date, isf, cr, absorptionRate);
 
     // Calculate dynamic absorption
     const dyn = await calculateDynamicAbsorption(date, isf, cr, units);
@@ -325,7 +363,8 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
         settings: {
             isf: Math.round(isf * 100) / 100,
             cr: Math.round(cr * 100) / 100,
-            minCarbImpact
+            minCarbImpact,
+            absorptionRate: Math.round(absorptionRate * 100) / 100 // g/5min
         },
 
         calculated: {
@@ -356,7 +395,7 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
         for (const t of treatments) {
             if (!t.carbs || t.carbs <= 0) continue;
             const eventTime = new Date(t.created_at);
-            const curve = calculateCarbEventCurve(t.carbs, eventTime, date);
+            const curve = calculateCarbEventCurve(t.carbs, eventTime, date, absorptionRate);
             curves.push(curve);
         }
 
