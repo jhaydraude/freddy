@@ -18,6 +18,7 @@ import * as generateTrainingData from "./tools/generate-training-data.js";
 import * as generateProfileTrainingData from "./tools/generate-profile-training-data.js";
 import * as estimateISF from "./tools/estimate-isf.js";
 import * as analyzeProfile from "./tools/analyze-profile.js";
+import * as predictGlucose from "./tools/predict-glucose.js";
 import * as getProfileAnalysisHistory from "./tools/get-profile-analysis-history.js";
 
 // Register all tools
@@ -33,6 +34,7 @@ const tools = [
     estimateISF,
     estimateISF,
     analyzeProfile,
+    predictGlucose,
     getProfileAnalysisHistory
 ];
 

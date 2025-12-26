@@ -201,6 +201,7 @@ export interface IComputedStatus extends Document {
         "15min"?: any;
         "30min"?: any;
     };
+    prediction?: Array<{ timestamp: string, sgv: number }>;
     created_at: Date;         // When first computed
     updated_at: Date;         // When last recalculated
     version: string;          // Schema version
@@ -210,6 +211,7 @@ const ComputedStatusSchema = new Schema({
     timestamp: { type: Date, required: true, unique: true, index: true },
     status: { type: Schema.Types.Mixed, required: true },
     attribution: { type: Schema.Types.Mixed },
+    prediction: { type: Schema.Types.Mixed },
     created_at: { type: Date, required: true, index: true },
     updated_at: { type: Date, required: true, index: true },
     version: { type: String, default: "1.0" }

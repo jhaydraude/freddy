@@ -1,8 +1,119 @@
-import { getIOB } from './iob-logic.js';
-import { getCOB } from './cob-logic.js';
-import { resolveActiveProfile, getProfileStore } from './profile-logic.js';
+import { getStatus } from './status-logic.js';
+import { calculateInsulinEventCurve, INTERVAL_MINUTES } from './iob-curves.js';
+import { getProfileStore } from './profile-logic.js';
 import { getGlucose } from './status-logic.js';
 import { getStatusHistory } from './history-logic.js';
+
+/**
+ * Generates a glucose prediction array by projecting glucose into the future
+ * until current IOB and COB impacts are zero.
+ * 
+ * @param timestamp - The point in time to start the prediction from
+ * @returns Array of { timestamp: string, sgv: number }
+ */
+export async function getGlucosePrediction(timestamp: string | Date): Promise<Array<{ timestamp: string, sgv: number }>> {
+    // 1. Get current status with timeseries
+    const status = await getStatus(timestamp, true);
+    if (!status.glucose || !status.iob?.timeseries || !status.cob?.timeseries) {
+        return [];
+    }
+
+    const currentSgv = status.glucose.current.sgv;
+    const iobTs = status.iob.timeseries;
+    const cobTs = status.cob.timeseries;
+
+    // Find "now" index in timeseries
+    const now = new Date(timestamp);
+    const nowIso = now.toISOString();
+    let nowIdx = iobTs.timestamps.findIndex(ts => new Date(ts).getTime() >= now.getTime());
+    if (nowIdx === -1) nowIdx = iobTs.length - 1;
+
+    // 2. Prepare future basal deviations if a temp basal is active
+    const basalDeviations: { time: Date, amount: number }[] = [];
+    if (status.pump.basal.isTemp && status.pump.basal.expiration) {
+        const expiration = new Date(status.pump.basal.expiration);
+        const activeRate = status.pump.basal.activeRate;
+        const scheduledRate = status.pump.basal.scheduledRate;
+        const deviationPerHour = activeRate - scheduledRate;
+        const amountPerInterval = (deviationPerHour * INTERVAL_MINUTES) / 60;
+
+        if (Math.abs(amountPerInterval) > 0.001) {
+            let t = new Date(now.getTime());
+            while (t < expiration) {
+                basalDeviations.push({ time: new Date(t.getTime()), amount: amountPerInterval });
+                t = new Date(t.getTime() + INTERVAL_MINUTES * 60 * 1000);
+            }
+        }
+    }
+
+    // Settings for future basal impact
+    const dia = status.iob.settings.dia;
+    const isf = status.iob.settings.effectiveISF;
+    const peak = 45; // Default peak for basal mini-boluses
+
+    // Pre-calculate curves for each future basal bucket
+    const futureBasalCurves = basalDeviations.map(d =>
+        calculateInsulinEventCurve(d.amount, d.time, now, dia, peak, 'Basal', true)
+    );
+
+    // 3. Project into the future
+    const prediction: Array<{ timestamp: string, sgv: number }> = [];
+    let runningSgv = currentSgv;
+
+    // Add current point
+    prediction.push({ timestamp: nowIso, sgv: Math.round(runningSgv * 10) / 10 });
+
+    // Iterate future intervals
+    // The timeseries usually goes up to DIA hours into the future
+    const maxIntervals = Math.max(iobTs.length, cobTs.length);
+
+    for (let i = nowIdx + 1; i < maxIntervals; i++) {
+        const intervalTime = i < iobTs.length ? new Date(iobTs.timestamps[i]) : new Date(now.getTime() + (i - nowIdx) * INTERVAL_MINUTES * 60 * 1000);
+
+        // IOB Impact (Glucose dropped in this interval)
+        const iobImpact = i < iobTs.glucoseImpact.length ? iobTs.glucoseImpact[i] : 0;
+
+        // COB Impact (Glucose raised in this interval)
+        const cobImpact = i < cobTs.glucoseImpact.length ? cobTs.glucoseImpact[i] : 0;
+
+        // Future Basal Impact (from temp basal delivery AFTER 'now')
+        let futureBasalImpact = 0;
+        if (futureBasalCurves.length > 0) {
+            // Find index in futureBasalCurves corresponding to this interval
+            // nowIdx is offset 0. i is offset i - nowIdx.
+            const offset = i - nowIdx;
+
+            for (const curve of futureBasalCurves) {
+                // Calculate activity in this interval
+                // curve.iobAtInterval[offset] is IOB at the START of this interval relative to 'now'
+                // Wait, I need activity: iobPrevious - iobCurrent
+                if (offset > 0 && curve.iobAtInterval[offset - 1] !== undefined && curve.iobAtInterval[offset] !== undefined) {
+                    const activity = Math.max(0, curve.iobAtInterval[offset - 1]! - curve.iobAtInterval[offset]!);
+                    futureBasalImpact += activity * isf;
+                }
+            }
+        }
+
+        runningSgv = runningSgv - iobImpact + cobImpact - futureBasalImpact;
+
+        // Safety: don't let glucose go negative in projection
+        if (runningSgv < 0) runningSgv = 0;
+
+        prediction.push({
+            timestamp: intervalTime.toISOString(),
+            sgv: Math.round(runningSgv * 10) / 10
+        });
+
+        // Loop breaker: stop if we are past DIA and impacts are negligible
+        if (i > nowIdx + (dia * 60 / INTERVAL_MINUTES)) {
+            const totalRemainingImpact = Math.abs(iobImpact) + Math.abs(cobImpact) + Math.abs(futureBasalImpact);
+            if (totalRemainingImpact < 0.1) break;
+        }
+    }
+
+    return prediction;
+}
+
 
 // PredictiveModelsService configuration
 const PREDICTION_SERVICE_URL = process.env.PREDICTION_SERVICE_URL || 'http://localhost:8000';
