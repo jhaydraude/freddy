@@ -1,6 +1,6 @@
-import { connectToDatabase, disconnectFromDatabase } from './db/connection.js';
-import { getStatus } from './lib/status-logic.js';
-import { getGlucosePrediction } from './lib/prediction-logic.js';
+import { connectToDatabase, disconnectFromDatabase } from '../src/db/connection.js';
+import { getStatus } from '../src/lib/status-logic.js';
+import { getGlucosePrediction } from '../src/lib/prediction-logic.js';
 
 async function testPredictionAttribution() {
     console.log('--- Prediction Attribution Verification ---');

@@ -1,5 +1,5 @@
-import { connectToDatabase, disconnectFromDatabase } from './db/connection.js';
-import { getStatus } from './lib/status-logic.js';
+import { connectToDatabase, disconnectFromDatabase } from '../src/db/connection.js';
+import { getStatus } from '../src/src/lib/status-logic.js';
 
 async function test30mHistory() {
     console.log('--- 30-Minute History & Momentum Verification ---');

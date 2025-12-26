@@ -1,5 +1,5 @@
-import { connectToDatabase, disconnectFromDatabase } from './db/connection.js';
-import { getGlucosePrediction } from './lib/prediction-logic.js';
+import { connectToDatabase, disconnectFromDatabase } from '../src/db/connection.js';
+import { getGlucosePrediction } from '../src/lib/prediction-logic.js';
 
 async function testVariableDuration() {
     console.log('--- Variable Prediction Duration Verification ---');
