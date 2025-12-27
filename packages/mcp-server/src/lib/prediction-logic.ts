@@ -3,6 +3,7 @@ import { calculateInsulinEventCurve, INTERVAL_MINUTES } from './iob-curves.js';
 import { getProfileStore } from './profile-logic.js';
 import { getGlucose } from './status-logic.js';
 import { getStatusHistory } from './history-logic.js';
+import { getBasalFromSchedule } from './basal-logic.js';
 
 /**
  * Generates a glucose prediction array by projecting glucose into the future
@@ -40,21 +41,38 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
     let nowIdx = iobTs.timestamps.findIndex(ts => new Date(ts).getTime() >= now.getTime());
     if (nowIdx === -1) nowIdx = iobTs.length - 1;
 
-    // 2. Prepare future basal deviations if a temp basal is active
+    // 2. Prepare future basal deviations
     const basalDeviations: { time: Date, amount: number }[] = [];
-    if (status.pump.basal.isTemp && status.pump.basal.expiration) {
-        const expiration = new Date(status.pump.basal.expiration);
-        const activeRate = status.pump.basal.activeRate;
-        const scheduledRate = status.pump.basal.scheduledRate;
-        const deviationPerHour = activeRate - scheduledRate;
-        const amountPerInterval = (deviationPerHour * INTERVAL_MINUTES) / 60;
+    const basalSchedule = status.profile?.profileData?.basal;
+    const tempBasal = status.pump.basal;
 
-        if (Math.abs(amountPerInterval) > 0.001) {
-            let t = new Date(now.getTime());
-            while (t < expiration) {
-                basalDeviations.push({ time: new Date(t.getTime()), amount: amountPerInterval });
-                t = new Date(t.getTime() + INTERVAL_MINUTES * 60 * 1000);
+    if (basalSchedule) {
+        const expirationDate = tempBasal.expiration ? new Date(tempBasal.expiration) : null;
+        const baselineRate = tempBasal.scheduledRate; // The scheduled rate at 'now'
+
+        // Project for the expected duration of the prediction
+        const diaMinutes = status.iob.settings.dia * 60;
+        const projectionLimit = durationMinutes !== undefined ? durationMinutes : diaMinutes;
+        let t = new Date(now.getTime());
+        const end = new Date(now.getTime() + projectionLimit * 60 * 1000);
+
+        while (t < end) {
+            // Determine active rate at this future time
+            let activeRate: number;
+            if (tempBasal.isTemp && expirationDate && t < expirationDate) {
+                activeRate = tempBasal.activeRate;
+            } else {
+                activeRate = getBasalFromSchedule(basalSchedule, t);
             }
+
+            // Deviation relative to the 'now' baseline
+            const deviationPerHour = activeRate - baselineRate;
+            const amountPerInterval = (deviationPerHour * INTERVAL_MINUTES) / 60;
+
+            if (Math.abs(amountPerInterval) > 0.0001) {
+                basalDeviations.push({ time: new Date(t.getTime()), amount: amountPerInterval });
+            }
+            t = new Date(t.getTime() + INTERVAL_MINUTES * 60 * 1000);
         }
     }
 
