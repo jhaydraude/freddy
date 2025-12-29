@@ -67,6 +67,15 @@ export async function runProfileAnalysis(options: any) {
 
 import { getGlucosePrediction as getPredictionLogic } from '@nightmanager/mcp-server/src/lib/prediction-logic.js';
 import { getStatus } from '@nightmanager/mcp-server/src/lib/status-logic.js';
+import { explainStatus } from '@nightmanager/mcp-server/src/lib/explain-logic.js';
+
+export async function getExplanation(timestamp: string) {
+    if (!isConnected) {
+        await connectToDatabase();
+        isConnected = true;
+    }
+    return await explainStatus(timestamp);
+}
 
 export async function getGlucosePrediction(timestamp: string, durationMinutes: number = 240) {
     if (!isConnected) {

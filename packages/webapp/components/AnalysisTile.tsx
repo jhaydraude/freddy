@@ -13,7 +13,8 @@ import {
     ReferenceLine
 } from 'recharts';
 import { format } from 'date-fns';
-import { X, TrendingUp, TrendingDown, Info, Zap, Beef, RefreshCcw } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Info, Zap, Beef, RefreshCcw, MessageSquare, Sparkles } from 'lucide-react';
+import { useState } from 'react';
 
 interface AnalysisTileProps {
     data: any;
@@ -22,6 +23,25 @@ interface AnalysisTileProps {
 }
 
 export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileProps) {
+    const [explanation, setExplanation] = useState<string | null>(null);
+    const [isExplaining, setIsExplaining] = useState(false);
+
+    const handleExplain = async () => {
+        if (!data?.statusAt?.meta?.status_date || isExplaining) return;
+
+        setIsExplaining(true);
+        try {
+            const response = await fetch(`/api/explain?timestamp=${encodeURIComponent(data.statusAt.meta.status_date)}`);
+            const result = await response.json();
+            setExplanation(result.explanation);
+        } catch (error) {
+            console.error('Failed to get explanation:', error);
+            setExplanation('Failed to generate explanation. Please try again.');
+        } finally {
+            setIsExplaining(false);
+        }
+    };
+
     const chartData = useMemo(() => {
         if (!data) return [];
 
@@ -47,15 +67,26 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
         // 2. Prediction (4h)
         if (data.prediction) {
             data.prediction.forEach((item: any) => {
-                combined.push({
-                    timestamp: item.timestamp,
-                    projection: item.sgv,
-                    iob: item.iob,
-                    cob: item.cob,
-                    pendingCOB: item.pendingCOB ?? 0,
-                    activeCOB: item.activeCOB ?? 0,
-                    type: 'prediction'
-                });
+                // Find if a historical point already exists (the statusAt point usually overlaps)
+                const existing = combined.find(c => c.timestamp === item.timestamp);
+                if (existing) {
+                    existing.projection = item.sgv;
+                    // Keep existing actual/type if they exist, but update projection values
+                    existing.iob = item.iob;
+                    existing.cob = item.cob;
+                    existing.pendingCOB = item.pendingCOB ?? 0;
+                    existing.activeCOB = item.activeCOB ?? 0;
+                } else {
+                    combined.push({
+                        timestamp: item.timestamp,
+                        projection: item.sgv,
+                        iob: item.iob,
+                        cob: item.cob,
+                        pendingCOB: item.pendingCOB ?? 0,
+                        activeCOB: item.activeCOB ?? 0,
+                        type: 'prediction'
+                    });
+                }
             });
         }
 
@@ -121,13 +152,30 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                         </p>
                     </div>
                 </div>
-                <button
-                    onClick={onClose}
-                    className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 transition-colors"
-                >
-                    <X size={20} />
-                </button>
-            </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={handleExplain}
+                        disabled={isExplaining}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isExplaining
+                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                            : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20'
+                            }`}
+                    >
+                        {isExplaining ? (
+                            <RefreshCcw size={14} className="animate-spin" />
+                        ) : (
+                            <Sparkles size={14} />
+                        )}
+                        {isExplaining ? 'Thinking...' : 'Explain Status'}
+                    </button>
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 transition-colors"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+            </div >
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
                 {/* Chart Section */}
@@ -343,8 +391,33 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                             </span>
                         </div>
                     </div>
+
+                    {/* AI Explanation Area */}
+                    {(explanation || isExplaining) && (
+                        <div className="pt-6 border-t border-zinc-800 animate-in fade-in slide-in-from-top-2 duration-300">
+                            <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-4 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-2 opacity-10">
+                                    <Sparkles size={40} className="text-emerald-500" />
+                                </div>
+                                <h4 className="text-[10px] font-bold text-emerald-500/70 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                                    <MessageSquare size={12} />
+                                    AI Insight
+                                </h4>
+                                {isExplaining ? (
+                                    <div className="space-y-2">
+                                        <div className="h-3 bg-zinc-800 rounded animate-pulse w-full"></div>
+                                        <div className="h-3 bg-zinc-800 rounded animate-pulse w-3/4"></div>
+                                    </div>
+                                ) : (
+                                    <p className="text-zinc-300 text-sm leading-relaxed italic">
+                                        "{explanation}"
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

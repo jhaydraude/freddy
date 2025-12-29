@@ -38,13 +38,14 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
 
     const currentSgv = status.glucose.current.sgv;
     const iobTs = status.iob.timeseries;
-    const cobTs = status.cob.timeseries;
+    const cobTs = (status.cob as any).timeseries;
 
-    // Find "now" index in timeseries
-    const now = new Date(timestamp);
-    const nowIso = now.toISOString();
-    let nowIdx = iobTs.timestamps.findIndex(ts => new Date(ts).getTime() >= now.getTime());
-    if (nowIdx === -1) nowIdx = iobTs.timestamps.length - 1;
+    // Use explicit nowIndex if available, otherwise find it
+    const iobNowIdx = (iobTs as any).nowIndex ?? iobTs.timestamps.findIndex(ts => new Date(ts).getTime() >= now.getTime());
+    const cobNowIdx = (cobTs as any).nowIndex ?? (cobTs.data && cobTs.data.findIndex((d: any) => new Date(d.timestamp).getTime() >= now.getTime()));
+
+    const safeIobNowIdx = iobNowIdx === -1 ? iobTs.timestamps.length - 1 : iobNowIdx;
+    const safeCobNowIdx = cobNowIdx === -1 ? (cobTs.data?.length || 1) - 1 : cobNowIdx;
 
     // 2. Prepare future basal deviations
     const basalDeviations: { time: Date, amount: number }[] = [];
@@ -127,10 +128,10 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
     prediction.push({
         timestamp: nowIso,
         sgv: Math.round(runningSgv * 10) / 10,
-        iob: iobTs.totalIOB[nowIdx] ?? 0,
-        cob: cobTs.data && cobTs.data[nowIdx] ? cobTs.data[nowIdx].cob : 0,
-        pendingCOB: cobTs.data && cobTs.data[nowIdx] ? cobTs.data[nowIdx].pendingCOB : 0,
-        activeCOB: cobTs.data && cobTs.data[nowIdx] ? cobTs.data[nowIdx].activeCOB : 0
+        iob: iobTs.totalIOB[safeIobNowIdx] ?? 0,
+        cob: cobTs.data && cobTs.data[safeCobNowIdx] ? cobTs.data[safeCobNowIdx].cob : 0,
+        pendingCOB: cobTs.data && cobTs.data[safeCobNowIdx] ? cobTs.data[safeCobNowIdx].pendingCOB : 0,
+        activeCOB: cobTs.data && cobTs.data[safeCobNowIdx] ? cobTs.data[safeCobNowIdx].activeCOB : 0
     });
 
 
@@ -138,18 +139,19 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
     const diaMinutes = dia * 60;
     const targetDurationMin = durationMinutes !== undefined ? durationMinutes : diaMinutes;
     const targetIntervals = Math.ceil(targetDurationMin / INTERVAL_MINUTES);
-    const maxIntervals = Math.max(nowIdx + targetIntervals, iobTs.timestamps.length, cobTs.data?.length || 0);
 
+    // We iterate by offset from "now" to keep IOB and COB aligned correctly
+    for (let offset = 1; offset <= targetIntervals; offset++) {
+        const intervalTime = new Date(now.getTime() + offset * INTERVAL_MINUTES * 60 * 1000);
 
-    for (let i = nowIdx + 1; i < maxIntervals; i++) {
-        const intervalTime = i < iobTs.timestamps.length ? new Date(iobTs.timestamps[i]) : new Date(now.getTime() + (i - nowIdx) * INTERVAL_MINUTES * 60 * 1000);
+        const iobIdx = safeIobNowIdx + offset;
+        const cobIdx = safeCobNowIdx + offset;
 
         // IOB Impact
-        const iobImpact = i < iobTs.glucoseImpact.length ? iobTs.glucoseImpact[i] : 0;
+        const iobImpact = (iobIdx < iobTs.glucoseImpact.length) ? iobTs.glucoseImpact[iobIdx] : 0;
 
         // COB Impact
-        // COB Impact
-        const cobImpact = (cobTs.data && i < cobTs.data.length) ? cobTs.data[i].glucoseImpact : 0;
+        const cobImpact = (cobTs.data && cobIdx < cobTs.data.length) ? cobTs.data[cobIdx].glucoseImpact : 0;
 
 
         // Future Basal Impact
@@ -178,15 +180,15 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
         prediction.push({
             timestamp: intervalTime.toISOString(),
             sgv: Math.round(runningSgv * 10) / 10,
-            iob: i < iobTs.totalIOB.length ? iobTs.totalIOB[i] : 0,
-            cob: (cobTs.data && i < cobTs.data.length) ? cobTs.data[i].cob : 0,
-            pendingCOB: (cobTs.data && i < cobTs.data.length) ? cobTs.data[i].pendingCOB : 0,
-            activeCOB: (cobTs.data && i < cobTs.data.length) ? cobTs.data[i].activeCOB : 0
+            iob: iobIdx < iobTs.totalIOB.length ? iobTs.totalIOB[iobIdx] : 0,
+            cob: (cobTs.data && cobIdx < cobTs.data.length) ? cobTs.data[cobIdx].cob : 0,
+            pendingCOB: (cobTs.data && cobIdx < cobTs.data.length) ? cobTs.data[cobIdx].pendingCOB : 0,
+            activeCOB: (cobTs.data && cobIdx < cobTs.data.length) ? cobTs.data[cobIdx].activeCOB : 0
         });
 
 
         // Loop breaker
-        const minutesSinceNow = (i - nowIdx) * INTERVAL_MINUTES;
+        const minutesSinceNow = offset * INTERVAL_MINUTES;
         if (durationMinutes !== undefined) {
             if (minutesSinceNow >= durationMinutes) break;
         } else {

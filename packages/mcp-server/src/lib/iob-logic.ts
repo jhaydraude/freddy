@@ -46,6 +46,7 @@ export interface IIOBResult {
         basalIOB: number[];         // Net basal IOB at each interval
         activity: number[];         // Insulin absorbed in NEXT 5 min
         glucoseImpact: number[];    // Expected BG drop (activity × ISF)
+        nowIndex: number;           // Index representing "now"
     };
 }
 
@@ -292,7 +293,8 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
             bolusIOB: bolusIOBArray,
             basalIOB: basalIOBArray,
             activity: activityArray,
-            glucoseImpact: glucoseImpactArray
+            glucoseImpact: glucoseImpactArray,
+            nowIndex
         };
     }
 

@@ -82,54 +82,46 @@ export async function attributeGlucoseChange(
         if (minutes === 5) actualChange = delta5m;
         else if (minutes === 10) actualChange = delta10m;
         else if (minutes === 15) actualChange = delta15m;
-        else if (minutes === 30) {
-            actualChange = delta30m;
-        }
+        else if (minutes === 30) actualChange = delta30m;
 
-        // Calculate interval index for timeseries (1 interval = 5 min)
-        const intervalIndex = Math.round(minutes / 5);
+        // Calculate interval count (1 interval = 5 min)
+        const intervalCount = Math.round(minutes / 5);
 
         // Calculate insulin impact
         let insulinImpact = 0;
         let insulinActivity = 0;
         if (iobTimeseries && iobTimeseries.glucoseImpact) {
-            // Sum glucose impact over the interval
-            for (let i = 0; i < intervalIndex && i < iobTimeseries.glucoseImpact.length; i++) {
-                const idx = iobTimeseries.glucoseImpact.length - 1 - i;
-                insulinImpact -= iobTimeseries.glucoseImpact[idx] || 0; // Negative because insulin lowers BG
-            }
-            // Sum activity
-            for (let i = 0; i < intervalIndex && i < iobTimeseries.activity.length; i++) {
-                const idx = iobTimeseries.activity.length - 1 - i;
-                insulinActivity += iobTimeseries.activity[idx] || 0;
+            const nowIdx = (iobTimeseries as any).nowIndex ?? (iobTimeseries.glucoseImpact.length - 1);
+            // Sum glucose impact backwards from now index
+            for (let i = 0; i < intervalCount; i++) {
+                const idx = nowIdx - i;
+                if (idx >= 0) {
+                    insulinImpact -= iobTimeseries.glucoseImpact[idx] || 0;
+                    insulinActivity += iobTimeseries.activity[idx] || 0;
+                }
             }
         }
 
         // Calculate carb impact
         let carbImpact = 0;
         let carbAbsorption = 0;
-        if (cobTimeseries && cobTimeseries.glucoseImpact) {
-            // Sum glucose impact over the interval
-            for (let i = 0; i < intervalIndex && i < cobTimeseries.glucoseImpact.length; i++) {
-                const idx = cobTimeseries.glucoseImpact.length - 1 - i;
-                carbImpact += cobTimeseries.glucoseImpact[idx] || 0; // Positive because carbs raise BG
-            }
-            // Sum absorption
-            for (let i = 0; i < intervalIndex && i < cobTimeseries.carbAbsorption.length; i++) {
-                const idx = cobTimeseries.carbAbsorption.length - 1 - i;
-                carbAbsorption += cobTimeseries.carbAbsorption[idx] || 0;
+        if (cobTimeseries && (cobTimeseries as any).data) {
+            const nowIdx = (cobTimeseries as any).nowIndex ?? (cobTimeseries.data.length - 1);
+            for (let i = 0; i < intervalCount; i++) {
+                const idx = nowIdx - i;
+                const point = (cobTimeseries as any).data[idx];
+                if (point) {
+                    carbImpact += point.glucoseImpact || 0;
+                    carbAbsorption += point.absorption || 0;
+                }
             }
         }
 
-        // Calculate basal impact (simplified - deviation from scheduled)
+        // Calculate basal impact
         const basalIOB = currentStatus.iob?.calculated?.basalIOB || 0;
-        const basalDeviation = basalIOB; // Net basal IOB is the deviation
-        const basalImpact = -basalDeviation * isf; // Negative because extra basal lowers BG
+        const basalImpact = -basalIOB * isf;
 
-        // Calculate predicted change
         const predictedChange = insulinImpact + carbImpact + basalImpact;
-
-        // Calculate unexplained residual
         const unexplained = actualChange - predictedChange;
 
         const timeframeName = `${minutes}min` as '5min' | '10min' | '15min' | '30min';
@@ -154,7 +146,7 @@ export async function attributeGlucoseChange(
                 },
                 basal: {
                     value: Math.round(basalImpact * 10) / 10,
-                    deviation: Math.round(basalDeviation * 1000) / 1000
+                    deviation: Math.round(basalIOB * 1000) / 1000
                 },
                 unexplained: Math.round(unexplained * 10) / 10
             }
@@ -163,46 +155,39 @@ export async function attributeGlucoseChange(
 
     // Calculate historical trend for the 30-minute window
     const attributionHistory: IAttributionHistoryPoint[] = [];
-    if (history30m.length > 0 && iobTimeseries && cobTimeseries) {
-        // history30m is oldest to newest. current glucose is at the end.
-        // We need to match each point with timeseries buckets.
+    if (history30m.length > 0 && iobTimeseries && (cobTimeseries as any)?.data) {
+        const iobImpacts = iobTimeseries.glucoseImpact;
+        const cobData = (cobTimeseries as any).data;
+        const iobNowIdx = (iobTimeseries as any).nowIndex ?? (iobImpacts.length - 1);
+        const cobNowIdx = (cobTimeseries as any).nowIndex ?? (cobData.length - 1);
+
         const nowMs = new Date(currentStatus.meta.status_date).getTime();
 
         for (let i = 1; i < history30m.length; i++) {
             const pointActual = history30m[i] - history30m[i - 1];
-
-            // Interval index from the end (0 = now, 1 = 5m ago, etc.)
             const intervalsAgo = (history30m.length - 1) - i;
-            const idx = iobTimeseries.glucoseImpact.length - 1 - intervalsAgo;
 
-            if (idx >= 0) {
-                const pointInsulin = -(iobTimeseries.glucoseImpact[idx] || 0);
-                const pointCarbs = cobTimeseries.glucoseImpact[idx] || 0;
+            const iobIdx = iobNowIdx - intervalsAgo;
+            const cobIdx = cobNowIdx - intervalsAgo;
 
-                // For basal, we use a simplified per-interval impact (basalIOB * ISF / (DIA * 12))
-                // Actually let's just use the current basal impact distributed.
-                const basalIOB = currentStatus.iob?.calculated?.basalIOB || 0;
-                const pointBasal = -(basalIOB * isf) / (isf / (currentStatus.iob.settings.dia * 12));
-                // Wait, basal impact is usually small and constant for 30m.
-                const simpleBasal = -(basalIOB * isf) / 100; // Placeholder for now, basal impact is very small per 5min
+            const pointInsulin = iobIdx >= 0 ? -(iobImpacts[iobIdx] || 0) : 0;
+            const pointCarbs = (cobIdx >= 0 && cobData[cobIdx]) ? (cobData[cobIdx].glucoseImpact || 0) : 0;
+            const predicted = pointInsulin + pointCarbs;
+            const unexplained = pointActual - predicted;
 
-                const predicted = pointInsulin + pointCarbs; // Ignoring basal in history for now as it's hard to historicalize
-                const unexplained = pointActual - predicted;
+            const timestamp = new Date(nowMs - (intervalsAgo * 5 * 60 * 1000)).toISOString();
 
-                const timestamp = new Date(nowMs - (intervalsAgo * 5 * 60 * 1000)).toISOString();
-
-                attributionHistory.push({
-                    timestamp,
-                    actual: Math.round(pointActual * 10) / 10,
-                    predicted: Math.round(predicted * 10) / 10,
-                    unexplained: Math.round(unexplained * 10) / 10,
-                    components: {
-                        insulin: Math.round(pointInsulin * 10) / 10,
-                        carbs: Math.round(pointCarbs * 10) / 10,
-                        basal: 0 // Simplification
-                    }
-                });
-            }
+            attributionHistory.push({
+                timestamp,
+                actual: Math.round(pointActual * 10) / 10,
+                predicted: Math.round(predicted * 10) / 10,
+                unexplained: Math.round(unexplained * 10) / 10,
+                components: {
+                    insulin: Math.round(pointInsulin * 10) / 10,
+                    carbs: Math.round(pointCarbs * 10) / 10,
+                    basal: 0
+                }
+            });
         }
     }
 

@@ -14,10 +14,21 @@ async function main() {
 
     docs.forEach((doc: any) => {
         console.log(`\n[${doc.created_at}]`);
-        if (doc.openaps?.suggested?.COB !== undefined) console.log(`  openaps.suggested.COB: ${doc.openaps.suggested.COB}`);
-        if (doc.openaps?.enacted?.COB !== undefined) console.log(`  openaps.enacted.COB: ${doc.openaps.enacted.COB}`);
-        if (doc.openaps?.cob !== undefined) console.log(`  openaps.cob: ${doc.openaps.cob}`);
-        if (doc.pump?.extended?.COB !== undefined) console.log(`  pump.extended.COB: ${doc.pump.extended.COB}`);
+        if (doc.openaps) {
+            console.log('  openaps keys:', Object.keys(doc.openaps));
+        }
+        if (doc.openaps?.suggested) {
+            console.log(`  openaps.suggested.COB: ${doc.openaps.suggested.COB}`);
+            console.log(`  openaps.suggested.timestamp: ${doc.openaps.suggested.timestamp}`);
+            console.log(`  openaps.suggested.deliverAt: ${doc.openaps.suggested.deliverAt}`);
+        }
+        if (doc.openaps?.enacted) {
+            console.log(`  openaps.enacted.COB: ${doc.openaps.enacted.COB}`);
+            console.log(`  openaps.enacted.timestamp: ${doc.openaps.enacted.timestamp}`);
+        }
+        if (doc.openaps?.cob) {
+            console.log(`  openaps.cob: ${JSON.stringify(doc.openaps.cob)}`);
+        }
     });
 
     await disconnectFromDatabase();

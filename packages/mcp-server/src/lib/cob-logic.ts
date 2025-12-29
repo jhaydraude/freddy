@@ -52,6 +52,7 @@ export interface ICOBResult {
             absorption: number;     // g/5min
             glucoseImpact: number;  // mg/dL/5min
         }>;
+        nowIndex: number;           // Index representing "now"
     };
 }
 
@@ -439,6 +440,7 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
             startTime: new Date(startTime).toISOString(),
             endTime: new Date(endTime).toISOString(),
             length: data.length,
+            nowIndex: Math.floor(pastMinutes / INTERVAL_MINUTES),
             data
         };
     }
