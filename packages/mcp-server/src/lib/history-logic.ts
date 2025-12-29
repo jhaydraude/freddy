@@ -32,5 +32,6 @@ export async function getStatusHistory(options: IStatusHistoryOptions = {}): Pro
 
     // Process buckets. Using Promise.all for performance, though getStatus is heavy.
     // Given typically < 20 buckets, this is manageable.
-    return Promise.all(timestamps.map(ts => getStatus(new Date(ts))));
+    // We disable attribution here as it's not used by the dashboard and is heavy.
+    return Promise.all(timestamps.map(ts => getStatus(new Date(ts), true, false)));
 }

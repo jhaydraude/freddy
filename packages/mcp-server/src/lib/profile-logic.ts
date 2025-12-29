@@ -1,12 +1,21 @@
 import { Profile, Treatment } from '../db/models.js';
 import type { IProfile, IProfileStore } from '../db/models.js';
 
+// Simple cache to prevent excessive DB calls during bulk processing
+const profileCache = new Map<string, any>();
+
 /**
  * Resolves the active profile information (document and specific store name) at a specific timestamp.
  */
 export async function resolveActiveProfile(timestamp: string | Date): Promise<{ doc: IProfile | null, activeProfileName: string, profileData: IProfileStore | null, expiration?: string | undefined } | null> {
     const targetDate = new Date(timestamp);
     const targetIso = targetDate.toISOString();
+
+    // Check cache for this exact minute (profiles rarely change more frequently)
+    const cacheKey = targetIso.substring(0, 16); // YYYY-MM-DDTHH:mm
+    if (profileCache.has(cacheKey)) {
+        return profileCache.get(cacheKey);
+    }
 
     // 1. Get the base profile document (fallback)
     const baseDoc = await Profile.findOne({
@@ -102,22 +111,26 @@ export async function resolveActiveProfile(timestamp: string | Date): Promise<{ 
         }
 
         if (profileData || baseDoc) {
-            return {
+            const result = {
                 activeProfileName: activeSwitch.profile || "Overridden",
                 profileData: profileData || null,
                 doc: baseDoc || null,
                 expiration: activeEndMs !== Infinity ? new Date(activeEndMs).toISOString() : undefined
             };
+            profileCache.set(cacheKey, result);
+            return result;
         }
     }
 
     if (!baseDoc) return null;
 
-    return {
+    const result = {
         doc: baseDoc,
         activeProfileName: baseDoc.defaultProfile,
         profileData: null
     };
+    profileCache.set(cacheKey, result);
+    return result;
 }
 
 /**

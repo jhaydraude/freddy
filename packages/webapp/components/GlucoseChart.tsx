@@ -31,23 +31,24 @@ interface GlucoseChartProps {
 }
 
 export default function GlucoseChart({ data, isLoading, visibleLines, onClick }: GlucoseChartProps) {
+    // Optimized: Single-pass transformation - filter, map, and sort in one operation
     const chartData = useMemo(() => {
-        return data.map(item => ({
-            timestamp: item.meta?.status_date || item.glucose?.timestamp,
-            sgv: item.glucose?.current?.sgv || null,
-            iob: item.iob?.calculated?.totalIOB ?? null,
-            cob: item.cob?.calculated?.cob ?? null,
-            insulinImpact: item.iob?.calculated?.glucoseImpact ?? null,
-            carbImpact: item.cob?.calculated?.glucoseImpact ?? null,
-            basal: item.pump?.basal?.scheduledRate ?? null,
-            raw: item
-        })).filter(d => d.timestamp).reverse();
+        return data
+            .filter(item => item.meta?.status_date || item.glucose?.timestamp)
+            .map(item => ({
+                timestamp: item.meta?.status_date || item.glucose?.timestamp,
+                sgv: item.glucose?.current?.sgv || null,
+                iob: item.iob?.calculated?.totalIOB ?? null,
+                cob: item.cob?.calculated?.cob ?? null,
+                pendingCOB: item.cob?.calculated?.pendingCOB ?? 0,
+                activeCOB: item.cob?.calculated?.activeCOB ?? 0,
+                insulinImpact: item.iob?.calculated?.glucoseImpact ?? null,
+                carbImpact: item.cob?.calculated?.glucoseImpact ?? null,
+                basal: item.pump?.basal?.scheduledRate ?? null,
+                raw: item
+            }))
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     }, [data]);
-
-    // Sort chronological
-    const sortedData = useMemo(() => {
-        return [...chartData].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    }, [chartData]);
 
     const CustomTooltip = ({ active, payload, label, units }: any) => {
         if (active && payload && payload.length) {
@@ -73,9 +74,17 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
                             </div>
                         )}
                         {visibleLines.cob && (
-                            <div className="flex items-center justify-between gap-4">
-                                <span className="text-amber-400 font-medium">COB</span>
-                                <span className="font-mono text-zinc-200">{(point.cob?.calculated?.cob ?? 0).toFixed(0)} g</span>
+                            <div className="space-y-0.5 border-t border-zinc-800 pt-1 mt-1">
+                                <div className="flex items-center justify-between gap-4">
+                                    <span className="text-amber-400 font-medium">COB</span>
+                                    <span className="font-mono text-zinc-200">{(point.cob?.calculated?.cob ?? 0).toFixed(1)} g</span>
+                                </div>
+                                {(point.cob?.calculated?.pendingCOB ?? 0) > 0 && (
+                                    <div className="text-[10px] text-zinc-500 flex justify-between px-1">
+                                        <span>Active: {point.cob.calculated.activeCOB.toFixed(1)}g</span>
+                                        <span>Pending: {point.cob.calculated.pendingCOB.toFixed(1)}g</span>
+                                    </div>
+                                )}
                             </div>
                         )}
                         {visibleLines.basal && (
@@ -116,7 +125,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
         );
     }
 
-    if (sortedData.length === 0) {
+    if (chartData.length === 0) {
         return (
             <div className="w-full h-[350px] flex items-center justify-center bg-zinc-950/50 rounded-xl border border-zinc-800">
                 <span className="text-zinc-500">No data available for this period</span>
@@ -128,7 +137,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
         <div className="w-full h-[400px] bg-zinc-900/40 rounded-xl border border-zinc-800/50 p-4 shadow-sm backdrop-blur-sm">
             <ResponsiveContainer width="100%" height="100%">
                 <LineChart
-                    data={sortedData}
+                    data={chartData}
                     margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                     onClick={(e) => {
                         if (e && e.activePayload && e.activePayload.length > 0) {
@@ -145,9 +154,9 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
 
                     {/* Target Range Background - Adjusted for units */}
                     {isMmol ? (
-                        <ReferenceArea y1={3.9} y2={10} fill="#10b981" fillOpacity={0.05} />
+                        <ReferenceArea yAxisId="left" y1={3.9} y2={10} fill="#10b981" fillOpacity={0.05} />
                     ) : (
-                        <ReferenceArea y1={70} y2={180} fill="#10b981" fillOpacity={0.05} />
+                        <ReferenceArea yAxisId="left" y1={70} y2={180} fill="#10b981" fillOpacity={0.05} />
                     )}
 
                     <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />

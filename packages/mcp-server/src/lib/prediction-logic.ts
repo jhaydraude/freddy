@@ -1,7 +1,11 @@
 import { getStatus } from './status-logic.js';
 import { calculateInsulinEventCurve, INTERVAL_MINUTES } from './iob-curves.js';
-import { getProfileStore } from './profile-logic.js';
+import { getProfileStore, resolveActiveProfile } from './profile-logic.js';
+import { getIOB } from './iob-logic.js';
+
 import { getGlucose } from './status-logic.js';
+import { getCOB } from './cob-logic.js';
+
 import { getStatusHistory } from './history-logic.js';
 import { getBasalFromSchedule } from './basal-logic.js';
 
@@ -11,7 +15,7 @@ import { getBasalFromSchedule } from './basal-logic.js';
  * 
  * @param timestamp - The point in time to start the prediction from
  * @param durationMinutes - Optional: specify how many minutes to project (default: based on DIA and active impacts)
- * @returns Array of { timestamp: string, sgv: number, components: { insulin, carbs, unexplained, basal } }
+ * @returns Array of { timestamp: string, sgv: number, iob: number, cob: number }
  */
 export interface IPredictionPoint {
     timestamp: string;
@@ -24,7 +28,8 @@ export interface IPredictionPoint {
     };
 }
 
-export async function getGlucosePrediction(timestamp: string | Date, durationMinutes?: number): Promise<IPredictionPoint[]> {
+export async function getGlucosePrediction(timestamp: string | Date, durationMinutes?: number): Promise<Array<{ timestamp: string, sgv: number, iob: number, cob: number, pendingCOB: number, activeCOB: number }>> {
+
     // 1. Get current status with timeseries
     const status = await getStatus(timestamp, true);
     if (!status.glucose || !status.iob?.timeseries || !status.cob?.timeseries) {
@@ -39,7 +44,7 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
     const now = new Date(timestamp);
     const nowIso = now.toISOString();
     let nowIdx = iobTs.timestamps.findIndex(ts => new Date(ts).getTime() >= now.getTime());
-    if (nowIdx === -1) nowIdx = iobTs.length - 1;
+    if (nowIdx === -1) nowIdx = iobTs.timestamps.length - 1;
 
     // 2. Prepare future basal deviations
     const basalDeviations: { time: Date, amount: number }[] = [];
@@ -114,35 +119,38 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
     }
 
     // 4. Project into the future
-    const prediction: IPredictionPoint[] = [];
+    const prediction: Array<{ timestamp: string, sgv: number, iob: number, cob: number, pendingCOB: number, activeCOB: number }> = [];
     let runningSgv = currentSgv;
+
 
     // Add current point (no impacts applied yet)
     prediction.push({
         timestamp: nowIso,
         sgv: Math.round(runningSgv * 10) / 10,
-        components: {
-            insulin: 0,
-            carbs: 0,
-            unexplained: 0,
-            basal: 0
-        }
+        iob: iobTs.totalIOB[nowIdx] ?? 0,
+        cob: cobTs.data && cobTs.data[nowIdx] ? cobTs.data[nowIdx].cob : 0,
+        pendingCOB: cobTs.data && cobTs.data[nowIdx] ? cobTs.data[nowIdx].pendingCOB : 0,
+        activeCOB: cobTs.data && cobTs.data[nowIdx] ? cobTs.data[nowIdx].activeCOB : 0
     });
+
 
     // Iterate future intervals
     const diaMinutes = dia * 60;
     const targetDurationMin = durationMinutes !== undefined ? durationMinutes : diaMinutes;
     const targetIntervals = Math.ceil(targetDurationMin / INTERVAL_MINUTES);
-    const maxIntervals = Math.max(nowIdx + targetIntervals, iobTs.length, cobTs.length);
+    const maxIntervals = Math.max(nowIdx + targetIntervals, iobTs.timestamps.length, cobTs.data?.length || 0);
+
 
     for (let i = nowIdx + 1; i < maxIntervals; i++) {
-        const intervalTime = i < iobTs.length ? new Date(iobTs.timestamps[i]) : new Date(now.getTime() + (i - nowIdx) * INTERVAL_MINUTES * 60 * 1000);
+        const intervalTime = i < iobTs.timestamps.length ? new Date(iobTs.timestamps[i]) : new Date(now.getTime() + (i - nowIdx) * INTERVAL_MINUTES * 60 * 1000);
 
         // IOB Impact
         const iobImpact = i < iobTs.glucoseImpact.length ? iobTs.glucoseImpact[i] : 0;
 
         // COB Impact
-        const cobImpact = i < cobTs.glucoseImpact.length ? cobTs.glucoseImpact[i] : 0;
+        // COB Impact
+        const cobImpact = (cobTs.data && i < cobTs.data.length) ? cobTs.data[i].glucoseImpact : 0;
+
 
         // Future Basal Impact
         let futureBasalImpact = 0;
@@ -170,13 +178,12 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
         prediction.push({
             timestamp: intervalTime.toISOString(),
             sgv: Math.round(runningSgv * 10) / 10,
-            components: {
-                insulin: Math.round(iobImpact * 10) / 10,
-                carbs: Math.round(cobImpact * 10) / 10,
-                unexplained: Math.round(currentUnexplainedImpact * 10) / 10,
-                basal: Math.round(futureBasalImpact * 10) / 10
-            }
+            iob: i < iobTs.totalIOB.length ? iobTs.totalIOB[i] : 0,
+            cob: (cobTs.data && i < cobTs.data.length) ? cobTs.data[i].cob : 0,
+            pendingCOB: (cobTs.data && i < cobTs.data.length) ? cobTs.data[i].pendingCOB : 0,
+            activeCOB: (cobTs.data && i < cobTs.data.length) ? cobTs.data[i].activeCOB : 0
         });
+
 
         // Loop breaker
         const minutesSinceNow = (i - nowIdx) * INTERVAL_MINUTES;

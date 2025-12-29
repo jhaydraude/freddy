@@ -64,3 +64,50 @@ export async function runProfileAnalysis(options: any) {
     }
     return result;
 }
+
+import { getGlucosePrediction as getPredictionLogic } from '@nightmanager/mcp-server/src/lib/prediction-logic.js';
+import { getStatus } from '@nightmanager/mcp-server/src/lib/status-logic.js';
+
+export async function getGlucosePrediction(timestamp: string, durationMinutes: number = 240) {
+    if (!isConnected) {
+        await connectToDatabase();
+        isConnected = true;
+    }
+    return await getPredictionLogic(timestamp, durationMinutes);
+}
+
+export async function getAnalysisData(timestamp: string) {
+    if (!isConnected) {
+        await connectToDatabase();
+        isConnected = true;
+    }
+
+    const targetDate = new Date(timestamp);
+    const fourHoursLater = new Date(targetDate.getTime() + 4 * 60 * 60 * 1000);
+
+    const [historyBefore, statusAt, prediction, historyAfter] = await Promise.all([
+        // 1. 1 hour of history before
+        getStatusHistory({
+            startTime: timestamp,
+            windowSize: 60,
+            bucketSize: 5
+        }),
+        // 2. Attribution data for that point (Status includes attribution by default)
+        getStatus(timestamp),
+        // 3. Glucose projections for 4 hours
+        getPredictionLogic(timestamp, 240),
+        // 4. Actual data from that 4 hour span (if available)
+        getStatusHistory({
+            startTime: fourHoursLater.toISOString(), // history-logic looks BACK from startTime
+            windowSize: 240,
+            bucketSize: 5
+        })
+    ]);
+
+    return {
+        historyBefore,
+        statusAt,
+        prediction,
+        historyAfter
+    };
+}

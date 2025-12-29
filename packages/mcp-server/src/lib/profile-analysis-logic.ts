@@ -1,5 +1,6 @@
 import { Entry, Treatment } from '../db/models.js';
 import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
+import { getBolusAbsorption } from './cob-logic.js';
 
 /**
  * Time window for holistic profile analysis
@@ -145,18 +146,19 @@ export async function generateTimeWindows(
             let insulinActivity = 0;
             let carbAbsorption = 0;
 
-            // 1. Process Treatments in this window for raw totals
+            // 1. Process Raw Totals
             const treatmentsInWindow = treatments.filter(t => {
                 const tTime = new Date(t.created_at).getTime();
                 return tTime >= windowStart.getTime() && tTime <= windowEnd.getTime();
             });
 
             for (const t of treatmentsInWindow) {
-                if (t.insulin && t.insulin > 0) {
+                if (t.insulin && t.insulin > 0 && (t.eventType === 'Meal Bolus' || t.eventType === 'Correction Bolus')) {
                     bolusInsulin += t.insulin;
                     if (t.carbs && t.carbs > 0) hasMeals = true;
                     else hasCorrections = true;
                 }
+
                 if (t.carbs && t.carbs > 0) {
                     carbsConsumed += t.carbs;
                     carbEvents++;
@@ -166,20 +168,30 @@ export async function generateTimeWindows(
 
             // 2. Calculate Physiological Curves for ALL relevant treatments
             // We look back by DIA for insulin and by max absorption for carbs
-            for (const t of treatments) {
-                const tTime = new Date(t.created_at).getTime();
 
-                // --- BOLUS ACTIVITY ---
+            // --- INSULIN ACTIVITY ---
+            for (const t of treatments) {
                 if (t.insulin && t.insulin > 0 && (t.eventType === 'Meal Bolus' || t.eventType === 'Correction Bolus')) {
+                    const tTime = new Date(t.created_at).getTime();
                     insulinActivity += calculateActivityInWindow(t.insulin, tTime, windowStart.getTime(), windowEnd.getTime(), dia, peak);
                 }
+            }
 
-                // --- CARB ABSORPTION ---
+            // --- CARB ABSORPTION (Using S-Curve Math) ---
+            for (const t of treatments) {
                 if (t.carbs && t.carbs > 0) {
-                    // Use a simplified carb absorption model consistent with cob-logic
-                    // 30g/hr = 0.5g/min
-                    const rate = 0.5;
-                    carbAbsorption += calculateCarbAbsorptionInWindow(t.carbs, tTime, windowStart.getTime(), windowEnd.getTime(), rate);
+                    const tTime = new Date(t.created_at).getTime();
+                    const duration = t.duration ? t.duration / 60000 : 0;
+                    const rate = 30 / 60 * 5; // Base Rate: 30g/hr -> 2.5g/5min
+
+                    carbAbsorption += calculateCarbAbsorptionInWindow(
+                        t.carbs,
+                        tTime,
+                        windowStart.getTime(),
+                        windowEnd.getTime(),
+                        duration,
+                        rate
+                    );
                 }
             }
 
@@ -190,20 +202,8 @@ export async function generateTimeWindows(
                 : 1.0;
             const basalDeilveredRaw = basalRate * windowHours;
 
-            // Basal is delivered "continuously". We treat it as 5-min buckets.
-            const intervalMs = 5 * 60 * 1000;
-            for (let tMs = windowStart.getTime(); tMs < windowEnd.getTime(); tMs += intervalMs) {
-                const bucketBasal = basalRate * (5 / 60);
-                // The activity of this basal bucket might extend beyond this window, 
-                // but other past basal buckets will have activity in this window.
-                // To be exact, we sum activity of ALL basal buckets in the Lookback.
-            }
             // Simplified Basal Activity implementation: 
             // In a steady state (unchanged basal for > DIA), Activity == Delivery.
-            // Since windows are 2 hours, and basal changes are infrequent, this is a good approximation.
-            // For profile switches and temp basals, it would be better to be more exact, 
-            // but let's start with raw basal delivery as "basal activity" for now
-            // as it matches the deliveredRate source of truth.
             insulinActivity += basalDeilveredRaw;
 
             const totalInsulin = bolusInsulin + basalDeilveredRaw;
@@ -284,24 +284,28 @@ function calculateActivityInWindow(
 
 /**
  * Calculates carb absorption within a specific time window.
+ * Uses cumulative absorbed amount from S-curve model.
  */
 function calculateCarbAbsorptionInWindow(
     carbs: number,
     eventMs: number,
     windowStartMs: number,
     windowEndMs: number,
-    rateGPerMin: number
+    durationMin: number,
+    rateGPer5Min: number
 ): number {
-    const durationMin = carbs / rateGPerMin;
-    const endMs = eventMs + durationMin * 60000;
+    const tStartMin = (windowStartMs - eventMs) / 60000;
+    const tEndMin = (windowEndMs - eventMs) / 60000;
 
-    const overlapStart = Math.max(windowStartMs, eventMs);
-    const overlapEnd = Math.min(windowEndMs, endMs);
+    // Optimization: If window is entirely before event, result is 0
+    if (tEndMin <= 0) return 0;
 
-    if (overlapEnd <= overlapStart) return 0;
+    // getBolusAbsorption returns { rate, absorbed }
+    // We want the cumulative absorbed amount at time t
+    const absStart = getBolusAbsorption(tStartMin, carbs, durationMin, rateGPer5Min).absorbed;
+    const absEnd = getBolusAbsorption(tEndMin, carbs, durationMin, rateGPer5Min).absorbed;
 
-    const overlapMin = (overlapEnd - overlapStart) / 60000;
-    return overlapMin * rateGPerMin;
+    return Math.max(0, absEnd - absStart);
 }
 
 /**

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Header from '@/components/Header';
 import GlucoseChart from '@/components/GlucoseChart';
+import AnalysisTile from '@/components/AnalysisTile';
 import { Activity, Clock, RefreshCw, Battery } from 'lucide-react';
 
 const TIME_RANGES = [
@@ -32,6 +33,43 @@ export default function Home() {
       setLoading(false);
     }
   }, [windowSize]);
+
+  // Analysis state
+  const [analysisTimestamp, setAnalysisTimestamp] = useState<string | null>(null);
+  const [analysisData, setAnalysisData] = useState<any>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+
+  // Cache for analysis data to prevent redundant fetches
+  const analysisCache = useRef<Map<string, any>>(new Map());
+
+  const fetchAnalysis = useCallback(async (ts: string) => {
+    // Check cache first for instant display
+    if (analysisCache.current.has(ts)) {
+      setAnalysisData(analysisCache.current.get(ts));
+      return;
+    }
+
+    setAnalysisLoading(true);
+    try {
+      const res = await fetch(`/api/analysis?timestamp=${encodeURIComponent(ts)}`);
+      if (!res.ok) throw new Error('Failed to fetch analysis');
+      const json = await res.json();
+
+      // Cache the result for future clicks
+      analysisCache.current.set(ts, json);
+      setAnalysisData(json);
+    } catch (error) {
+      console.error('Error fetching analysis:', error);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (analysisTimestamp) {
+      fetchAnalysis(analysisTimestamp);
+    }
+  }, [analysisTimestamp, fetchAnalysis]);
 
   useEffect(() => {
     fetchData();
@@ -63,10 +101,15 @@ export default function Home() {
     setVisibleLines(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Clear selection when data updates or window changes
+  // Clear selection and cache only when window size changes, not on data updates
+  // This preserves the analysis panel during auto-refresh
   useEffect(() => {
     setSelectedPoint(null);
-  }, [data, windowSize]);
+    setAnalysisTimestamp(null);
+    setAnalysisData(null);
+    // Clear cache when time range changes to prevent stale data
+    analysisCache.current.clear();
+  }, [windowSize]);
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 pb-20 relative">
@@ -212,7 +255,12 @@ export default function Home() {
               data={data}
               isLoading={loading}
               visibleLines={visibleLines}
-              onClick={(point) => setSelectedPoint(point)}
+              onClick={(point) => {
+                setSelectedPoint(point);
+                if (point.meta?.status_date) {
+                  setAnalysisTimestamp(point.meta.status_date);
+                }
+              }}
             />
 
             {/* Selected Point Pill Overlay */}
@@ -240,6 +288,20 @@ export default function Home() {
               </div>
             )}
           </div>
+
+          {/* Analysis Tile */}
+          {(analysisTimestamp || analysisLoading) && (
+            <div className="pt-4 scroll-mt-24" id="analysis-section">
+              <AnalysisTile
+                data={analysisData}
+                isLoading={analysisLoading}
+                onClose={() => {
+                  setAnalysisTimestamp(null);
+                  setAnalysisData(null);
+                }}
+              />
+            </div>
+          )}
         </div>
       </main>
     </div>

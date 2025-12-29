@@ -68,9 +68,10 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
     let peak = 45; // Default Peak in minutes (Assume Fiasp/45m if unknown as per user request)
     let autosensRatio = 1.0;
 
-    // 1. Get Autosens Ratio from latest DeviceStatus
+    // 1. Get Autosens Ratio from latest DeviceStatus (relative to requested time)
     const statusDoc = await DeviceStatus.findOne({
-        "openaps.suggested.sensitivityRatio": { $exists: true }
+        "openaps.suggested.sensitivityRatio": { $exists: true },
+        "created_at": { $lte: endWindow.toISOString() }
     }).sort({ created_at: -1 });
 
     if (statusDoc?.openaps?.suggested?.sensitivityRatio) {
@@ -82,7 +83,6 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
             timestamp: endWindow.toISOString(),
             units,
             lookbackMinutes: dia * 60,
-            settings: { isf, dia, autosensRatio, effectiveISF: isf },
             settings: { isf, dia, autosensRatio, effectiveISF: isf },
             calculated: { totalIOB: 0, bolusIOB: 0, basalIOB: 0, smbIOB: 0, glucoseImpact: 0, bolusCount: 0, smbCount: 0 },
             reported: { totalIOB: 0, bolusIOB: 0, basalIOB: 0, timestamp: '' }

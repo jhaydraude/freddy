@@ -4,14 +4,13 @@ import { getIOB, calculateInsulinActivityRate } from './iob-logic.js';
 
 /** Result for a single carb event's absorption curve */
 export interface ICarbEventCurve {
-    carbEventTime: Date;      // When the carb event occurred
-    initialCarbs: number;     // Original carb amount
-    cobAtInterval: number[];  // COB at each 5-min interval (index 0 = target time)
-    carbAbsorptionAtInterval: number[]; // Carbs absorbing (g/5min) at each interval
-    nowIndex: number;          // Index in array that represents "target time" (NOW)
+    carbEventTime: Date;
+    initialCarbs: number;
+    cobAtInterval: number[];
+    carbAbsorptionAtInterval: number[];
+    nowIndex: number;
 }
 
-/** Extended COB result with detailed metrics */
 export interface ICOBResult {
     timestamp: string;
     units: string;
@@ -21,11 +20,13 @@ export interface ICOBResult {
         isf: number;
         cr: number;
         minCarbImpact: number;
-        absorptionRate?: number;
+        absorptionRate: number; // g/5min (Base reference rate)
     };
 
     calculated: {
         cob: number;
+        pendingCOB: number;
+        activeCOB: number;
         glucoseImpact: number;
         eventCount: number;
         avgEventSize: number;
@@ -38,124 +39,122 @@ export interface ICOBResult {
         timestamp: string;
     };
 
-    // Optional timeseries data
     timeseries?: {
-        intervalMinutes: 5;
-        startTime: string;            // MAX_LOOKBACK_HOURS ago (4 hours)
-        endTime: string;              // Current timestamp
-        length: number;               // Array length
-
-        timestamps: string[];         // ISO timestamps [oldest → newest]
-        totalCOB: number[];           // Total COB at each interval
-        carbAbsorption: number[];     // Carbs absorbed in NEXT 5 min (g/5min)
-        glucoseImpact: number[];      // Expected BG rise (absorption × ISF/CR)
+        intervalMinutes: number;
+        startTime: string;
+        endTime: string;
+        length: number;
+        data: Array<{
+            timestamp: string;
+            cob: number;
+            pendingCOB: number;
+            activeCOB: number;
+            absorption: number;     // g/5min
+            glucoseImpact: number;  // mg/dL/5min
+        }>;
     };
 }
 
-/** Constants for carb absorption calculation */
-const DEFAULT_ABSORPTION_RATE_G_PER_HOUR = 30; // Fallback linear absorption rate
+/** Constants */
+const DEFAULT_ABSORPTION_RATE_G_PER_HOUR = 30;
 const INTERVAL_MINUTES = 5;
-const MAX_LOOKBACK_HOURS = 4; // Maximum time to look back (120g @ 30g/hr = 4hrs)
+const MAX_LOOKBACK_HOURS = 12; // Extended lookback window for long distributed meals
 
 /**
  * Calculates the minimum absorption rate (g/5min) based on settings.
- * Rate = min_5m_carbimpact / (ISF / CR)
- * 
- * @param isf - Insulin Sensitivity Factor (mg/dL/U)
- * @param cr - Carb Ratio (g/U)
- * @param minCarbImpact - Minimum carb impact (mg/dL/5min)
- * @returns Rate in grams per 5 minutes
  */
 export function calculateMinAbsorptionRate(isf: number, cr: number, minCarbImpact: number, units: string = 'mg/dL'): number {
     if (!isf || !cr || isf <= 0 || cr <= 0) {
         return (DEFAULT_ABSORPTION_RATE_G_PER_HOUR / 60) * INTERVAL_MINUTES;
     }
-    // Normalize ISF to mg/dL for calculation because minCarbImpact is typically mg/dL
     let isfMgdl = isf;
     if (units.toLowerCase().includes('mmol')) {
         isfMgdl = isf * 18.01559;
     }
-
-    const sensitivity = isfMgdl / cr; // Rise (mg/dL) per gram
+    const sensitivity = isfMgdl / cr;
     if (sensitivity <= 0) return (DEFAULT_ABSORPTION_RATE_G_PER_HOUR / 60) * INTERVAL_MINUTES;
-
-    // grams = impact / sensitivity
-    const rate = minCarbImpact / sensitivity;
-    return rate;
+    return minCarbImpact / sensitivity;
 }
 
 /**
- * Calculates the absorption curve for a single carb event.
- * Creates arrays indexed at 5-minute intervals with COB and carb absorption rate.
- * 
- * @param initialCarbs - The initial carbs in grams
- * @param eventTime - When the carb event occurred
- * @param targetTime - The time to calculate from (this becomes the "now" point)
- * @param absorptionRate - Absorption rate in grams per 5 minutes (optional)
- * @param includeFuture - If true, also calculate into the future until COB is 0
- * @returns Curve with COB and carb absorption at each 5-min interval, and the index of "now"
+ * MATH ENGINE: TRIANGLE S-CURVE PARAMETERS
  */
-export function calculateCarbEventCurve(
-    initialCarbs: number,
-    eventTime: Date,
-    targetTime: Date,
-    absorptionRate?: number,
-    includeFuture: boolean = false
-): ICarbEventCurve {
-    const targetMs = targetTime.getTime();
-    const eventMs = eventTime.getTime();
+function getTriangleParameters(carbs: number, absorbRateGPer5Min: number) {
+    const linearDurationMin = (carbs / absorbRateGPer5Min) * 5;
+    const durationMin = Math.max(60, linearDurationMin * 1.5);
+    const peakTimeMin = Math.max(15, durationMin * 0.3);
+    return { durationMin, peakTimeMin };
+}
 
-    // Absorption per 5-minute interval
-    const defaultRate = (DEFAULT_ABSORPTION_RATE_G_PER_HOUR / 60) * INTERVAL_MINUTES;
-    const rate = absorptionRate && absorptionRate > 0 ? absorptionRate : defaultRate;
+/**
+ * MATH ENGINE: INSTANT BOLUS DYNAMICS
+ */
+function getInstantBolusDynamics(t_min: number, carbs: number, durationMin: number, peakTimeMin: number): { rate: number, absorbed: number } {
+    if (t_min < 0) return { rate: 0, absorbed: 0 };
+    if (t_min >= durationMin) return { rate: 0, absorbed: carbs };
 
-    // Time needed to fully absorb this carb event
-    const totalAbsorptionMinutes = (initialCarbs / rate) * INTERVAL_MINUTES;
-    const numIntervalsPast = Math.ceil((MAX_LOOKBACK_HOURS * 60) / INTERVAL_MINUTES) + 1;
-    const numIntervalsFuture = includeFuture ? Math.ceil(totalAbsorptionMinutes / INTERVAL_MINUTES) : 0;
+    const peakRate = (2 * carbs) / durationMin;
+    let rate = 0;
+    let absorbed = 0;
 
-    const cobAtInterval: number[] = [];
-    const carbAbsorptionAtInterval: number[] = [];
+    if (t_min < peakTimeMin) {
+        // Ramp up
+        rate = peakRate * (t_min / peakTimeMin);
+        absorbed = 0.5 * t_min * rate;
+    } else {
+        // Decay
+        const timeInDecay = t_min - peakTimeMin;
+        const decayDuration = durationMin - peakTimeMin;
+        rate = peakRate * ((durationMin - t_min) / decayDuration);
 
-    // Build array from oldest (past) to newest (future)
-    // Negative offset = past, positive offset = future
-    for (let offset = -(numIntervalsPast - 1); offset <= numIntervalsFuture; offset++) {
-        const intervalTargetMs = targetMs + (offset * INTERVAL_MINUTES * 60 * 1000);
-        const ageMinutes = (intervalTargetMs - eventMs) / (1000 * 60);
+        const absorbedAtPeak = 0.5 * peakTimeMin * peakRate;
+        const areaDecay = (peakRate + rate) * timeInDecay / 2;
+        absorbed = absorbedAtPeak + areaDecay;
+    }
+    return { rate, absorbed };
+}
 
-        if (ageMinutes < 0) {
-            // Carb event hasn't occurred yet at this interval
-            cobAtInterval.push(0);
-            carbAbsorptionAtInterval.push(0);
-        } else {
-            // Calculate absorbed carbs using linear model
-            const intervalsPassed = ageMinutes / INTERVAL_MINUTES;
-            const carbsAbsorbed = Math.min(initialCarbs, intervalsPassed * rate);
-            const remaining = Math.max(0, initialCarbs - carbsAbsorbed);
-            cobAtInterval.push(Math.round(remaining * 100) / 100);
+/**
+ * MATH ENGINE: GENERAL BOLUS ABSORPTION (Supports Distributed/Extended)
+ */
+export function getBolusAbsorption(t_min: number, carbs: number, distributionDurationMin: number, absorbRate: number): { rate: number, absorbed: number } {
+    // If instant (or near instant), use analytic function
+    if (!distributionDurationMin || distributionDurationMin < 5) {
+        const params = getTriangleParameters(carbs, absorbRate);
+        const res = getInstantBolusDynamics(t_min, carbs, params.durationMin, params.peakTimeMin);
+        // Rate from dynamics is g/min. We want g/5min.
+        return { rate: res.rate * 5, absorbed: res.absorbed };
+    }
 
-            // Carb absorption: rate of absorption (g/5min) if still absorbing
-            const isAbsorbing = remaining > 0;
-            const absorption = isAbsorbing ? Math.min(rate, remaining) : 0;
-            carbAbsorptionAtInterval.push(Math.round(absorption * 100) / 100);
+    // Distributed: Numerical Superposition
+    const steps = Math.floor(distributionDurationMin); // 1 step per minute
+    const stepSize = 1;
+    const carbsPerStep = carbs / steps;
+    const kernelParams = getTriangleParameters(carbs, absorbRate);
+
+    let totalRate = 0; // g/min
+    let totalAbsorbed = 0;
+
+    for (let i = 0; i < steps; i++) {
+        const entryTime = i * stepSize;
+        if (t_min >= entryTime) {
+            const dynamics = getInstantBolusDynamics(
+                t_min - entryTime,
+                carbsPerStep,
+                kernelParams.durationMin,
+                kernelParams.peakTimeMin
+            );
+            totalRate += dynamics.rate;
+            totalAbsorbed += dynamics.absorbed;
         }
     }
 
-    // The "now" index is where offset=0, which is at position (numIntervalsPast - 1)
-    const nowIndex = numIntervalsPast - 1;
-
-    return {
-        carbEventTime: eventTime,
-        initialCarbs,
-        cobAtInterval,
-        carbAbsorptionAtInterval,
-        nowIndex
-    };
+    return { rate: totalRate * 5, absorbed: totalAbsorbed };
 }
+
 
 /**
  * Analyses recent glucose/insulin data to estimate actual carb absorption.
- * Returns { deviation, estimatedCarbs } for the most recent interval.
  */
 async function calculateDynamicAbsorption(
     timestamp: Date,
@@ -163,8 +162,6 @@ async function calculateDynamicAbsorption(
     cr: number,
     units: string
 ): Promise<{ deviation: number, estimatedCarbs: number }> {
-    // 1. Fetch last 2 glucose entries (to get delta)
-    // We look back 20 mins to find a pair
     const windowStart = new Date(timestamp.getTime() - 20 * 60 * 1000);
     const minEpoch = windowStart.getTime();
 
@@ -173,29 +170,16 @@ async function calculateDynamicAbsorption(
         sgv: { $exists: true }
     }).sort({ date: -1 }).limit(2).lean();
 
-    if (entries.length < 2) {
-        return { deviation: 0, estimatedCarbs: 0 };
-    }
+    if (entries.length < 2) return { deviation: 0, estimatedCarbs: 0 };
 
     const curr = entries[0]!;
     const prev = entries[1]!;
-
-    // Time diff in minutes
     const timeDiff = (curr.date - prev.date) / (1000 * 60);
-    if (timeDiff < 3 || timeDiff > 12) {
-        // Gap too large or small for reliable 5-min calc
-        return { deviation: 0, estimatedCarbs: 0 };
-    }
+
+    if (timeDiff < 3 || timeDiff > 12) return { deviation: 0, estimatedCarbs: 0 };
 
     const delta = curr.sgv - prev.sgv;
 
-    // 2. Get Insulin Activity
-    // Note: getProfileStore/resolveActiveProfile logic requires IOB, but we have ISF/CR passed in.
-    // We need IOB activity rate. We'll use default DIA if not easily available, or fetch.
-    // Since this is called from getCOB which resolved profile, we could pass DIA. 
-    // For now, let's fetch profile inside IOB logic or reuse what we have. 
-    // calculateInsulinActivityRate takes (timestamp, dia).
-    // Let's resolve DIA again properly or default to 5h.
     let dia = 5;
     const profile = await resolveActiveProfile(timestamp);
     if (profile) {
@@ -203,25 +187,12 @@ async function calculateDynamicAbsorption(
         if (store) dia = store.dia;
     }
 
-    // Activity = units absorbing in next 5 min.
-    // We want units absorged in LAST 5 min (approx same as next).
     const activity = await calculateInsulinActivityRate(timestamp, dia);
-
-    // BGI = Activity * ISF (expected drop)
-    // Actually activity is positive, so impact is Drop.
-    // Glucose Impact (drop) = activity * ISF
     const expectedDrop = activity * isf;
-
-    // Deviation = Actual Delta - (-Expected Drop) ??
-    // If Insulin expects -5, and we got +5. Dev = 5 - (-5) = 10.
-    // Deviation = Delta + ExpectedDrop
     const deviation = delta + expectedDrop;
 
-    // Est Carbs = Deviation / (ISF / CR)
-    // Sensitivity = Rise per gram
     const sensitivity = isf / cr;
     let estimatedCarbs = 0;
-
     if (deviation > 0 && sensitivity > 0) {
         estimatedCarbs = deviation / sensitivity;
     }
@@ -229,90 +200,113 @@ async function calculateDynamicAbsorption(
     return { deviation, estimatedCarbs };
 }
 
+
 /**
- * Calculates COB at a specific time by summing individual carb event curves.
- * For a set of carb treatments, creates absorption curves and sums them.
- * 
- * @param treatments - Array of carb treatments with carbs and created_at
- * @param atTime - The target time for COB calculation
- * @param isf - Insulin sensitivity factor (in user's preferred units)
- * @param cr - Carb ratio (grams per unit)
- * @param absorptionRate - Optional absorption rate (g/5min)
- * @returns Object containing calculated COB, glucose impact, event count, and avg size
+ * Calculates COB at a specific time (Snapshot).
  */
 export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: number, absorptionRate?: number): {
     cob: number;
+    pendingCOB: number;
+    activeCOB: number;
     glucoseImpact: number;
     eventCount: number;
     avgEventSize: number;
-    relevantTreatments: any[];
+    observedDeviation: number;
+    estimatedAbsorption: number;
 } {
-    const curves: ICarbEventCurve[] = [];
-    const relevantTreatments: any[] = [];
+    let totalCOB = 0;
+    let pendingCOB = 0;
+    let activeCOB = 0;
+    let totalCarbAbsorption = 0; // g/5min
+
+    const atTimeMs = atTime.getTime();
+    const rate = absorptionRate || calculateMinAbsorptionRate(isf, cr, 8); // Default fallback
 
     for (const t of treatments) {
-        if (!t.carbs || t.carbs <= 0) continue;
+        if (!t.carbs) continue;
 
-        const eventTime = new Date(t.created_at);
-        const curve = calculateCarbEventCurve(t.carbs, eventTime, atTime, absorptionRate);
-        curves.push(curve);
+        const eventTime = new Date(t.created_at).getTime();
+        const duration = t.duration ? t.duration / (1000 * 60) : 0; // min
+        const timeSinceEventMin = (atTimeMs - eventTime) / (1000 * 60);
 
-        // Track events that still have COB at target time (index 0)
-        if (curve.cobAtInterval[0] && curve.cobAtInterval[0] > 0) {
-            relevantTreatments.push(t);
+        // Get absorption status
+        const abs = getBolusAbsorption(timeSinceEventMin, t.carbs, duration, rate);
+
+        const remaining = Math.max(0, t.carbs - abs.absorbed);
+
+        totalCOB += remaining;
+        totalCarbAbsorption += abs.rate;
+
+        // Pending vs Active Logic for S-Curve/Distributed:
+        // "Pending" = The part of the distributed meal that hasn't even entered the system?
+        // In the virtual packet model, pending was "future packets".
+        // In the integral model, "Pending" is simply (TotalCarbs * Fraction_Time_Remaining_in_Distribution)?
+        // 
+        // Let's define:
+        // Active COB = Carbs that have "entered" the absorption buffer but not yet cleared.
+        // Pending COB = Carbs waiting to "enter" (i.e., remaining duration of the meal entry).
+        // 
+        // If duration=0 (instant), Pending is always 0.
+        // If duration=60, and t=30. Half the meal has "entered".
+        // So Pending = Carbs * (1 - t/Duration) (clamped).
+
+        let pending = 0;
+        if (duration > 0 && timeSinceEventMin < duration) {
+            // Linearly remaining portion of the meal
+            // If t < 0 (future meal), pending = carbs.
+            if (timeSinceEventMin < 0) pending = t.carbs;
+            else pending = t.carbs * (1 - timeSinceEventMin / duration);
+        } else if (duration > 0 && timeSinceEventMin < 0) {
+            pending = t.carbs;
         }
+
+        // Active = TotalRemaining - Pending
+        // (Because TotalCOB is the physically remaining unabsorbed carbs. Some are in stomach (pending), some in gut (active)?)
+        // Actually, normally COB implies anything in the body.
+        // But for display "Pending" is useful.
+
+        const active = Math.max(0, remaining - pending);
+
+        pendingCOB += pending;
+        activeCOB += active;
     }
 
-    // Sum all curves at index 0 (target time)
-    let totalCOB = 0;
-    let totalCarbAbsorption = 0;
-
-    for (const curve of curves) {
-        totalCOB += curve.cobAtInterval[0] || 0;
-        totalCarbAbsorption += curve.carbAbsorptionAtInterval[0] || 0;
-    }
-
-    // Calculate glucose impact: carbAbsorption * (ISF / CR)
-    // ISF is already in user's preferred units, CR = grams per unit
-    // Result: glucose units per 5 minutes
     const glucoseImpact = totalCarbAbsorption * (isf / cr);
 
-    const eventCount = relevantTreatments.length;
+    const eventCount = treatments.length;
     const avgEventSize = eventCount > 0
-        ? relevantTreatments.reduce((a, b) => a + b.carbs, 0) / eventCount
+        ? treatments.reduce((a, b) => a + b.carbs, 0) / eventCount
         : 0;
 
     return {
         cob: Math.round(totalCOB * 10) / 10,
+        pendingCOB: Math.round(pendingCOB * 10) / 10,
+        activeCOB: Math.round(activeCOB * 10) / 10,
         glucoseImpact: Math.round(glucoseImpact * 100) / 100,
         eventCount,
         avgEventSize: Math.round(avgEventSize * 10) / 10,
-        relevantTreatments // Return relevant treatments for avgEventSize calculation in getCOB
+        observedDeviation: 0, // Filled by caller via dynamic
+        estimatedAbsorption: 0 // Filled by caller
     };
 }
 
+
 /**
- * Service to get detailed COB at a specific time.
- * Fetches carb treatments and calculates COB with glucose impact from profile.
- * 
- * @param timestamp - ISO timestamp or Date (defaults to now)
- * @param includeTimeseries - If true, include historical timeseries arrays
- * @returns Detailed COB result with cob, glucose impact, event count, and avg size
+ * Main Service: Get COB + Timeseries
  */
 export async function getCOB(timestamp: string | Date, includeTimeseries: boolean = true): Promise<ICOBResult> {
     const date = new Date(timestamp);
     const lookbackMs = MAX_LOOKBACK_HOURS * 60 * 60 * 1000;
 
-    // Fetch profile to get ISF, CR, and units
     const profileInfo = await resolveActiveProfile(date);
-    let isf = 50;  // Default ISF (mg/dL)
-    let cr = 10;   // Default CR
-    let units = 'mg/dL'; // Default units
-    let minCarbImpact = 8; // Default floor (mg/dL/5min)
+    let isf = 50;
+    let cr = 10;
+    let units = 'mg/dL';
+    let minCarbImpact = 8;
 
-    // Lookup min_5m_carbimpact from devicestatus config
     const configDoc = await DeviceStatus.findOne({
-        "configuration.sensitivityConfiguration.openaps_smb_min_5m_carbimpact": { $exists: true }
+        "configuration.sensitivityConfiguration.openaps_smb_min_5m_carbimpact": { $exists: true },
+        "created_at": { $lte: date.toISOString() }
     }).sort({ created_at: -1 });
 
     if (configDoc?.configuration?.sensitivityConfiguration?.openaps_smb_min_5m_carbimpact) {
@@ -332,7 +326,9 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
         }
     }
 
-    // Fetch treatments with carbs in the lookback window
+    // Extended lookback query
+    // We fetch a wide window to account for long durations
+    // Start lookback = MAX_LOOKBACK (12h)
     const treatments = await Treatment.find({
         eventType: { $in: ['Meal Bolus', 'Carb Correction'] },
         carbs: { $exists: true, $gt: 0 },
@@ -342,19 +338,23 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
         }
     });
 
-    // Calculate dynamic rate from settings
-    const absorptionRate = calculateMinAbsorptionRate(isf, cr, minCarbImpact, units);
+    let absorptionRate = calculateMinAbsorptionRate(isf, cr, minCarbImpact, units);
+
+    // Dynamic Adjustment: If observed absorption (estimatedCarbs) is faster than configured minimum,
+    // boost the rate to match reality.
+    const dyn = await calculateDynamicAbsorption(date, isf, cr, units);
+    if (dyn.estimatedCarbs > absorptionRate) {
+        absorptionRate = dyn.estimatedCarbs;
+    }
 
     const baseResult = calculateCOB(treatments, date, isf, cr, absorptionRate);
 
-    // Calculate dynamic absorption
-    const dyn = await calculateDynamicAbsorption(date, isf, cr, units);
 
-    // Get Reported COB (Latest DeviceStatus)
+    // Get Reported COB
     const latestStatus = await DeviceStatus.findOne({
-        "openaps.suggested": { $exists: true }
+        "openaps.suggested": { $exists: true },
+        "created_at": { $lte: date.toISOString() }
     }).sort({ created_at: -1 });
-
     const reportedCOB = latestStatus?.openaps?.suggested?.COB || 0;
     const reportedTime = latestStatus?.created_at || '';
 
@@ -362,88 +362,87 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
         timestamp: date.toISOString(),
         units,
         lookbackMinutes: MAX_LOOKBACK_HOURS * 60,
-
         settings: {
-            isf: Math.round(isf * 100) / 100,
-            cr: Math.round(cr * 100) / 100,
-            minCarbImpact,
-            absorptionRate: Math.round(absorptionRate * 100) / 100 // g/5min
+            isf, cr, minCarbImpact, absorptionRate
         },
-
         calculated: {
-            cob: baseResult.cob,
-            glucoseImpact: baseResult.glucoseImpact,
-            eventCount: baseResult.eventCount,
-            avgEventSize: baseResult.avgEventSize,
+            ...baseResult,
             observedDeviation: Math.round(dyn.deviation * 10) / 10,
             estimatedAbsorption: Math.round(dyn.estimatedCarbs * 10) / 10
         },
-
         reported: {
             cob: reportedCOB,
             timestamp: reportedTime
         }
     };
 
-    // Build timeseries if requested (NOW WITH FUTURE PROJECTION!)
     if (includeTimeseries) {
-        const numIntervalsPast = Math.ceil((MAX_LOOKBACK_HOURS * 60) / INTERVAL_MINUTES) + 1;
-        const timestamps: string[] = [];
-        const totalCOBArray: number[] = [];
-        const carbAbsorptionArray: number[] = [];
-        const glucoseImpactArray: number[] = [];
+        // Generate Timeseries (Past + Future)
+        // From -4h to +6h?
+        // Let's align with the dashboard window usually requested, or standard prediction (4h).
+        // Let's do -4h to +4h.
+        const pastMinutes = 240;
+        const futureMinutes = 240;
 
-        // Create curves ONCE for all treatments with future projection
-        const curves: ICarbEventCurve[] = [];
-        for (const t of treatments) {
-            if (!t.carbs || t.carbs <= 0) continue;
-            const eventTime = new Date(t.created_at);
-            const curve = calculateCarbEventCurve(t.carbs, eventTime, date, absorptionRate, true);
-            curves.push(curve);
-        }
+        const data = [];
 
-        // Get the nowIndex from any curve (they all have the same structure)
-        const nowIndex = curves.length > 0 ? curves[0].nowIndex : numIntervalsPast - 1;
+        // Optimize: Pre-calculate per-treatment parameters? 
+        // getBolusAbsorption does that internally. 
+        // We'll iterate time t, and inside iterate treatments.
 
-        // Calculate how far into the future we need to go (until all carbs are absorbed)
-        let maxFutureIndex = nowIndex;
-        for (const curve of curves) {
-            maxFutureIndex = Math.max(maxFutureIndex, curve.cobAtInterval.length - 1);
-        }
-        const totalIntervals = maxFutureIndex + 1;
+        const startTime = date.getTime() - pastMinutes * 60000;
+        const endTime = date.getTime() + futureMinutes * 60000;
 
-        // Build arrays from oldest (past) to newest (future)
-        for (let arrayIdx = 0; arrayIdx < totalIntervals; arrayIdx++) {
-            // Convert arrayIdx to time offset from "now"
-            const offsetFromNow = arrayIdx - nowIndex;
-            const intervalTime = new Date(date.getTime() + (offsetFromNow * INTERVAL_MINUTES * 60 * 1000));
-            timestamps.push(intervalTime.toISOString());
+        for (let t = startTime; t <= endTime; t += INTERVAL_MINUTES * 60000) {
+            const timeDate = new Date(t);
+            // This is "calculateCOB" for this specific time slice
+            // but simplified locally for speed/structure
+            let totalCOB = 0;
+            let totalAbs = 0;
+            let pendingCOB = 0;
+            let activeCOB = 0;
 
-            // Sum COB from all curves at this interval index
-            let totalCOBAtInterval = 0;
-            let totalAbsorptionAtInterval = 0;
+            for (const treat of treatments) {
+                const tEvent = new Date(treat.created_at).getTime();
+                const duration = treat.duration ? treat.duration / 60000 : 0;
+                const dtMin = (t - tEvent) / 60000;
 
-            for (const curve of curves) {
-                totalCOBAtInterval += curve.cobAtInterval[arrayIdx] || 0;
-                totalAbsorptionAtInterval += curve.carbAbsorptionAtInterval[arrayIdx] || 0;
+                const res = getBolusAbsorption(dtMin, treat.carbs, duration, absorptionRate);
+                const remaining = Math.max(0, treat.carbs - res.absorbed);
+
+                totalCOB += remaining;
+                totalAbs += res.rate;
+
+                // Pending logic
+                let pending = 0;
+                if (duration > 0 && dtMin < duration) {
+                    if (dtMin < 0) pending = treat.carbs;
+                    else pending = treat.carbs * (1 - dtMin / duration);
+                } else if (duration > 0 && dtMin < 0) {
+                    pending = treat.carbs;
+                }
+                const active = Math.max(0, remaining - pending);
+
+                pendingCOB += pending;
+                activeCOB += active;
             }
 
-            totalCOBArray.push(Math.round(totalCOBAtInterval * 10) / 10);
-            carbAbsorptionArray.push(Math.round(totalAbsorptionAtInterval * 100) / 100);
-
-            const glucoseImpactAtInterval = totalAbsorptionAtInterval * (isf / cr);
-            glucoseImpactArray.push(Math.round(glucoseImpactAtInterval * 100) / 100);
+            data.push({
+                timestamp: timeDate.toISOString(),
+                cob: Math.round(totalCOB * 10) / 10,
+                pendingCOB: Math.round(pendingCOB * 10) / 10,
+                activeCOB: Math.round(activeCOB * 10) / 10,
+                absorption: Math.round(totalAbs * 100) / 100,
+                glucoseImpact: Math.round((totalAbs * (isf / cr)) * 100) / 100
+            });
         }
 
         result.timeseries = {
-            intervalMinutes: 5,
-            startTime: timestamps[0] || date.toISOString(),
-            endTime: timestamps[timestamps.length - 1] || date.toISOString(),
-            length: timestamps.length,
-            timestamps,
-            totalCOB: totalCOBArray,
-            carbAbsorption: carbAbsorptionArray,
-            glucoseImpact: glucoseImpactArray
+            intervalMinutes: INTERVAL_MINUTES,
+            startTime: new Date(startTime).toISOString(),
+            endTime: new Date(endTime).toISOString(),
+            length: data.length,
+            data
         };
     }
 
