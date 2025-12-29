@@ -30,6 +30,9 @@ export interface IPredictionPoint {
 
 export async function getGlucosePrediction(timestamp: string | Date, durationMinutes?: number): Promise<Array<{ timestamp: string, sgv: number, iob: number, cob: number, pendingCOB: number, activeCOB: number }>> {
 
+    const now = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
+    const nowIso = now.toISOString();
+
     // 1. Get current status with timeseries
     const status = await getStatus(timestamp, true);
     if (!status.glucose || !status.iob?.timeseries || !status.cob?.timeseries) {
@@ -157,7 +160,6 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
         // Future Basal Impact
         let futureBasalImpact = 0;
         if (futureBasalCurves.length > 0) {
-            const offset = i - nowIdx;
             for (const curve of futureBasalCurves) {
                 if (offset > 0 && curve.iobAtInterval[offset - 1] !== undefined && curve.iobAtInterval[offset] !== undefined) {
                     const activity = Math.max(0, curve.iobAtInterval[offset - 1]! - curve.iobAtInterval[offset]!);
@@ -167,7 +169,7 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
         }
 
         // Apply unexplained trend, decaying it over time
-        const intervalsSinceNow = i - nowIdx;
+        const intervalsSinceNow = offset;
         const baseDecay = 0.95;
         const adjustedDecay = Math.max(0.8, Math.min(0.99, baseDecay * momentumFactor));
         const decayFactor = Math.pow(adjustedDecay, intervalsSinceNow - 1);
