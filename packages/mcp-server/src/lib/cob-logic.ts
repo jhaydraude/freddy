@@ -338,14 +338,11 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
         }
     });
 
-    let absorptionRate = calculateMinAbsorptionRate(isf, cr, minCarbImpact, units);
-
-    // Dynamic Adjustment: If observed absorption (estimatedCarbs) is faster than configured minimum,
-    // boost the rate to match reality.
-    const dyn = await calculateDynamicAbsorption(date, isf, cr, units);
-    if (dyn.estimatedCarbs > absorptionRate) {
-        absorptionRate = dyn.estimatedCarbs;
-    }
+    // Use consistent absorption rate based on profile settings
+    // Note: Dynamic absorption adjustment removed to prevent COB oscillations
+    // The rate was varying wildly (e.g., 13.393 → 1.717 → 0.463 g/5min) based on
+    // momentary glucose trends, causing absorption curves to recalculate inconsistently
+    const absorptionRate = calculateMinAbsorptionRate(isf, cr, minCarbImpact, units);
 
     const baseResult = calculateCOB(treatments, date, isf, cr, absorptionRate);
 
@@ -367,8 +364,8 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
         },
         calculated: {
             ...baseResult,
-            observedDeviation: Math.round(dyn.deviation * 10) / 10,
-            estimatedAbsorption: Math.round(dyn.estimatedCarbs * 10) / 10
+            observedDeviation: 0,  // Dynamic absorption removed for consistency
+            estimatedAbsorption: 0 // Dynamic absorption removed for consistency
         },
         reported: {
             cob: reportedCOB,
