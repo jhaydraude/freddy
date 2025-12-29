@@ -51,13 +51,11 @@ function getTriangleParameters(carbs: number, absorbRateGPer5Min: number) {
 
     // For the new model to respect the same "speed", let's say the Triangle 
     // should have roughly the same effective duration.
-    // Let's set Total Duration = 1.5 * LinearDuration (to allow for the tail).
-    const durationMin = linearDurationMin * 1.5;
+    // Let's set Total Duration = 1.2 * LinearDuration (to allow for the tail).
+    const durationMin = Math.max(60, linearDurationMin * 1.2);
 
-    // Peak at 1/3 of duration ?? Or 45 mins?
-    // "Fast" carbs peak at 45-60m. 
-    // Let's define peak relative to duration.
-    const peakTimeMin = Math.max(15, durationMin * 0.3);
+    // Peak at 0.25 of duration
+    const peakTimeMin = Math.max(15, durationMin * 0.25);
 
     return { durationMin, peakTimeMin };
 }

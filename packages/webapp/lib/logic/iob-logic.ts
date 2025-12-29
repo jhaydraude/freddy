@@ -2,53 +2,7 @@ import { Treatment, DeviceStatus } from '../db/models.js';
 import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
 import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve } from './iob-curves.js';
 import { getBasalIOB, createBasalCurvesForTimeseries } from './iob-basal.js';
-
-/** Extended IOB result with detailed metrics */
-export interface IIOBResult {
-    timestamp: string;
-    units: string;
-    lookbackMinutes: number;
-
-    settings: {
-        isf: number;
-        dia: number;
-        autosensRatio: number;
-        effectiveISF: number;
-    };
-
-    calculated: {
-        totalIOB: number;     // Net IOB (Delivered - Scheduled Basal)
-        bolusIOB: number;
-        basalIOB: number;     // Net Basal IOB (Delivered - Scheduled)
-        smbIOB: number;       // IOB from Small Boluses (< 0.5 U)
-        glucoseImpact: number;
-        bolusCount: number;
-        smbCount: number;
-    };
-
-    reported: {
-        totalIOB: number;
-        bolusIOB: number;
-        basalIOB: number;
-        timestamp: string;
-    };
-
-    // Optional timeseries data
-    timeseries?: {
-        intervalMinutes: 5;
-        startTime: string;          // DIA hours ago
-        endTime: string;            // Current timestamp
-        length: number;             // Array length
-
-        timestamps: string[];       // ISO timestamps [oldest → newest]
-        totalIOB: number[];         // Total IOB at each interval
-        bolusIOB: number[];         // Bolus IOB at each interval
-        basalIOB: number[];         // Net basal IOB at each interval
-        activity: number[];         // Insulin absorbed in NEXT 5 min
-        glucoseImpact: number[];    // Expected BG drop (activity × ISF)
-        nowIndex: number;           // Index representing "now"
-    };
-}
+import { IIOBResult } from './types.js';
 
 /**
  * Service to get detailed IOB at a specific time.

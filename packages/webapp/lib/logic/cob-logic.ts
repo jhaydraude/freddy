@@ -1,6 +1,7 @@
 import { Treatment, Entry, DeviceStatus } from '../db/models.js';
 import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
 import { getIOB, calculateInsulinActivityRate } from './iob-logic.js';
+import { ICOBResult } from './types.js';
 
 /** Result for a single carb event's absorption curve */
 export interface ICarbEventCurve {
@@ -9,51 +10,6 @@ export interface ICarbEventCurve {
     cobAtInterval: number[];
     carbAbsorptionAtInterval: number[];
     nowIndex: number;
-}
-
-export interface ICOBResult {
-    timestamp: string;
-    units: string;
-    lookbackMinutes: number;
-
-    settings: {
-        isf: number;
-        cr: number;
-        minCarbImpact: number;
-        absorptionRate: number; // g/5min (Base reference rate)
-    };
-
-    calculated: {
-        cob: number;
-        pendingCOB: number;
-        activeCOB: number;
-        glucoseImpact: number;
-        eventCount: number;
-        avgEventSize: number;
-        observedDeviation: number;
-        estimatedAbsorption: number;
-    };
-
-    reported: {
-        cob: number;
-        timestamp: string;
-    };
-
-    timeseries?: {
-        intervalMinutes: number;
-        startTime: string;
-        endTime: string;
-        length: number;
-        data: Array<{
-            timestamp: string;
-            cob: number;
-            pendingCOB: number;
-            activeCOB: number;
-            absorption: number;     // g/5min
-            glucoseImpact: number;  // mg/dL/5min
-        }>;
-        nowIndex: number;           // Index representing "now"
-    };
 }
 
 /** Constants */
@@ -82,8 +38,10 @@ export function calculateMinAbsorptionRate(isf: number, cr: number, minCarbImpac
  */
 function getTriangleParameters(carbs: number, absorbRateGPer5Min: number) {
     const linearDurationMin = (carbs / absorbRateGPer5Min) * 5;
-    const durationMin = Math.max(60, linearDurationMin * 1.5);
-    const peakTimeMin = Math.max(15, durationMin * 0.3);
+    // Faster absorption: Reduce duration multiplier from 1.5 to 1.2
+    const durationMin = Math.max(60, linearDurationMin * 1.2);
+    // Move peak earlier: Shift from 0.3 to 0.25
+    const peakTimeMin = Math.max(15, durationMin * 0.25);
     return { durationMin, peakTimeMin };
 }
 

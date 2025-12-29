@@ -1,62 +1,10 @@
 import { Entry, DeviceStatus, Treatment } from '../db/models.js';
 import { resolveActiveProfile, getProfileStore } from './profile-logic.js';
 import { getBasalRate } from './basal-logic.js';
-import { getIOB, type IIOBResult } from './iob-logic.js';
-import { getCOB, type ICOBResult } from './cob-logic.js';
-import { attributeGlucoseChange, type IAttributionResult } from './attribution-logic.js';
-
-export interface IGlucoseResult {
-    timestamp: string;
-    units: string;
-
-    current: {
-        sgv: number;
-        direction: string;
-        trend: number;
-        delta5m: number | null;
-        delta10m: number | null;
-        delta15m: number | null;
-        delta30m: number | null;
-        history30m: number[]; // Historical SGVs over last 30m
-        rateOfChange: number | null;  // mg/dL per minute
-    };
-
-    sensor: {
-        age: number | null;  // Hours since sensor change
-        device: string;
-        noise?: number;      // Signal quality (1=Clean, 4=Very Noisy)
-        rssi?: number;       // Signal strength
-        calibration?: {
-            mbg: number;     // Meter blood glucose
-            timeSince: number;  // Minutes since calibration
-        };
-    };
-}
-
-export interface IStatusResult {
-    pump: {
-        basal: any;
-        pumpAge: number | null;
-        reservoir: number | undefined;
-        clock: string | undefined;
-        status: any;
-    };
-    iob: IIOBResult;
-    cob: ICOBResult;
-    glucose: any;
-    profile: any;
-    attribution?: IAttributionResult;
-    uploader: {
-        battery: number | undefined;
-        device: string;
-    };
-    meta: {
-        reported_date: string | undefined;
-        status_date: string;
-        created_date: string;
-        app: string;
-    };
-}
+import { getIOB } from './iob-logic.js';
+import { getCOB } from './cob-logic.js';
+import { attributeGlucoseChange } from './attribution-logic.js';
+import { IGlucoseResult, IStatusResult, IIOBResult, ICOBResult, IAttributionResult } from './types.js';
 
 /**
  * Fetches the latest glucose readings and calculates 5m/10m deltas.

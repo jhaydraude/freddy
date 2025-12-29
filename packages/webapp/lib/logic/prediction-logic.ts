@@ -103,6 +103,11 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
         const attr30m = status.attribution.timeframes.find(tf => tf.minutes === 30);
         if (attr30m) {
             unexplainedTrendPerInterval = attr30m.components.unexplained / (30 / INTERVAL_MINUTES);
+
+            // Constrain trend to physiologically plausible limits to prevent runaway projections
+            const isMmol = (status.glucose?.units || '').toLowerCase().includes('mmol') || currentSgv < 25;
+            const cap = isMmol ? 0.4 : 8.0; // 0.4 mmol/L or 8 mg/dL per 5-min interval
+            unexplainedTrendPerInterval = Math.max(-cap, Math.min(cap, unexplainedTrendPerInterval));
         }
     }
 
@@ -170,7 +175,7 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
 
         // Apply unexplained trend, decaying it over time
         const intervalsSinceNow = offset;
-        const baseDecay = 0.95;
+        const baseDecay = 0.85; // Faster decay for "unexplained" noise (was 0.95)
         const adjustedDecay = Math.max(0.8, Math.min(0.99, baseDecay * momentumFactor));
         const decayFactor = Math.pow(adjustedDecay, intervalsSinceNow - 1);
         const currentUnexplainedImpact = unexplainedTrendPerInterval * decayFactor;

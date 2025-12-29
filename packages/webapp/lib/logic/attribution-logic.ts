@@ -1,51 +1,4 @@
-import type { IStatusResult } from './status-logic.js';
-
-/** Attribution for a single timeframe */
-export interface IAttributionTimeframe {
-    timeframe: '5min' | '10min' | '15min' | '30min';
-    minutes: number;
-    glucoseChange: {
-        actual: number;           // Actual BG change (mg/dL or mmol/L)
-        predicted: number;        // Sum of all component predictions
-    };
-    components: {
-        insulin: {
-            value: number;        // Glucose impact from insulin (negative = lowering)
-            activity: number;     // Units of insulin absorbed
-            isf: number;          // ISF used for calculation
-        };
-        carbs: {
-            value: number;        // Glucose impact from carbs (positive = raising)
-            absorption: number;   // Grams of carbs absorbed
-            carbRatio: number;    // Carb ratio used
-        };
-        basal: {
-            value: number;        // Glucose impact from basal deviation
-            deviation: number;    // Difference from scheduled (U)
-        };
-        unexplained: number;      // Residual (actual - predicted)
-    };
-}
-
-/** Single point in attribution history */
-export interface IAttributionHistoryPoint {
-    timestamp: string;
-    actual: number;
-    predicted: number;
-    unexplained: number;
-    components: {
-        insulin: number;
-        carbs: number;
-        basal: number;
-    };
-}
-
-/** Complete attribution result */
-export interface IAttributionResult {
-    timestamp: string;
-    timeframes: IAttributionTimeframe[];
-    history?: IAttributionHistoryPoint[];
-}
+import { IStatusResult, IAttributionResult, IAttributionTimeframe, IAttributionHistoryPoint } from './types.js';
 
 /**
  * Calculate glucose change attribution for multiple timeframes.
@@ -87,17 +40,26 @@ export async function attributeGlucoseChange(
         // Calculate interval count (1 interval = 5 min)
         const intervalCount = Math.round(minutes / 5);
 
-        // Calculate insulin impact
+        // Calculate insulin and basal impacts from timeseries
         let insulinImpact = 0;
         let insulinActivity = 0;
-        if (iobTimeseries && iobTimeseries.glucoseImpact) {
-            const nowIdx = (iobTimeseries as any).nowIndex ?? (iobTimeseries.glucoseImpact.length - 1);
-            // Sum glucose impact backwards from now index
+        let basalImpact = 0;
+        let basalDeviation = 0;
+
+        if (iobTimeseries) {
+            const nowIdx = (iobTimeseries as any).nowIndex ?? (iobTimeseries.totalIOB.length - 1);
             for (let i = 0; i < intervalCount; i++) {
                 const idx = nowIdx - i;
-                if (idx >= 0) {
-                    insulinImpact -= iobTimeseries.glucoseImpact[idx] || 0;
-                    insulinActivity += iobTimeseries.activity[idx] || 0;
+                if (idx > 0) {
+                    // Bolus part
+                    const bolusAct = Math.max(0, iobTimeseries.bolusIOB[idx - 1] - iobTimeseries.bolusIOB[idx]);
+                    insulinImpact -= bolusAct * isf;
+                    insulinActivity += bolusAct;
+
+                    // Basal deviation part
+                    const basalAct = iobTimeseries.basalIOB[idx - 1] - iobTimeseries.basalIOB[idx];
+                    basalImpact -= basalAct * isf;
+                    basalDeviation += basalAct;
                 }
             }
         }
@@ -116,10 +78,6 @@ export async function attributeGlucoseChange(
                 }
             }
         }
-
-        // Calculate basal impact
-        const basalIOB = currentStatus.iob?.calculated?.basalIOB || 0;
-        const basalImpact = -basalIOB * isf;
 
         const predictedChange = insulinImpact + carbImpact + basalImpact;
         const unexplained = actualChange - predictedChange;
@@ -146,7 +104,7 @@ export async function attributeGlucoseChange(
                 },
                 basal: {
                     value: Math.round(basalImpact * 10) / 10,
-                    deviation: Math.round(basalIOB * 1000) / 1000
+                    deviation: Math.round(basalDeviation * 1000) / 1000
                 },
                 unexplained: Math.round(unexplained * 10) / 10
             }
