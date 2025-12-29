@@ -1,55 +1,30 @@
-import { ProfileAnalysis } from '../db/models.js';
+import { webAppApi } from '../api-client.js';
 
 export const toolDefinition = {
     name: "get_profile_analysis_history",
-    description: "Retrieves the history of profile analysis runs, including estimated parameters and recommendations.",
+    description: "Retrieve historical profile analysis results",
     inputSchema: {
         type: "object",
         properties: {
-            limit: { type: "number", description: "Number of records to return (default: 1)" }
+            limit: { type: "number", description: "Number of analysis records to retrieve (default: 10)" }
         }
     }
 };
 
 export async function handler(args: any) {
-    const limit = (args?.limit as number) || 1;
-
+    const limit = (args?.limit as number) || 10;
     try {
-        const history = await ProfileAnalysis.find({})
-            .sort({ timestamp: -1 })
-            .limit(limit)
-            .lean();
-
-        if (!history || history.length === 0) {
-            return {
-                content: [{
-                    type: "text",
-                    text: JSON.stringify([], null, 2)
-                }]
-            };
-        }
-
-        // Format dates for better readability
-        const formattedHistory = history.map((record: any) => ({
-            ...record,
-            timestamp: record.timestamp.toISOString()
-        }));
-
+        const history = await webAppApi.getProfileHistory(limit);
         return {
             content: [{
                 type: "text",
-                text: JSON.stringify(formattedHistory, null, 2)
+                text: JSON.stringify(history, null, 2)
             }]
         };
     } catch (error: any) {
         return {
-            content: [{
-                type: "text",
-                text: JSON.stringify({
-                    error: "Failed to retrieve profile analysis history",
-                    message: error.message
-                }, null, 2)
-            }]
+            content: [{ type: "text", text: `Error: ${error.message}` }],
+            isError: true
         };
     }
 }

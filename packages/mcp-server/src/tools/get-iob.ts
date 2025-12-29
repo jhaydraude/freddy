@@ -1,5 +1,4 @@
-import { getIOB } from '../lib/iob-logic.js';
-import { DeviceStatus } from '../db/models.js';
+import { webAppApi } from '../api-client.js';
 
 export const toolDefinition = {
     name: "get_iob",
@@ -17,23 +16,18 @@ export async function handler(args: any) {
     const timestamp = (args?.timestamp as string) || new Date().toISOString();
     const includeTimeseries = args?.includeTimeseries !== false;
 
-    const [calcIOB, latestDS] = await Promise.all([
-        getIOB(timestamp, includeTimeseries),
-        DeviceStatus.findOne({
-            "openaps.iob": { $exists: true }
-        }).sort({ created_at: -1 })
-    ]);
-
-    const reportedIOB = latestDS?.openaps?.iob || null;
-
-    return {
-        content: [{
-            type: "text",
-            text: JSON.stringify({
-                timestamp,
-                calculated: calcIOB,
-                reported: reportedIOB
-            }, null, 2)
-        }]
-    };
+    try {
+        const data = await webAppApi.getIOB(timestamp, includeTimeseries);
+        return {
+            content: [{
+                type: "text",
+                text: JSON.stringify(data, null, 2)
+            }]
+        };
+    } catch (error: any) {
+        return {
+            content: [{ type: "text", text: `Error: ${error.message}` }],
+            isError: true
+        };
+    }
 }

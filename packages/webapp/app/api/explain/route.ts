@@ -7,9 +7,9 @@ export async function GET(request: Request) {
 
     try {
         const explanation = await getExplanation(timestamp);
-        return NextResponse.json({ explanation });
-    } catch (error) {
-        console.error('Error fetching explanation:', error);
-        return NextResponse.json({ error: 'Failed to fetch explanation' }, { status: 500 });
+        return NextResponse.json(explanation);
+    } catch (error: any) {
+        console.error('Error in /api/explain:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

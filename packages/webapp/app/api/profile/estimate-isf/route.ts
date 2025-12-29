@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
-import { runProfileAnalysis } from '@/lib/mcp';
+import { runISFEstimation } from '@/lib/mcp';
 
 export async function POST(request: Request) {
     try {
         const options = await request.json();
-        const result = await runProfileAnalysis(options);
+        const result = await runISFEstimation(options);
         return NextResponse.json(result);
     } catch (error: any) {
-        console.error('Error in /api/profile/analyze:', error);
+        console.error('Error in /api/profile/estimate-isf:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

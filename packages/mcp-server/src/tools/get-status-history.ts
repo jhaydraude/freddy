@@ -1,29 +1,31 @@
-import { getStatusHistory } from '../lib/history-logic.js';
+import { webAppApi } from '../api-client.js';
 
 export const toolDefinition = {
     name: "get_status_history",
-    description: "Get system status history over a window of time at regular intervals",
+    description: "Retrieve a series of historical status points. Useful for training data or trend analysis.",
     inputSchema: {
         type: "object",
         properties: {
-            startTime: { type: "string", description: "ISO timestamp for window start (default: now)" },
-            windowSize: { type: "number", description: "Window size in minutes (default: 60)" },
-            bucketSize: { type: "number", description: "Bucket interval in minutes (default: 5)" }
+            startTime: { type: "string", description: "ISO timestamp representing the END of the window (looks backward from here)" },
+            windowSize: { type: "number", description: "Minutes of history to retrieve (default: 60)" },
+            bucketSize: { type: "number", description: "Bucket size in minutes (default: 5)" }
         }
     }
 };
 
 export async function handler(args: any) {
-    const result = await getStatusHistory({
-        startTime: args?.startTime,
-        windowSize: args?.windowSize,
-        bucketSize: args?.bucketSize
-    });
-
-    return {
-        content: [{
-            type: "text",
-            text: JSON.stringify(result, null, 2)
-        }]
-    };
+    try {
+        const data = await webAppApi.getHistory(args);
+        return {
+            content: [{
+                type: "text",
+                text: JSON.stringify(data, null, 2)
+            }]
+        };
+    } catch (error: any) {
+        return {
+            content: [{ type: "text", text: `Error: ${error.message}` }],
+            isError: true
+        };
+    }
 }

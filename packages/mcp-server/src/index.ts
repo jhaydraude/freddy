@@ -5,7 +5,6 @@ import {
     ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { connectToDatabase } from "./db/connection.js";
 
 // Import tool handlers
 import * as getGlucose from "./tools/get-glucose.js";
@@ -66,8 +65,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
     try {
-        await connectToDatabase();
-
         const tool = tools.find(t => t.toolDefinition.name === name);
         if (!tool) {
             throw new Error(`Unknown tool: ${name}`);
