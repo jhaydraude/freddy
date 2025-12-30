@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Moon, Settings, LayoutDashboard } from 'lucide-react';
+import { Moon, Settings, LayoutDashboard, BookOpen } from 'lucide-react';
 
 export default function Header({
     title = "NightManager",
@@ -32,8 +32,8 @@ export default function Header({
                         <Link
                             href="/"
                             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/')
-                                    ? 'bg-zinc-800 text-white shadow-sm'
-                                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                                ? 'bg-zinc-800 text-white shadow-sm'
+                                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
                                 }`}
                         >
                             <LayoutDashboard size={14} />
@@ -42,12 +42,22 @@ export default function Header({
                         <Link
                             href="/profile"
                             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/profile')
-                                    ? 'bg-zinc-800 text-white shadow-sm'
-                                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                                ? 'bg-zinc-800 text-white shadow-sm'
+                                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
                                 }`}
                         >
                             <Settings size={14} />
                             <span className="hidden sm:inline">Profile</span>
+                        </Link>
+                        <Link
+                            href="/apidocs"
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/apidocs')
+                                ? 'bg-zinc-800 text-white shadow-sm'
+                                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                                }`}
+                        >
+                            <BookOpen size={14} />
+                            <span className="hidden sm:inline">API Docs</span>
                         </Link>
                     </nav>
                 </div>

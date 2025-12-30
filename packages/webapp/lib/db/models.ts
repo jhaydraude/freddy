@@ -263,3 +263,26 @@ const ProfileAnalysisSchema = new Schema({
 }, { collection: 'profile_analysis' });
 
 export const ProfileAnalysis = mongoose.models.ProfileAnalysis || mongoose.model<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema);
+
+// ---------------------------------------------------------------------------
+// ACTIVITY (Heart Rate, Steps, etc.)
+// ---------------------------------------------------------------------------
+export interface IActivity extends Document {
+    type: string;          // 'hr-bpm', 'steps-total', etc.
+    timeStamp: number;     // Epoch timestamp in ms
+    created_at: string;    // ISO date string
+    bpm?: number;          // For hr-bpm type
+    steps?: number;        // For steps-total type
+    accuracy?: number;     // Optional accuracy field
+}
+
+const ActivitySchema = new Schema({
+    type: { type: String, required: true, index: true },
+    timeStamp: { type: Number, required: true, index: true },
+    created_at: { type: String, required: true, index: true },
+    bpm: { type: Number },
+    steps: { type: Number },
+    accuracy: { type: Number }
+}, { collection: 'activity', strict: false });
+
+export const Activity = mongoose.models.Activity || mongoose.model<IActivity>('Activity', ActivitySchema);
