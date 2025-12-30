@@ -14,7 +14,6 @@ const TimeseriesSchema = z.object({
     startTime: z.string().datetime(),
     endTime: z.string().datetime(),
     length: z.number(),
-    timestamps: z.array(z.string().datetime()),
     nowIndex: z.number()
 });
 
@@ -40,7 +39,7 @@ const GlucoseResponseSchema = z.object({
         noise: z.number().optional(),
         rssi: z.number().optional()
     })
-}).meta({ id: 'GlucoseResponse' });
+}).meta({ description: 'Glucose reading and sensor information' });
 
 // --- IOB Schemas ---
 
@@ -79,7 +78,7 @@ const IOBResponseSchema = z.object({
             glucoseImpact: z.number()
         }))
     }).optional()
-}).meta({ id: 'IOBResponse' });
+}).meta({ description: 'Insulin on board calculation with optional timeseries' });
 
 // --- COB Schemas ---
 
@@ -117,7 +116,7 @@ const COBResponseSchema = z.object({
             glucoseImpact: z.number()
         }))
     }).optional()
-}).meta({ id: 'COBResponse' });
+}).meta({ description: 'Carbs on board calculation with optional timeseries' });
 
 // --- Activity Schemas ---
 
@@ -128,18 +127,18 @@ const ActivityItemSchema = z.object({
     bpm: z.number().optional(),
     steps: z.number().optional(),
     accuracy: z.number().optional()
-}).meta({ id: 'ActivityItem' });
+}).meta({ description: 'Activity data item (heart rate, steps, etc.)' });
 
 const ActivityPOSTRequestSchema = z.union([
     ActivityItemSchema,
     z.array(ActivityItemSchema)
-]).meta({ id: 'ActivityPOSTRequest' });
+]).meta({ description: 'Single activity item or array of items' });
 
 const ActivityPOSTResponseSchema = z.object({
     success: z.boolean(),
     count: z.number(),
     message: z.string()
-}).meta({ id: 'ActivityPOSTResponse' });
+}).meta({ description: 'Activity POST response' });
 
 // --- Status Schemas ---
 
@@ -165,7 +164,7 @@ const StatusResponseSchema = z.object({
         created_date: z.string(),
         app: z.string()
     })
-}).meta({ id: 'StatusResponse' });
+}).meta({ description: 'Complete system status including pump, IOB, COB, and glucose' });
 
 
 export const openApiDocument = createDocument({
