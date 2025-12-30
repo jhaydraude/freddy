@@ -70,11 +70,14 @@ const IOBResponseSchema = z.object({
         timestamp: z.string()
     }),
     timeseries: TimeseriesSchema.extend({
-        totalIOB: z.array(z.number()),
-        bolusIOB: z.array(z.number()),
-        basalIOB: z.array(z.number()),
-        activity: z.array(z.number()),
-        glucoseImpact: z.array(z.number())
+        data: z.array(z.object({
+            timestamp: z.string().datetime(),
+            totalIOB: z.number(),
+            bolusIOB: z.number(),
+            basalIOB: z.number(),
+            activity: z.number(),
+            glucoseImpact: z.number()
+        }))
     }).optional()
 }).meta({ id: 'IOBResponse' });
 

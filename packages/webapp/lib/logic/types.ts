@@ -55,12 +55,14 @@ export interface IIOBResult {
         startTime: string;
         endTime: string;
         length: number;
-        timestamps: string[];
-        totalIOB: number[];
-        bolusIOB: number[];
-        basalIOB: number[];
-        activity: number[];
-        glucoseImpact: number[];
+        data: Array<{
+            timestamp: string;
+            totalIOB: number;
+            bolusIOB: number;
+            basalIOB: number;
+            activity: number;
+            glucoseImpact: number;
+        }>;
         nowIndex: number;
     };
 }

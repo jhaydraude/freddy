@@ -44,10 +44,10 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
     const cobTs = (status.cob as any).timeseries;
 
     // Use explicit nowIndex if available, otherwise find it
-    const iobNowIdx = (iobTs as any).nowIndex ?? iobTs.timestamps.findIndex(ts => new Date(ts).getTime() >= now.getTime());
+    const iobNowIdx = (iobTs as any).nowIndex ?? (iobTs.data && iobTs.data.findIndex((d: any) => new Date(d.timestamp).getTime() >= now.getTime()));
     const cobNowIdx = (cobTs as any).nowIndex ?? (cobTs.data && cobTs.data.findIndex((d: any) => new Date(d.timestamp).getTime() >= now.getTime()));
 
-    const safeIobNowIdx = iobNowIdx === -1 ? iobTs.timestamps.length - 1 : iobNowIdx;
+    const safeIobNowIdx = iobNowIdx === -1 ? (iobTs.data?.length || 1) - 1 : iobNowIdx;
     const safeCobNowIdx = cobNowIdx === -1 ? (cobTs.data?.length || 1) - 1 : cobNowIdx;
 
     // 2. Prepare future basal deviations
@@ -136,7 +136,7 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
     prediction.push({
         timestamp: nowIso,
         sgv: Math.round(runningSgv * 10) / 10,
-        iob: iobTs.totalIOB[safeIobNowIdx] ?? 0,
+        iob: iobTs.data && iobTs.data[safeIobNowIdx] ? iobTs.data[safeIobNowIdx].totalIOB : 0,
         cob: cobTs.data && cobTs.data[safeCobNowIdx] ? cobTs.data[safeCobNowIdx].cob : 0,
         pendingCOB: cobTs.data && cobTs.data[safeCobNowIdx] ? cobTs.data[safeCobNowIdx].pendingCOB : 0,
         activeCOB: cobTs.data && cobTs.data[safeCobNowIdx] ? cobTs.data[safeCobNowIdx].activeCOB : 0
@@ -156,7 +156,7 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
         const cobIdx = safeCobNowIdx + offset;
 
         // IOB Impact
-        const iobImpact = (iobIdx < iobTs.glucoseImpact.length) ? iobTs.glucoseImpact[iobIdx] : 0;
+        const iobImpact = (iobTs.data && iobIdx < iobTs.data.length) ? iobTs.data[iobIdx].glucoseImpact : 0;
 
         // COB Impact
         const cobImpact = (cobTs.data && cobIdx < cobTs.data.length) ? cobTs.data[cobIdx].glucoseImpact : 0;
@@ -187,7 +187,7 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
         prediction.push({
             timestamp: intervalTime.toISOString(),
             sgv: Math.round(runningSgv * 10) / 10,
-            iob: iobIdx < iobTs.totalIOB.length ? iobTs.totalIOB[iobIdx] : 0,
+            iob: (iobTs.data && iobIdx < iobTs.data.length) ? iobTs.data[iobIdx].totalIOB : 0,
             cob: (cobTs.data && cobIdx < cobTs.data.length) ? cobTs.data[cobIdx].cob : 0,
             pendingCOB: (cobTs.data && cobIdx < cobTs.data.length) ? cobTs.data[cobIdx].pendingCOB : 0,
             activeCOB: (cobTs.data && cobIdx < cobTs.data.length) ? cobTs.data[cobIdx].activeCOB : 0

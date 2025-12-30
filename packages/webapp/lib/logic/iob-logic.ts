@@ -150,12 +150,14 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
     if (includeTimeseries) {
         const numIntervalsPast = Math.ceil((dia * 60) / INTERVAL_MINUTES) + 1;
         const numIntervalsFuture = Math.ceil((dia * 60) / INTERVAL_MINUTES);
-        const timestamps: string[] = [];
-        const totalIOBArray: number[] = [];
-        const bolusIOBArray: number[] = [];
-        const basalIOBArray: number[] = [];
-        const activityArray: number[] = [];
-        const glucoseImpactArray: number[] = [];
+        const data: Array<{
+            timestamp: string;
+            totalIOB: number;
+            bolusIOB: number;
+            basalIOB: number;
+            activity: number;
+            glucoseImpact: number;
+        }> = [];
 
         // Pre-calculate basal curves ONCE with future projection
         const { deliveredCurves, scheduledCurves } = await createBasalCurvesForTimeseries(
@@ -184,12 +186,12 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
 
         const totalIntervals = numIntervalsPast + numIntervalsFuture;
 
-        // Build arrays from oldest (past) to newest (future)
+        // Build array from oldest (past) to newest (future)
+        let previousTotalIOB = 0;
         for (let arrayIdx = 0; arrayIdx < totalIntervals; arrayIdx++) {
             // Convert arrayIdx to time offset from "now"
             const offsetFromNow = arrayIdx - nowIndex;
             const intervalTime = new Date(endWindow.getTime() + (offsetFromNow * INTERVAL_MINUTES * 60 * 1000));
-            timestamps.push(intervalTime.toISOString());
 
             // Sum bolus IOB at this interval
             let bolusIOBAtInterval = 0;
@@ -220,34 +222,31 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
             const netIOBAtInterval = totalDelivered - scheduledBasalIOBAtInterval;
             const netBasalIOBAtInterval = deliveredBasalIOBAtInterval - scheduledBasalIOBAtInterval;
 
-            totalIOBArray.push(Math.round(netIOBAtInterval * 1000) / 1000);
-            bolusIOBArray.push(Math.round(bolusIOBAtInterval * 1000) / 1000);
-            basalIOBArray.push(Math.round(netBasalIOBAtInterval * 1000) / 1000);
-
             // Calculate activity as difference between consecutive IOB values
             let activityAtInterval = 0;
-            if (totalIOBArray.length >= 2) {
-                const iobCurrent = totalIOBArray[totalIOBArray.length - 1];
-                const iobPrevious = totalIOBArray[totalIOBArray.length - 2];
-                activityAtInterval = Math.max(0, iobPrevious - iobCurrent);
+            if (arrayIdx > 0) {
+                activityAtInterval = Math.max(0, previousTotalIOB - netIOBAtInterval);
             }
-            activityArray.push(Math.round(activityAtInterval * 1000) / 1000);
+            previousTotalIOB = netIOBAtInterval;
 
             const impactAtInterval = activityAtInterval * impactISF;
-            glucoseImpactArray.push(Math.round(impactAtInterval * 100) / 100);
+
+            data.push({
+                timestamp: intervalTime.toISOString(),
+                totalIOB: Math.round(netIOBAtInterval * 1000) / 1000,
+                bolusIOB: Math.round(bolusIOBAtInterval * 1000) / 1000,
+                basalIOB: Math.round(netBasalIOBAtInterval * 1000) / 1000,
+                activity: Math.round(activityAtInterval * 1000) / 1000,
+                glucoseImpact: Math.round(impactAtInterval * 100) / 100
+            });
         }
 
         result.timeseries = {
             intervalMinutes: 5,
-            startTime: timestamps[0] || endWindow.toISOString(),
-            endTime: timestamps[timestamps.length - 1] || endWindow.toISOString(),
-            length: timestamps.length,
-            timestamps,
-            totalIOB: totalIOBArray,
-            bolusIOB: bolusIOBArray,
-            basalIOB: basalIOBArray,
-            activity: activityArray,
-            glucoseImpact: glucoseImpactArray,
+            startTime: data[0]?.timestamp || endWindow.toISOString(),
+            endTime: data[data.length - 1]?.timestamp || endWindow.toISOString(),
+            length: data.length,
+            data,
             nowIndex
         };
     }
