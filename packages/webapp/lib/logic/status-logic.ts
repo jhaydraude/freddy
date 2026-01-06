@@ -197,11 +197,35 @@ export const getLatestGlucose = (count: number = 1) => getGlucose({ count });
 /**
  * Aggregates current system status into a single report.
  * Uses DeviceStatus (Pump) as the source of truth if available and fresh.
+ * Implements write-through caching to ComputedStatus collection.
  */
 export async function getStatus(timestamp: string | Date, includeTimeseries: boolean = true, includeAttribution: boolean = true): Promise<IStatusResult> {
     const ts = typeof timestamp === 'string' ? timestamp : timestamp.toISOString();
     const dateObj = new Date(ts);
 
+    // Import cache utilities and models
+    const { floorToInterval, isCacheValid } = await import('./cache-utils.js');
+    const { ComputedStatus } = await import('../db/models.js');
+
+    // Round timestamp to 5-minute bucket for cache key
+    const bucketTime = floorToInterval(dateObj, 5);
+
+    // Try to fetch from cache first
+    try {
+        const cached = await ComputedStatus.findOne({
+            timestamp: bucketTime
+        }).lean();
+
+        if (cached && isCacheValid(cached, 7)) {
+            // Cache hit! Return cached status
+            return cached.status as IStatusResult;
+        }
+    } catch (error) {
+        // Cache read failed, continue with calculation
+        console.warn('Cache read failed:', error);
+    }
+
+    // Cache miss or invalid - calculate status
     // Fetch necessary data
     const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange] = await Promise.all([
         resolveActiveProfile(ts),
@@ -265,6 +289,30 @@ export async function getStatus(timestamp: string | Date, includeTimeseries: boo
             console.warn('Failed to calculate glucose attribution:', error);
         }
     }
+
+    // Save to cache (fire-and-forget to avoid blocking response)
+    // Use setImmediate or process.nextTick to defer cache write
+    setImmediate(async () => {
+        try {
+            const { ComputedStatus } = await import('../db/models.js');
+            await ComputedStatus.updateOne(
+                { timestamp: bucketTime },
+                {
+                    $set: {
+                        status: statusResult,
+                        updated_at: new Date(),
+                        version: "1.0"
+                    },
+                    $setOnInsert: {
+                        created_at: new Date()
+                    }
+                },
+                { upsert: true }
+            );
+        } catch (error) {
+            console.error('Cache save failed:', error);
+        }
+    });
 
     return statusResult;
 }

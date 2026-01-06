@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Header from '@/components/Header';
 import GlucoseChart from '@/components/GlucoseChart';
+import ActivityChart from '@/components/ActivityChart';
 import AnalysisTile from '@/components/AnalysisTile';
-import { Activity, Clock, RefreshCw, Battery } from 'lucide-react';
+import { Activity, Clock, RefreshCw, Battery, Footprints, HeartPulse } from 'lucide-react';
 
 const TIME_RANGES = [
   { label: '3h', value: 3 * 60 },
@@ -18,6 +19,34 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [windowSize, setWindowSize] = useState(3 * 60);
+  const [activitySummary, setActivitySummary] = useState<any>(null);
+  const [activityHistory, setActivityHistory] = useState<any[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+
+  const fetchActivitySummary = useCallback(async () => {
+    try {
+      const res = await fetch('/api/activity/summary');
+      if (!res.ok) throw new Error('Failed to fetch activity summary');
+      const json = await res.json();
+      setActivitySummary(json);
+    } catch (error) {
+      console.error('Error fetching activity summary:', error);
+    }
+  }, []);
+
+  const fetchActivityHistory = useCallback(async () => {
+    setActivityLoading(true);
+    try {
+      const res = await fetch(`/api/activity/history?windowSize=${windowSize}`);
+      if (!res.ok) throw new Error('Failed to fetch activity history');
+      const json = await res.json();
+      setActivityHistory(json);
+    } catch (error) {
+      console.error('Error fetching activity history:', error);
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [windowSize]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -73,9 +102,15 @@ export default function Home() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5 * 60 * 1000); // 5 min refresh
+    fetchActivitySummary();
+    fetchActivityHistory();
+    const interval = setInterval(() => {
+      fetchData();
+      fetchActivitySummary();
+      fetchActivityHistory();
+    }, 5 * 60 * 1000); // 5 min refresh
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, fetchActivitySummary, fetchActivityHistory]);
 
   // Current glucose display
   const current = data.length > 0 ? data[data.length - 1] : null;
@@ -128,7 +163,7 @@ export default function Home() {
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
 
         {/* Current Status Card */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="col-span-2 p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-32 bg-emerald-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none group-hover:bg-emerald-500/10 transition-all duration-700"></div>
 
@@ -169,6 +204,32 @@ export default function Home() {
             </div>
             <div className="text-2xl font-mono font-bold text-amber-400">
               {(current?.cob?.calculated?.cob ?? 0).toFixed(0)} g
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800 flex flex-col justify-between">
+            <div className="flex items-center gap-2 text-zinc-400">
+              <Footprints size={16} />
+              <span className="text-xs font-uppercase font-bold">Steps Today</span>
+            </div>
+            <div className="text-2xl font-mono font-bold text-violet-400">
+              {activitySummary?.stepsToday?.toLocaleString() || '0'}
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800 flex flex-col justify-between">
+            <div className="flex items-center gap-2 text-zinc-400">
+              <HeartPulse size={16} />
+              <span className="text-xs font-uppercase font-bold">Heart Rate</span>
+            </div>
+            <div className="text-2xl font-mono font-bold text-rose-400 flex items-baseline gap-1">
+              {activitySummary?.latestHeartRate?.bpm || '--'}
+              <span className="text-xs text-zinc-500 font-sans">bpm</span>
+              {activitySummary?.heartRateStats && (
+                <span className="ml-auto text-[10px] text-zinc-600 font-sans uppercase">
+                  {activitySummary.heartRateStats.min}-{activitySummary.heartRateStats.max}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -288,6 +349,12 @@ export default function Home() {
               </div>
             )}
           </div>
+
+          {/* Activity Chart Section */}
+          <ActivityChart
+            data={activityHistory}
+            isLoading={activityLoading}
+          />
 
           {/* Analysis Tile */}
           {(analysisTimestamp || analysisLoading) && (

@@ -120,19 +120,77 @@ const COBResponseSchema = z.object({
 
 // --- Activity Schemas ---
 
-const ActivityItemSchema = z.object({
-    type: z.string().meta({ example: 'hr-bpm' }),
-    timeStamp: z.number().meta({ description: 'Epoch ms', example: 1699935150978 }),
-    created_at: z.string().datetime(),
-    bpm: z.number().optional(),
-    steps: z.number().optional(),
-    accuracy: z.number().optional()
-}).meta({ description: 'Activity data item (heart rate, steps, etc.)' });
+// --- New Activity Schemas (UploadRequest Spec) ---
 
-const ActivityPOSTRequestSchema = z.union([
-    ActivityItemSchema,
-    z.array(ActivityItemSchema)
-]).meta({ description: 'Single activity item or array of items' });
+const PointHeartRateSchema = z.object({
+    bpm: z.number().meta({ example: 72.5 }),
+    accuracy: z.number().int().min(0).max(2).optional().meta({ description: '0: Unknown, 1: Low, 2: High' })
+});
+
+const AggregateHeartRateSchema = z.object({
+    bpm_avg: z.number().optional(),
+    bpm_min: z.number().optional(),
+    bpm_max: z.number().optional(),
+    measurement_count: z.number().int().optional(),
+    accuracy: z.number().int().min(0).max(2).optional().meta({ description: '0: Unknown, 1: Low, 2: High' })
+}).refine(data => data.bpm_avg !== undefined || data.bpm_min !== undefined || data.bpm_max !== undefined, {
+    message: "At least one of bpm_avg, bpm_min, or bpm_max must be provided"
+});
+
+const HeartRateDataSchema = z.union([PointHeartRateSchema, AggregateHeartRateSchema]);
+
+const StepsDataSchema = z.object({
+    count: z.number().int().meta({ example: 1250 }),
+    distance_meters: z.number().nullable().optional(),
+    calories_kcal: z.number().int().nullable().optional(),
+    floors_climbed_total: z.number().nullable().optional(),
+    accuracy: z.number().int().min(0).max(2).optional().meta({ description: '0: Unknown, 1: Low, 2: High' })
+});
+
+const ExerciseDataSchema = z.object({
+    exercise_type: z.string().meta({ example: 'running' }),
+    duration_minutes: z.number().int(),
+    calories_kcal: z.number().int().nullable().optional(),
+    title: z.string().nullable().optional()
+});
+
+const ActivityRecordSchema = z.object({
+    id: z.string().meta({ description: 'Unique client-side ID' }),
+    type: z.enum(['heart_rate', 'steps', 'exercise']),
+    timestamp: z.number().int().optional().meta({ description: 'Epoch ms for point data (HR)' }),
+    startTime: z.number().int().optional().meta({ description: 'Epoch ms for intervals' }),
+    endTime: z.number().int().optional().meta({ description: 'Epoch ms for intervals' }),
+    data: z.union([HeartRateDataSchema, StepsDataSchema, ExerciseDataSchema])
+});
+
+export const UploadRequestSchema = z.object({
+    metadata: z.object({
+        device_id: z.string().meta({ example: 'pixel-8-pro-abc' }),
+        source_app: z.string().meta({ example: 'com.example.littlefred' }),
+        sync_timestamp: z.string().datetime().optional()
+    }),
+    activities: z.array(ActivityRecordSchema)
+}).meta({ description: 'Upload request for new activity records' });
+
+// --- Cache Schemas ---
+
+const RecalculateRequestSchema = z.object({
+    startTime: z.string().datetime().meta({ description: 'Start of time range to recalculate' }),
+    endTime: z.string().datetime().optional().meta({ description: 'End of time range (defaults to now)' }),
+    bucketSize: z.number().int().positive().optional().meta({ description: 'Bucket size in minutes (default: 5)' }),
+    includeAttribution: z.boolean().optional().meta({ description: 'Include attribution calculations (default: true)' })
+}).meta({ description: 'Request to recalculate cached statuses' });
+
+const RecalculateResponseSchema = z.object({
+    success: z.boolean(),
+    startTime: z.string().datetime(),
+    endTime: z.string().datetime(),
+    bucketSize: z.number(),
+    totalBuckets: z.number(),
+    calculated: z.number(),
+    failed: z.number(),
+    message: z.string()
+}).meta({ description: 'Result of cache recalculation' });
 
 const ActivityPOSTResponseSchema = z.object({
     success: z.boolean(),
@@ -223,14 +281,55 @@ export const openApiDocument = createDocument({
                 }
             }
         },
-        '/activity': {
+        '/activities': {
             post: {
-                summary: 'Record new activity data',
+                summary: 'Upload activity records',
+                description: 'Batch upload activity records (steps, heart rate, exercise)',
                 requestBody: {
-                    content: { 'application/json': { schema: ActivityPOSTRequestSchema } }
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: UploadRequestSchema
+                        }
+                    }
                 },
                 responses: {
-                    200: { description: 'Success', content: { 'application/json': { schema: ActivityPOSTResponseSchema } } }
+                    '200': {
+                        description: 'Activities uploaded successfully',
+                        content: {
+                            'application/json': {
+                                schema: z.object({
+                                    success: z.boolean(),
+                                    inserted: z.number(),
+                                    updated: z.number()
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        '/cache/recalculate': {
+            post: {
+                summary: 'Recalculate cached statuses',
+                description: 'Recalculates and caches computed statuses for a given time range. Useful for cache invalidation after retroactive edits.',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: RecalculateRequestSchema
+                        }
+                    }
+                },
+                responses: {
+                    '200': {
+                        description: 'Recalculation completed',
+                        content: {
+                            'application/json': {
+                                schema: RecalculateResponseSchema
+                            }
+                        }
+                    }
                 }
             }
         }

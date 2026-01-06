@@ -19,6 +19,7 @@ import * as estimateISF from "./tools/estimate-isf.js";
 import * as analyzeProfile from "./tools/analyze-profile.js";
 import * as predictGlucose from "./tools/predict-glucose.js";
 import * as getProfileAnalysisHistory from "./tools/get-profile-analysis-history.js";
+import * as recalculateStatuses from "./tools/recalculate-statuses.js";
 
 // Register all tools
 const tools = [
@@ -34,7 +35,8 @@ const tools = [
     estimateISF,
     analyzeProfile,
     predictGlucose,
-    getProfileAnalysisHistory
+    getProfileAnalysisHistory,
+    recalculateStatuses
 ];
 
 const server = new Server(

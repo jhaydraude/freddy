@@ -265,24 +265,38 @@ const ProfileAnalysisSchema = new Schema({
 export const ProfileAnalysis = mongoose.models.ProfileAnalysis || mongoose.model<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema);
 
 // ---------------------------------------------------------------------------
-// ACTIVITY (Heart Rate, Steps, etc.)
 // ---------------------------------------------------------------------------
-export interface IActivity extends Document {
-    type: string;          // 'hr-bpm', 'steps-total', etc.
-    timeStamp: number;     // Epoch timestamp in ms
-    created_at: string;    // ISO date string
-    bpm?: number;          // For hr-bpm type
-    steps?: number;        // For steps-total type
-    accuracy?: number;     // Optional accuracy field
+// NEW ACTIVITY (Heart Rate, Steps, Exercise - Based on UploadRequest Spec)
+// ---------------------------------------------------------------------------
+
+export interface IActivityRecord extends Document {
+    id: string;            // UUID for idempotency
+    type: 'heart_rate' | 'steps' | 'exercise';
+    timestamp?: number;    // Epoch ms for point data
+    startTime?: number;    // Epoch ms for intervals
+    endTime?: number;      // Epoch ms for intervals
+    data: any;             // HeartRateData, StepsData, or ExerciseData
+    metadata: {
+        device_id: string;
+        source_app: string;
+        sync_timestamp?: string;
+    };
+    created_at: Date;
 }
 
-const ActivitySchema = new Schema({
-    type: { type: String, required: true, index: true },
-    timeStamp: { type: Number, required: true, index: true },
-    created_at: { type: String, required: true, index: true },
-    bpm: { type: Number },
-    steps: { type: Number },
-    accuracy: { type: Number }
-}, { collection: 'activity', strict: false });
+const ActivityRecordSchema = new Schema({
+    id: { type: String, required: true, unique: true, index: true },
+    type: { type: String, enum: ['heart_rate', 'steps', 'exercise'], required: true, index: true },
+    timestamp: { type: Number, index: true },
+    startTime: { type: Number, index: true },
+    endTime: { type: Number, index: true },
+    data: { type: Schema.Types.Mixed, required: true },
+    metadata: {
+        device_id: { type: String, required: true },
+        source_app: { type: String, required: true },
+        sync_timestamp: { type: String }
+    },
+    created_at: { type: Date, default: Date.now, index: true }
+}, { collection: 'activities', strict: false });
 
-export const Activity = mongoose.models.Activity || mongoose.model<IActivity>('Activity', ActivitySchema);
+export const ActivityRecord = mongoose.models.ActivityRecord || mongoose.model<IActivityRecord>('ActivityRecord', ActivityRecordSchema);

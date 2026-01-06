@@ -30,8 +30,8 @@ export async function getStatusHistory(options: IStatusHistoryOptions = {}): Pro
         timestamps.push(currentTs);
     }
 
-    // Process buckets. Using Promise.all for performance, though getStatus is heavy.
-    // Given typically < 20 buckets, this is manageable.
-    // We disable attribution here as it's not used by the dashboard and is heavy.
+    // Process buckets in parallel for maximum speed
+    // Keep timeseries enabled as it's needed by the dashboard and doesn't add significant overhead
+    // Disable attribution as it's computationally expensive and not used by dashboard
     return Promise.all(timestamps.map(ts => getStatus(new Date(ts), true, false)));
 }
