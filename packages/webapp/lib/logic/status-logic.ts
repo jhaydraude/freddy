@@ -198,8 +198,18 @@ export const getLatestGlucose = (count: number = 1) => getGlucose({ count });
  * Aggregates current system status into a single report.
  * Uses DeviceStatus (Pump) as the source of truth if available and fresh.
  * Implements write-through caching to ComputedStatus collection.
+ * 
+ * @param timestamp - Timestamp for status calculation
+ * @param includeTimeseries - Include IOB/COB timeseries data
+ * @param includeAttribution - Include glucose attribution calculations
+ * @param bypassCache - Skip cache lookup and force fresh calculation
  */
-export async function getStatus(timestamp: string | Date, includeTimeseries: boolean = true, includeAttribution: boolean = true): Promise<IStatusResult> {
+export async function getStatus(
+    timestamp: string | Date,
+    includeTimeseries: boolean = true,
+    includeAttribution: boolean = true,
+    bypassCache: boolean = false
+): Promise<IStatusResult> {
     const ts = typeof timestamp === 'string' ? timestamp : timestamp.toISOString();
     const dateObj = new Date(ts);
 
@@ -210,19 +220,21 @@ export async function getStatus(timestamp: string | Date, includeTimeseries: boo
     // Round timestamp to 5-minute bucket for cache key
     const bucketTime = floorToInterval(dateObj, 5);
 
-    // Try to fetch from cache first
-    try {
-        const cached = await ComputedStatus.findOne({
-            timestamp: bucketTime
-        }).lean();
+    // Try to fetch from cache first (unless bypassing)
+    if (!bypassCache) {
+        try {
+            const cached = await ComputedStatus.findOne({
+                timestamp: bucketTime
+            }).lean();
 
-        if (cached && isCacheValid(cached, 7)) {
-            // Cache hit! Return cached status
-            return cached.status as IStatusResult;
+            if (cached && isCacheValid(cached, 7)) {
+                // Cache hit! Return cached status
+                return cached.status as IStatusResult;
+            }
+        } catch (error) {
+            // Cache read failed, continue with calculation
+            console.warn('Cache read failed:', error);
         }
-    } catch (error) {
-        // Cache read failed, continue with calculation
-        console.warn('Cache read failed:', error);
     }
 
     // Cache miss or invalid - calculate status

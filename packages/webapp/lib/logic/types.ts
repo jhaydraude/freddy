@@ -130,6 +130,15 @@ export interface IAttributionTimeframe {
             value: number;
             deviation: number;
         };
+        activity: {
+            value: number;
+            steps: number;
+            calories: number;
+            stairs: number;
+            heartRate: number;
+            intensity: string;
+            dataAvailable: boolean;
+        };
         unexplained: number;
     };
 }
@@ -143,6 +152,7 @@ export interface IAttributionHistoryPoint {
         insulin: number;
         carbs: number;
         basal: number;
+        activity: number;
     };
 }
 

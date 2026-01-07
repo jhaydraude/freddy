@@ -115,6 +115,16 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
             });
         }
 
+        // 4. Attribution History (if available) - Merges into existing points
+        if (data.statusAt?.attribution?.history) {
+            data.statusAt.attribution.history.forEach((attrPoint: any) => {
+                const existing = combined.find(c => c.timestamp === attrPoint.timestamp);
+                if (existing) {
+                    existing.activity = attrPoint.components?.activity;
+                }
+            });
+        }
+
         return combined.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     }, [data]);
 
@@ -250,6 +260,14 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                                                             )}
                                                         </div>
                                                     )}
+                                                    {pointData.activity !== undefined && pointData.activity !== 0 && (
+                                                        <div className="flex justify-between gap-4 pt-1 border-t border-zinc-800">
+                                                            <span className="text-fuchsia-400 font-medium">Activity</span>
+                                                            <span className="text-white font-mono">
+                                                                {pointData.activity > 0 ? '+' : ''}{pointData.activity.toFixed(1)}
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
                                         }
@@ -323,6 +341,10 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                             <span className="text-zinc-400">COB</span>
                         </div>
                         <div className="flex items-center gap-2">
+                            <div className="w-4 h-0.5 bg-fuchsia-500"></div>
+                            <span className="text-zinc-400">Activity</span>
+                        </div>
+                        <div className="flex items-center gap-2">
                             <div className="w-px h-4 bg-emerald-500 border-l border-dashed border-zinc-900"></div>
                             <span className="text-zinc-400">Selected Time</span>
                         </div>
@@ -374,8 +396,27 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                                 </span>
                             </div>
 
+                            <div className="p-3 bg-zinc-800/40 rounded-xl border border-zinc-800 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-1.5 bg-fuchsia-500/10 rounded-lg">
+                                        <Sparkles size={16} className="text-fuchsia-400" />
+                                    </div>
+                                    <span className="text-zinc-300 text-sm">Activity Impact</span>
+                                </div>
+                                <span className="text-fuchsia-400 font-mono font-bold">
+                                    {attribution?.components?.activity?.value > 0 ? '+' : ''}{attribution?.components?.activity?.value?.toFixed(1) || '0.0'}
+                                </span>
+                            </div>
+
                             <div className="p-3 bg-zinc-950/40 rounded-xl border border-dashed border-zinc-800 flex items-center justify-between">
-                                <span className="text-zinc-500 text-sm">Unexplained</span>
+                                <div className="flex flex-col">
+                                    <span className="text-zinc-500 text-sm">Unexplained</span>
+                                    {attribution?.components?.activity?.intensity && attribution.components.activity.intensity !== 'unknown' && (
+                                        <span className="text-[10px] text-fuchsia-400/70 font-medium">
+                                            Intensity: {attribution.components.activity.intensity.replace('_', ' ')}
+                                        </span>
+                                    )}
+                                </div>
                                 <span className="text-zinc-400 font-mono">
                                     {attribution?.components?.unexplained >= 0 ? '+' : ''}{attribution?.components?.unexplained?.toFixed(1) || '0.0'}
                                 </span>

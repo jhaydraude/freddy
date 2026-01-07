@@ -6,10 +6,11 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const timestamp = searchParams.get('timestamp') || new Date().toISOString();
     const includeTimeseries = searchParams.get('includeTimeseries') !== 'false';
+    const bypassCache = searchParams.get('bypassCache') === 'true';
 
     try {
         await connectToDatabase();
-        const data = await getStatus(timestamp, includeTimeseries);
+        const data = await getStatus(timestamp, includeTimeseries, true, bypassCache);
         return NextResponse.json(data);
     } catch (error: any) {
         console.error('Error in /api/status:', error);
