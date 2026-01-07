@@ -4,23 +4,17 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { spawn } from 'child_process';
 
 export class NightManagerMCPClient {
     private client: Client | null = null;
     private transport: StdioClientTransport | null = null;
 
     async connect() {
-        // Spawn the MCP server process
-        const serverProcess = spawn('npx', ['tsx', 'src/index.ts'], {
-            cwd: process.cwd(),
-            stdio: ['pipe', 'pipe', 'inherit']
-        });
-
         // Create client transport
         this.transport = new StdioClientTransport({
-            reader: serverProcess.stdout,
-            writer: serverProcess.stdin
+            command: 'npx',
+            args: ['tsx', 'src/index.ts'],
+            cwd: 'd:/Dev/NightManager/packages/mcp-server' // Point to the correct package
         });
 
         // Create and connect client
@@ -43,7 +37,7 @@ export class NightManagerMCPClient {
             throw new Error('Client not connected. Call connect() first.');
         }
 
-        const result = await this.client.callTool({ name, arguments: args });
+        const result = (await this.client.callTool({ name, arguments: args })) as any;
 
         if (!result.content || result.content.length === 0) {
             throw new Error(`No content returned from tool: ${name}`);

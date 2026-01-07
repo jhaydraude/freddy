@@ -164,6 +164,7 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                 </div>
                 <div className="flex items-center gap-2">
                     <button
+                        type="button"
                         onClick={handleExplain}
                         disabled={isExplaining}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isExplaining
@@ -179,6 +180,7 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                         {isExplaining ? 'Thinking...' : 'Explain Status'}
                     </button>
                     <button
+                        type="button"
                         onClick={onClose}
                         className="p-2 hover:bg-zinc-800 rounded-full text-zinc-500 transition-colors"
                     >
@@ -411,7 +413,7 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                             <div className="p-3 bg-zinc-950/40 rounded-xl border border-dashed border-zinc-800 flex items-center justify-between">
                                 <div className="flex flex-col">
                                     <span className="text-zinc-500 text-sm">Unexplained</span>
-                                    {attribution?.components?.activity?.intensity && attribution.components.activity.intensity !== 'unknown' && (
+                                    {attribution?.components?.activity?.intensity && attribution?.components?.activity?.intensity !== 'unknown' && (
                                         <span className="text-[10px] text-fuchsia-400/70 font-medium">
                                             Intensity: {attribution.components.activity.intensity.replace('_', ' ')}
                                         </span>
@@ -428,7 +430,7 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                         <div className="flex items-center justify-between text-xs">
                             <span className="text-zinc-500 italic">Net Predicted Change</span>
                             <span className={`font-bold ${attribution?.glucoseChange?.predicted < 0 ? 'text-blue-400' : 'text-amber-400'}`}>
-                                {attribution?.glucoseChange?.predicted >= 0 ? '+' : ''}{attribution?.glucoseChange?.predicted?.toFixed(1)} {units}
+                                {attribution?.glucoseChange?.predicted >= 0 ? '+' : ''}{attribution?.glucoseChange?.predicted?.toFixed(1) || '0.0'} {units}
                             </span>
                         </div>
                     </div>

@@ -47,7 +47,16 @@ export async function explainStatus(timestamp: string | Date = new Date()): Prom
             breakdown: {
                 insulin: attribution30m.components.insulin.value,
                 carbs: attribution30m.components.carbs.value,
-                basal: attribution30m.components.basal.value
+                basal: attribution30m.components.basal.value,
+                activity: {
+                    impact: attribution30m.components.activity.value,
+                    intensity: attribution30m.components.activity.intensity,
+                    steps: attribution30m.components.activity.steps,
+                    heart_rate: attribution30m.components.activity.heartRate,
+                    calories: attribution30m.components.activity.calories,
+                    stairs: attribution30m.components.activity.stairs,
+                    data_available: attribution30m.components.activity.dataAvailable
+                }
             }
         } : "Not available",
         device_health: {

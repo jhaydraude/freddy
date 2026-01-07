@@ -1,5 +1,5 @@
 import { getStatusHistory } from './history-logic.js';
-import type { IStatusResult } from './status-logic.js';
+import type { IStatusResult } from './types.js';
 import { Entry } from '../db/models.js';
 import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
 

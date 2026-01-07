@@ -1,5 +1,5 @@
 import { getStatus } from './status-logic.js';
-import type { IStatusResult } from './status-logic.js';
+import type { IStatusResult } from './types.js';
 
 /**
  * Options for fetching status history.

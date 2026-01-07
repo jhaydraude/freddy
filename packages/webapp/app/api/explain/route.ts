@@ -7,7 +7,7 @@ export async function GET(request: Request) {
 
     try {
         const explanation = await getExplanation(timestamp);
-        return NextResponse.json(explanation);
+        return NextResponse.json({ explanation });
     } catch (error: any) {
         console.error('Error in /api/explain:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });

@@ -45,10 +45,34 @@ export async function POST(request: Request) {
 
         const result = await ActivityRecord.bulkWrite(ops);
 
+        // --- Recalculate Cache ---
+        // Find the earliest timestamp among the uploaded activities to start recalculation from
+        const validTimestamps = activities
+            .map(a => a.startTime || a.timestamp)
+            .filter((t): t is number => typeof t === 'number');
+
+        if (validTimestamps.length > 0) {
+            const earliestMs = Math.min(...validTimestamps);
+            const startOfRecalc = new Date(earliestMs);
+            const endOfRecalc = new Date(); // Recalculate up to now
+
+            // Use setImmediate to process recalculation in background without blocking the response
+            const { recalculateStatusRange } = await import('@/lib/logic/cache-logic');
+            setImmediate(async () => {
+                try {
+                    console.log(`[Cache] Triggering background recalculation from ${startOfRecalc.toISOString()} due to new activity upload`);
+                    await recalculateStatusRange(startOfRecalc, endOfRecalc, 5, true);
+                    console.log(`[Cache] Background recalculation complete`);
+                } catch (err) {
+                    console.error('[Cache] Background recalculation failed:', err);
+                }
+            });
+        }
+
         return NextResponse.json({
             success: true,
             count: result.upsertedCount + result.modifiedCount,
-            message: `Processed ${activities.length} activity records. Upserted: ${result.upsertedCount}, Modified: ${result.modifiedCount}`
+            message: `Processed ${activities.length} activity records. Upserted: ${result.upsertedCount}, Modified: ${result.modifiedCount}. Cache recalculation triggered.`
         });
 
     } catch (error: any) {
