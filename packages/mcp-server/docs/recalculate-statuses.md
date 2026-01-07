@@ -2,7 +2,7 @@
 
 ## MCP Tool: `recalculate_statuses`
 
-Recalculates and caches computed statuses with attribution for a given time range.
+Recalculates and caches computed statuses with attribution for a recent window of time.
 
 ### Use Cases
 - **Cache Invalidation**: After editing treatments retroactively
@@ -13,7 +13,7 @@ Recalculates and caches computed statuses with attribution for a given time rang
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `startTime` | string | ✅ Yes | - | Start of time range (ISO timestamp) |
+| `hoursBack` | number | No | 4 | Number of hours to look back from the end time |
 | `endTime` | string | No | now | End of time range (ISO timestamp) |
 | `bucketSize` | number | No | 5 | Bucket size in minutes |
 | `includeAttribution` | boolean | No | true | Include attribution calculations |
@@ -23,9 +23,7 @@ Recalculates and caches computed statuses with attribution for a given time rang
 ```typescript
 // Recalculate last 24 hours with attribution
 {
-  "startTime": "2026-01-05T16:00:00Z",
-  "endTime": "2026-01-06T16:00:00Z",
-  "bucketSize": 5,
+  "hoursBack": 24,
   "includeAttribution": true
 }
 ```
@@ -37,6 +35,7 @@ Recalculates and caches computed statuses with attribution for a given time rang
   "success": true,
   "startTime": "2026-01-05T16:00:00.000Z",
   "endTime": "2026-01-06T16:00:00.000Z",
+  "hoursBack": 24,
   "bucketSize": 5,
   "totalBuckets": 288,
   "calculated": 288,
@@ -53,16 +52,15 @@ Recalculates and caches computed statuses with attribution for a given time rang
 ### Process
 1. **Clear Existing Cache**: Deletes all `ComputedStatus` records in the time range
 2. **Generate Timestamps**: Creates 5-minute buckets for the entire range
-3. **Recalculate**: Calls `getStatus()` for each bucket
+3. **Recalculate**: Calls `getStatus()` for each bucket with `bypassCache: true`
 4. **Auto-Cache**: Write-through cache automatically saves results
 
 ### Performance
 - **Speed**: ~30-50ms per bucket
 - **24 hours**: ~288 buckets = ~10-15 seconds total
-- **Runs asynchronously**: Won't block other requests
+- **Runs asynchronously**: Recalculates sequentially to avoid DB strain
 
-## Files Created
+## Files Updated
 
 - [recalculate-statuses.ts](file:///d:/Dev/NightManager/packages/mcp-server/src/tools/recalculate-statuses.ts) - MCP tool definition
 - [route.ts](file:///d:/Dev/NightManager/packages/webapp/app/api/cache/recalculate/route.ts) - API endpoint
-- [index.ts](file:///d:/Dev/NightManager/packages/mcp-server/src/index.ts) - Tool registration

@@ -9,17 +9,11 @@ export async function POST(request: Request) {
         await connectToDatabase();
 
         const body = await request.json();
-        const { startTime, endTime, bucketSize = 5, includeAttribution = true } = body;
+        const { hoursBack = 4, endTime, bucketSize = 5, includeAttribution = true } = body;
 
-        if (!startTime) {
-            return NextResponse.json(
-                { error: 'startTime is required' },
-                { status: 400 }
-            );
-        }
-
-        const start = new Date(startTime);
         const end = endTime ? new Date(endTime) : new Date();
+        const start = new Date(end.getTime() - (hoursBack * 60 * 60 * 1000));
+
         const bucketMs = bucketSize * 60 * 1000;
 
         // Generate timestamps for all buckets
@@ -45,7 +39,9 @@ export async function POST(request: Request) {
             try {
                 // Force recalculation by calling getStatus
                 // The write-through cache will save it automatically
-                await getStatus(timestamp, true, includeAttribution);
+                // We pass bypassCache=true to ensure we don't hit the cache we might have just deleted 
+                // (though deleteMany should handle it, bypassCache is safer for recalculation)
+                await getStatus(timestamp, true, includeAttribution, true);
                 calculated++;
             } catch (error) {
                 console.error(`Failed to calculate status for ${timestamp.toISOString()}:`, error);
@@ -57,6 +53,7 @@ export async function POST(request: Request) {
             success: true,
             startTime: start.toISOString(),
             endTime: end.toISOString(),
+            hoursBack,
             bucketSize,
             totalBuckets: timestamps.length,
             calculated,

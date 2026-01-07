@@ -2,13 +2,13 @@ import { callWebAppApi } from '../api-client.js';
 
 export const toolDefinition = {
     name: "recalculate_statuses",
-    description: "Recalculates and caches computed statuses with attribution for a given time range. Useful for invalidating cache after retroactive treatment edits or for pre-warming the cache.",
+    description: "Recalculates and caches computed statuses with attribution for a recent window of time. Useful for invalidating cache after retroactive treatment edits or for pre-warming the cache.",
     inputSchema: {
         type: "object",
         properties: {
-            startTime: {
-                type: "string",
-                description: "Start of time range (ISO timestamp)"
+            hoursBack: {
+                type: "number",
+                description: "Number of hours to look back from the end time (default: 4)"
             },
             endTime: {
                 type: "string",
@@ -22,20 +22,19 @@ export const toolDefinition = {
                 type: "boolean",
                 description: "Include attribution calculations (default: true)"
             }
-        },
-        required: ["startTime"]
+        }
     }
 };
 
 export async function handler(args: any) {
-    const startTime = args.startTime as string;
+    const hoursBack = (args?.hoursBack as number) || 4;
     const endTime = (args?.endTime as string) || new Date().toISOString();
     const bucketSize = (args?.bucketSize as number) || 5;
     const includeAttribution = args?.includeAttribution !== false;
 
     try {
         const result = await callWebAppApi('/api/cache/recalculate', {
-            startTime,
+            hoursBack,
             endTime,
             bucketSize,
             includeAttribution
