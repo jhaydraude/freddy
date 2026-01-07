@@ -30,17 +30,23 @@ export function calculateMinAbsorptionRate(isf: number, cr: number, minCarbImpac
     }
     const sensitivity = isfMgdl / cr;
     if (sensitivity <= 0) return (DEFAULT_ABSORPTION_RATE_G_PER_HOUR / 60) * INTERVAL_MINUTES;
-    return minCarbImpact / sensitivity;
+
+    // Ensure we don't fall below a realistic floor (e.g. 5g/hour for very sensitive users)
+    const rate = Math.max(minCarbImpact / sensitivity, (5 / 60) * INTERVAL_MINUTES);
+    return rate;
 }
 
 /**
  * MATH ENGINE: TRIANGLE S-CURVE PARAMETERS
  */
 function getTriangleParameters(carbs: number, absorbRateGPer5Min: number) {
-    const linearDurationMin = (carbs / absorbRateGPer5Min) * 5;
-    // Faster absorption: Reduce duration multiplier from 1.5 to 1.2
-    const durationMin = Math.max(60, linearDurationMin * 1.2);
-    // Move peak earlier: Shift from 0.3 to 0.25
+    // Ensure we have a sane floor for the base triangle duration
+    // even if the user is extremely sensitive
+    const effectiveRate = Math.max(absorbRateGPer5Min, (10 / 60) * INTERVAL_MINUTES); // min 10g/hour base
+    const linearDurationMin = (carbs / effectiveRate) * 5;
+
+    // Cap duration at 6 hours for the standard triangle ramp
+    const durationMin = Math.min(360, Math.max(60, linearDurationMin * 1.2));
     const peakTimeMin = Math.max(15, durationMin * 0.25);
     return { durationMin, peakTimeMin };
 }
