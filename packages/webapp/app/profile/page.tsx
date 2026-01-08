@@ -2,7 +2,7 @@
 
 import Header from '@/components/Header';
 import { useState, useEffect, useMemo } from 'react';
-import { Settings, Play, CheckCircle, AlertCircle, RefreshCw, BarChart2, Activity, Info, TrendingUp } from 'lucide-react';
+import { Settings, Play, CheckCircle, AlertCircle, RefreshCw, BarChart2, Activity, Info, TrendingUp, Sparkles } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 function formatTime(minutes: number) {
@@ -39,6 +39,7 @@ export default function ProfilePage() {
     const [loadingProfile, setLoadingProfile] = useState(true);
     const [loadingHistory, setLoadingHistory] = useState(true);
     const [analyzing, setAnalyzing] = useState(false);
+    const [generatingExplanation, setGeneratingExplanation] = useState(false);
 
     const [selectedAnalysis, setSelectedAnalysis] = useState<any>(null);
     const [analysisLogs, setAnalysisLogs] = useState<string[]>([]);
@@ -164,6 +165,46 @@ export default function ProfilePage() {
             console.error('Analysis error', error);
             alert('Analysis error');
             setAnalyzing(false);
+        }
+    };
+
+    const generateExplanation = async () => {
+        if (!selectedAnalysis?._id) {
+            alert('Please select an analysis first');
+            return;
+        }
+
+        setGeneratingExplanation(true);
+        try {
+            const res = await fetch('/api/profile/explain', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ analysisId: selectedAnalysis._id })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setSelectedAnalysis({
+                    ...selectedAnalysis,
+                    llm_explanation: data.explanation,
+                    explanation_generated_at: data.generated_at
+                });
+
+                // Update history list as well
+                setHistory(history.map(item =>
+                    item._id === selectedAnalysis._id
+                        ? { ...item, llm_explanation: data.explanation, explanation_generated_at: data.generated_at }
+                        : item
+                ));
+            } else {
+                const error = await res.json();
+                alert(`Failed to generate explanation: ${error.error}`);
+            }
+        } catch (error: any) {
+            console.error('Explanation generation error:', error);
+            alert('Failed to generate explanation');
+        } finally {
+            setGeneratingExplanation(false);
         }
     };
 
@@ -358,18 +399,45 @@ export default function ProfilePage() {
                             </div>
                         )}
 
-                        <div className="flex justify-end">
+                        <div className="flex gap-3 justify-end">
                             <button
                                 onClick={runAnalysis}
                                 disabled={analyzing}
-                                className="w-full md:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {analyzing ? <RefreshCw className="animate-spin" size={16} /> : <Play size={16} />}
                                 {analyzing ? 'Analyzing...' : 'Run Analysis'}
                             </button>
+                            <button
+                                onClick={generateExplanation}
+                                disabled={!selectedAnalysis || generatingExplanation}
+                                className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {generatingExplanation ? <RefreshCw className="animate-spin" size={16} /> : <Sparkles size={16} />}
+                                {generatingExplanation ? 'Generating...' : 'Explain Results'}
+                            </button>
                         </div>
                     </div>
                 </div>
+
+                {/* LLM EXPLANATION SECTION */}
+                {selectedAnalysis?.llm_explanation && (
+                    <div className="p-6 rounded-2xl bg-purple-500/5 border border-purple-500/20 backdrop-blur-sm">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-purple-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
+                                <Sparkles size={16} /> AI Explanation & Recommendations
+                            </h3>
+                            <div className="text-[10px] text-zinc-600">
+                                Generated {new Date(selectedAnalysis.explanation_generated_at).toLocaleString()}
+                            </div>
+                        </div>
+                        <div className="prose prose-invert prose-sm max-w-none">
+                            <p className="text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                                {selectedAnalysis.llm_explanation}
+                            </p>
+                        </div>
+                    </div>
+                )}
 
                 {/* 1. REGRESSION SECTION (Promoted) */}
                 {selectedAnalysis && selectedAnalysis.estimated_activity_coefficients && (
@@ -739,8 +807,9 @@ export default function ProfilePage() {
                                     <div className="flex items-center gap-3">
                                         <div className={`w-2 h-2 rounded-full ${item.r_squared > 0.7 ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
                                         <div>
-                                            <div className="text-sm font-mono text-zinc-300">
+                                            <div className="text-sm font-mono text-zinc-300 flex items-center gap-2">
                                                 {new Date(item.timestamp).toLocaleString()}
+                                                {item.llm_explanation && <Sparkles size={12} className="text-purple-400" />}
                                             </div>
                                             <div className="text-xs text-zinc-500">
                                                 R²: {item.r_squared?.toFixed(2)} • {item.windows_analyzed} windows

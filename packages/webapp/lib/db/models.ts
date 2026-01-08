@@ -256,6 +256,8 @@ export interface IProfileAnalysis extends Document {
     recommendation: string;
     tuning_suggestions?: any;
     logs?: string[];
+    llm_explanation?: string;
+    explanation_generated_at?: Date;
 }
 
 const ProfileAnalysisSchema = new Schema({
@@ -279,7 +281,9 @@ const ProfileAnalysisSchema = new Schema({
     meal_windows: { type: Number },
     recommendation: { type: String },
     tuning_suggestions: { type: Schema.Types.Mixed },
-    logs: [{ type: String }]
+    logs: [{ type: String }],
+    llm_explanation: { type: String },
+    explanation_generated_at: { type: Date }
 }, { collection: 'profile_analysis' });
 
 export const ProfileAnalysis = mongoose.models.ProfileAnalysis || mongoose.model<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema);
