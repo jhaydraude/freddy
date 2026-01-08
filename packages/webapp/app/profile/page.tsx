@@ -41,11 +41,17 @@ export default function ProfilePage() {
     const [analyzing, setAnalyzing] = useState(false);
 
     const [selectedAnalysis, setSelectedAnalysis] = useState<any>(null);
+    const [analysisLogs, setAnalysisLogs] = useState<string[]>([]);
+    const [analysisProgress, setAnalysisProgress] = useState(0);
 
     // Analysis form state
     const [daysBack, setDaysBack] = useState(30);
     const [windowHours, setWindowHours] = useState(2);
     const [tuneParameters, setTuneParameters] = useState<string[]>(['isf', 'dia', 'basal', 'activity']);
+
+    const addLog = (msg: string) => {
+        setAnalysisLogs(prev => [...prev, msg]);
+    };
 
     const fetchActiveProfile = async () => {
         setLoadingProfile(true);
@@ -85,9 +91,26 @@ export default function ProfilePage() {
         fetchHistory();
     }, []);
 
+    useEffect(() => {
+        if (selectedAnalysis?.logs && !analyzing) {
+            setAnalysisLogs(selectedAnalysis.logs);
+        }
+    }, [selectedAnalysis, analyzing]);
+
     const runAnalysis = async () => {
         setAnalyzing(true);
+        setAnalysisLogs([]);
+        setAnalysisProgress(5);
+
+        addLog("🚀 Initializing profile analysis...");
+
         try {
+            addLog(`📅 Parameters: Last ${daysBack} days, ${windowHours}h windows`);
+            addLog(`🔧 Tuning: ${tuneParameters.join(', ').toUpperCase()}`);
+
+            setAnalysisProgress(15);
+            addLog("📡 Fetching glucose history and treatment data...");
+
             const res = await fetch('/api/profile/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -99,14 +122,33 @@ export default function ProfilePage() {
             });
 
             if (res.ok) {
+                setAnalysisProgress(60);
+                addLog("✨ Analysis completed successfully.");
+                const data = await res.json();
+
+                if (data.logs && data.logs.length > 0) {
+                    data.logs.forEach(l => addLog(l));
+                }
+
+                setAnalysisProgress(90);
+                addLog("💾 Synchronizing results with database...");
                 await fetchHistory();
+                setAnalysisProgress(100);
+
+                // Keep progress showing for a second
+                setTimeout(() => {
+                    setAnalyzing(false);
+                    setAnalysisProgress(0);
+                }, 1500);
             } else {
+                addLog("❌ Analysis failed on server.");
                 alert('Analysis failed');
+                setAnalyzing(false);
             }
-        } catch (error) {
+        } catch (error: any) {
+            addLog(`💥 ERROR: ${error.message}`);
             console.error('Analysis error', error);
             alert('Analysis error');
-        } finally {
             setAnalyzing(false);
         }
     };
@@ -256,15 +298,56 @@ export default function ProfilePage() {
                         ))}
                     </div>
 
-                    <div className="mt-6 flex justify-end">
-                        <button
-                            onClick={runAnalysis}
-                            disabled={analyzing}
-                            className="w-full md:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {analyzing ? <RefreshCw className="animate-spin" size={16} /> : <Play size={16} />}
-                            {analyzing ? 'Analyzing...' : 'Run Analysis'}
-                        </button>
+                    <div className="mt-6 space-y-4">
+                        {/* Progress Bar */}
+                        {(analyzing || analysisProgress > 0) && (
+                            <div className="space-y-1.5">
+                                <div className="flex justify-between text-[10px] uppercase font-bold tracking-widest text-zinc-500">
+                                    <span>{analysisProgress === 100 ? 'Complete' : 'Analysis in Progress'}</span>
+                                    <span>{analysisProgress}%</span>
+                                </div>
+                                <div className="h-1.5 w-full bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
+                                    <div
+                                        className="h-full bg-indigo-500 transition-all duration-500 ease-out"
+                                        style={{ width: `${analysisProgress}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Analysis Logs / Terminal */}
+                        {(analyzing || analysisLogs.length > 0) && (
+                            <div className="space-y-1.5">
+                                <div className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-widest text-zinc-600 ml-1">
+                                    <Activity size={12} /> {analyzing ? 'Live Execution Output' : 'Analysis Logs'}
+                                </div>
+                                <div className="p-3 bg-black rounded-xl border border-zinc-800 font-mono text-[11px] h-40 overflow-y-auto space-y-1 shadow-inner custom-scrollbar">
+                                    {analysisLogs.map((log, i) => (
+                                        <div key={i} className={`flex gap-2 ${log.startsWith('❌') || log.startsWith('💥') ? 'text-rose-400' : log.startsWith('✅') || log.startsWith('✨') ? 'text-emerald-400' : 'text-zinc-400'}`}>
+                                            <span className="text-zinc-600 select-none">[{i.toString().padStart(2, '0')}]</span>
+                                            <span>{log}</span>
+                                        </div>
+                                    ))}
+                                    {analyzing && analysisProgress < 100 && (
+                                        <div className="flex items-center gap-2 text-indigo-400 animate-pulse">
+                                            <span className="text-zinc-600">[{analysisLogs.length.toString().padStart(2, '0')}]</span>
+                                            <span>Processing windows and estimating coefficients...</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end">
+                            <button
+                                onClick={runAnalysis}
+                                disabled={analyzing}
+                                className="w-full md:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {analyzing ? <RefreshCw className="animate-spin" size={16} /> : <Play size={16} />}
+                                {analyzing ? 'Analyzing...' : 'Run Analysis'}
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -310,6 +393,60 @@ export default function ProfilePage() {
                         </div>
                     )
                 }
+
+                {/* Regression Estimates (Activity) */}
+                {selectedAnalysis && selectedAnalysis.estimated_activity_coefficients && (
+                    <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm">
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className="text-zinc-400 font-medium text-sm uppercase tracking-wider flex items-center gap-2">
+                                <Activity size={16} className="text-indigo-400" /> Activity Regression Results
+                            </h2>
+                            <div className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${selectedAnalysis.r_squared > 0.6 ? 'bg-emerald-500/10 text-emerald-400' :
+                                selectedAnalysis.r_squared > 0.3 ? 'bg-amber-500/10 text-amber-400' :
+                                    'bg-rose-500/10 text-rose-400'
+                                }`}>
+                                {selectedAnalysis.r_squared > 0.6 ? 'Relibale Fit' :
+                                    selectedAnalysis.r_squared > 0.3 ? 'Moderate Fit' : 'Low Confidence'}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-zinc-950/50 border border-zinc-800/50 rounded-xl p-4">
+                                <div className="text-[10px] font-bold text-zinc-500 mb-1 uppercase tracking-widest">Steps Coefficient</div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-2xl font-mono font-bold text-white">
+                                        {selectedAnalysis.estimated_activity_coefficients.steps_per_minute.toFixed(2)}
+                                    </span>
+                                    <span className="text-xs text-zinc-400">mg/dL per step/min</span>
+                                </div>
+                                {selectedAnalysis.activity_confidence?.steps_per_minute && (
+                                    <div className="mt-2 text-[10px] text-zinc-600 font-mono">
+                                        95% CI: [{selectedAnalysis.activity_confidence.steps_per_minute.lower.toFixed(2)}, {selectedAnalysis.activity_confidence.steps_per_minute.upper.toFixed(2)}]
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="bg-zinc-950/50 border border-zinc-800/50 rounded-xl p-4">
+                                <div className="text-[10px] font-bold text-zinc-500 mb-1 uppercase tracking-widest">HR Spike Impact</div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-2xl font-mono font-bold text-white">
+                                        +{selectedAnalysis.estimated_activity_coefficients.hr_spike.toFixed(1)}
+                                    </span>
+                                    <span className="text-xs text-zinc-400">mg/dL per unit</span>
+                                </div>
+                                {selectedAnalysis.activity_confidence?.hr_spike && (
+                                    <div className="mt-2 text-[10px] text-zinc-600 font-mono">
+                                        95% CI: [{selectedAnalysis.activity_confidence.hr_spike.lower.toFixed(1)}, {selectedAnalysis.activity_confidence.hr_spike.upper.toFixed(1)}]
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 mt-4 leading-relaxed italic opacity-80">
+                            These values represent your body's personalized sensitivity to physical activity,
+                            calculated by modeling glucose swings against movement and heart rate.
+                        </p>
+                    </div>
+                )}
 
                 {/* 1. CHART SECTION: Active vs Tuned Graph */}
                 <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm">

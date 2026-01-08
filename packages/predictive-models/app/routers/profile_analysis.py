@@ -1,7 +1,7 @@
 """Profile analysis API router"""
 
 import logging
-from typing import List
+from typing import List, Optional, Dict
 from fastapi import APIRouter, HTTPException, status
 
 from app.models.profile_analysis_schemas import (
@@ -18,24 +18,15 @@ def _create_recommended_profile(
     current_profile: dict,
     estimated_isf: List[float],
     estimated_icr: List[float],
-    estimated_basal_rates: List[float]
+    estimated_basal_rates: List[float],
+    estimated_activity_coeffs: Optional[Dict[str, float]] = None
 ):
     """
     Create recommended profile in NightScout format based on analysis results.
-    
-    Args:
-        current_profile: Current profile dict
-        estimated_isf: List of 6 four-hour ISF block estimates
-        estimated_icr: List of 6 four-hour ICR block estimates
-        estimated_basal_rates: List of 6 four-hour basal block rates
-        
-    Returns:
-        ProfileStore with recommended values
     """
     from app.models.profile_analysis_schemas import ProfileStore
     
     # Create 4-hour schedule (6 blocks) for Basal, ISF, ICR
-    # Blocks: 0-3hr, 4-7hr, 8-11hr, 12-15hr, 16-19hr, 20-23hr
     basal_schedule = []
     sens_schedule = []
     carbratio_schedule = []
@@ -63,11 +54,9 @@ def _create_recommended_profile(
             "timeAsSeconds": seconds
         })
     
-    # Preserve target ranges from current profile
+    # Preserve other fields
     target_low = current_profile.get("target_low", [{"time": "00:00", "value": 100, "timeAsSeconds": 0}])
     target_high = current_profile.get("target_high", [{"time": "00:00", "value": 120, "timeAsSeconds": 0}])
-    
-    # Preserve DIA and units from current profile
     dia = current_profile.get("dia", 4.0)
     units = current_profile.get("units", "mg/dl")
     
@@ -78,30 +67,18 @@ def _create_recommended_profile(
         basal=basal_schedule,
         target_low=target_low,
         target_high=target_high,
-        units=units
+        units=units,
+        activity_coefficients=estimated_activity_coeffs
     )
-
 
 
 @router.post("/analyze/profile", response_model=ProfileAnalysisResponse)
 async def analyze_profile(request: ProfileAnalysisRequest):
     """
     Analyze profile parameters using holistic optimization.
-    
-    Estimates ISF, ICR, and 24 basal rates simultaneously by modeling
-    the complete insulin-glucose-carb system over time windows.
-    
-    Args:
-        request: List of time windows with glucose, insulin, carb data
-        
-    Returns:
-        Estimated parameters with confidence metrics
-        
-    Raises:
-        HTTPException: If analysis fails or insufficient data
     """
     try:
-        logger.info(f"Analyzing profile from {len(request.windows)} time windows")
+        logger.info(f"Analyzing profile from {len(request.windows)} time windows (estimate_activity={request.estimate_activity})")
         
         if len(request.windows) == 0:
             raise HTTPException(
@@ -110,7 +87,10 @@ async def analyze_profile(request: ProfileAnalysisRequest):
             )
         
         analyzer = HolisticProfileAnalyzer()
-        result = analyzer.analyze(request.windows)
+        result = analyzer.analyze(
+            request.windows, 
+            estimate_activity=request.estimate_activity
+        )
         
         if result is None:
             raise HTTPException(
@@ -118,13 +98,8 @@ async def analyze_profile(request: ProfileAnalysisRequest):
                 detail="Insufficient data for analysis. Need at least 10 time windows."
             )
         
-        # Generate recommendation
-        if result.r_squared > 0.7:
-            quality = "High"
-        elif result.r_squared > 0.4:
-            quality = "Medium"
-        else:
-            quality = "Low"
+        # Generate recommendation text
+        quality = "High" if result.r_squared > 0.7 else "Medium" if result.r_squared > 0.4 else "Low"
         
         avg_basal = sum(result.estimated_basal_rates) / 6
         avg_isf = sum(result.estimated_isf) / 6
@@ -135,26 +110,28 @@ async def analyze_profile(request: ProfileAnalysisRequest):
             f"Avg ISF: {avg_isf:.1f} mg/dL/U, "
             f"Avg ICR: {avg_icr:.1f} g/U, "
             f"Avg Basal: {avg_basal:.2f} U/hr. "
-            f"Model fit: R²={result.r_squared:.3f}, RMSE={result.rmse:.1f} mg/dL."
+            f"Model fit: R²={result.r_squared:.3f}."
         )
         
-        logger.info(f"Analysis complete: ISF(avg)={avg_isf:.1f}, ICR(avg)={avg_icr:.1f}, R²={result.r_squared:.3f}")
+        if result.estimated_activity_coefficients:
+            recommendation += f" Steps: {result.estimated_activity_coefficients['steps_per_minute']:.2f}, HR: {result.estimated_activity_coefficients['hr_spike']:.1f}."
         
-        # Format current profile (if provided)
+        logger.info(f"Analysis complete: ISF(avg)={avg_isf:.1f}, R²={result.r_squared:.3f}")
+        
+        # Format profiles
         current_profile_formatted = None
         if request.current_profile:
             from app.models.profile_analysis_schemas import ProfileStore
             current_profile_formatted = ProfileStore(**request.current_profile)
         
-        # Format recommended profile
         recommended_profile_formatted = None
         if request.current_profile:
-            # Use current profile as template, updating estimated values
             recommended_profile_formatted = _create_recommended_profile(
                 current_profile=request.current_profile,
                 estimated_isf=result.estimated_isf,
                 estimated_icr=result.estimated_icr,
-                estimated_basal_rates=result.estimated_basal_rates
+                estimated_basal_rates=result.estimated_basal_rates,
+                estimated_activity_coeffs=result.estimated_activity_coefficients
             )
         
         return ProfileAnalysisResponse(
@@ -163,9 +140,11 @@ async def analyze_profile(request: ProfileAnalysisRequest):
             estimated_isf=result.estimated_isf,
             estimated_icr=result.estimated_icr,
             estimated_basal_rates=result.estimated_basal_rates,
+            estimated_activity_coefficients=result.estimated_activity_coefficients,
             isf_confidence=result.isf_confidence,
             icr_confidence=result.icr_confidence,
             basal_confidence=result.basal_confidence,
+            activity_confidence=result.activity_confidence,
             r_squared=result.r_squared,
             rmse=result.rmse,
             mae=result.mae,

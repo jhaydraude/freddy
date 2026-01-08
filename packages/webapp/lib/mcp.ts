@@ -86,7 +86,8 @@ export async function runProfileAnalysis(options: any) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             windows: windows,
-            current_profile: currentProfile
+            current_profile: currentProfile,
+            estimate_activity: options?.parameters?.includes('activity') ?? true
         })
     });
 

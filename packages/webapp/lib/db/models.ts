@@ -238,6 +238,14 @@ export interface IProfileAnalysis extends Document {
     isf_confidence: number[][];       // [[lower, upper], ...]
     icr_confidence: number[][];       // [[lower, upper], ...]
     basal_confidence: number[][];   // [[lower, upper], ...]
+    estimated_activity_coefficients?: {
+        steps_per_minute: number;
+        hr_spike: number;
+    };
+    activity_confidence?: {
+        steps_per_minute: { lower: number, upper: number, std_error: number };
+        hr_spike: { lower: number, upper: number, std_error: number };
+    };
     r_squared: number;
     rmse: number;
     mae: number;
@@ -247,6 +255,7 @@ export interface IProfileAnalysis extends Document {
     meal_windows: number;
     recommendation: string;
     tuning_suggestions?: any;
+    logs?: string[];
 }
 
 const ProfileAnalysisSchema = new Schema({
@@ -259,6 +268,8 @@ const ProfileAnalysisSchema = new Schema({
     isf_confidence: { type: Schema.Types.Mixed },
     icr_confidence: { type: Schema.Types.Mixed },
     basal_confidence: { type: Schema.Types.Mixed }, // Array of arrays
+    estimated_activity_coefficients: { type: Schema.Types.Mixed },
+    activity_confidence: { type: Schema.Types.Mixed },
     r_squared: { type: Number },
     rmse: { type: Number },
     mae: { type: Number },
@@ -267,7 +278,8 @@ const ProfileAnalysisSchema = new Schema({
     stable_windows: { type: Number },
     meal_windows: { type: Number },
     recommendation: { type: String },
-    tuning_suggestions: { type: Schema.Types.Mixed }
+    tuning_suggestions: { type: Schema.Types.Mixed },
+    logs: [{ type: String }]
 }, { collection: 'profile_analysis' });
 
 export const ProfileAnalysis = mongoose.models.ProfileAnalysis || mongoose.model<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema);

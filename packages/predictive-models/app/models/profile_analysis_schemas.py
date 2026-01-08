@@ -8,6 +8,7 @@ class ProfileAnalysisRequest(BaseModel):
     """Request to analyze profile parameters"""
     windows: List[dict]  # List of time window dictionaries
     current_profile: Optional[Dict[str, Any]] = None  # Current active profile
+    estimate_activity: bool = True  # NEW: Whether to estimate activity coefficients
 
 
 class ProfileStore(BaseModel):
@@ -19,6 +20,7 @@ class ProfileStore(BaseModel):
     target_low: List[Dict[str, Any]]
     target_high: List[Dict[str, Any]]
     units: str
+    activity_coefficients: Optional[Dict[str, float]] = None
 
 
 class ProfileAnalysisResponse(BaseModel):
@@ -52,5 +54,12 @@ class ProfileAnalysisResponse(BaseModel):
     
     # Recommendation summary
     recommendation: str
+    
+    # NEW: Activity coefficient estimates
+    estimated_activity_coefficients: Optional[Dict[str, float]] = None
+    activity_confidence: Optional[Dict[str, Dict[str, float]]] = None
+    
+    # NEW: Analysis Logs
+    logs: List[str] = []
 
 

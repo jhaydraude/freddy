@@ -31,8 +31,11 @@ export interface ITimeWindow {
 
     // Activity metrics
     activity_steps: number;
-    activity_heart_rate: number;
-    activity_impact: number;        // Calculated glucose impact (mg/dL) in window
+    activity_calories: number;       // Calories from steps data
+    activity_floors: number;         // Stairs from steps data
+    activity_heart_rate: number;     // Average HR
+    activity_hr_elevation: number;   // Raw HR elevation percentage (0-1+)
+    activity_impact: number;         // Calculated glucose impact (mg/dL) in window
     activity_intensity: string;
 
     // Context
@@ -40,6 +43,12 @@ export interface ITimeWindow {
     is_stable: boolean;   // Glucose relatively flat
     has_meals: boolean;
     has_corrections: boolean;
+
+    // Data Quality
+    data_quality: {
+        has_activity_data: boolean;
+        readings_count: number;
+    };
 }
 
 
@@ -240,6 +249,17 @@ export async function generateTimeWindows(
             });
             const activityImpact = calculateActivityImpact(windowActivity, windowHours * 60, undefined, activityCoefficients);
 
+            const windowSteps = windowActivity.reduce((sum, p) => sum + (p.steps?.count || 0), 0);
+            const windowCalories = windowActivity.reduce((sum, p) => sum + (p.steps?.calories || 0), 0);
+            const windowFloors = windowActivity.reduce((sum, p) => sum + (p.steps?.floors || 0), 0);
+
+            // Calculate raw HR elevation percentage
+            const restingHR = 70; // Default fallback
+            const avgHR = activityImpact.components.heartRate || 0;
+            const hrElevation = avgHR > 0 ? (avgHR - restingHR) / restingHR : 0;
+
+            const readingCount = glucoseEntries.filter(e => e.date >= windowStart.getTime() && e.date <= windowEnd.getTime()).length;
+
             windows.push({
                 start: windowStart,
                 end: windowEnd,
@@ -248,7 +268,7 @@ export async function generateTimeWindows(
                 glucose_start: glucoseAtStart.sgv,
                 glucose_end: glucoseAtEnd.sgv,
                 glucose_change: glucoseChange,
-                glucose_readings_count: glucoseEntries.filter(e => e.date >= windowStart.getTime() && e.date <= windowEnd.getTime()).length,
+                glucose_readings_count: readingCount,
 
                 bolus_insulin: bolusInsulin,
                 basal_insulin_delivered: basalDeilveredRaw,
@@ -259,15 +279,23 @@ export async function generateTimeWindows(
                 carb_events_count: carbEvents,
                 carb_absorption: Math.round(carbAbsorption * 100) / 100,
 
-                activity_steps: windowActivity.reduce((sum, p) => sum + (p.steps?.count || 0), 0),
-                activity_heart_rate: activityImpact.components.heartRate,
+                activity_steps: windowSteps,
+                activity_calories: windowCalories,
+                activity_floors: windowFloors,
+                activity_heart_rate: avgHR,
+                activity_hr_elevation: Math.round(hrElevation * 1000) / 1000,
                 activity_impact: activityImpact.totalImpact,
                 activity_intensity: activityImpact.intensity,
 
                 hour_of_day: windowStart.getHours(),
                 is_stable: isStable,
                 has_meals: hasMeals,
-                has_corrections: hasCorrections
+                has_corrections: hasCorrections,
+
+                data_quality: {
+                    has_activity_data: activityImpact.dataAvailable,
+                    readings_count: readingCount
+                }
             });
 
         } catch (error) {
