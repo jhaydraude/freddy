@@ -74,6 +74,12 @@ export interface IProfileStore {
     target_low: Array<{ time: string, value: number, timeAsSeconds?: number }>;
     target_high: Array<{ time: string, value: number, timeAsSeconds?: number }>;
     units: string;        // mg/dL or mmol
+    activity_coefficients?: {
+        steps_per_minute: number;
+        calories: number;
+        stairs: number;
+        hr_spike: number;
+    };
 }
 
 export interface IProfile extends Document {
@@ -240,6 +246,7 @@ export interface IProfileAnalysis extends Document {
     stable_windows: number;
     meal_windows: number;
     recommendation: string;
+    tuning_suggestions?: any;
 }
 
 const ProfileAnalysisSchema = new Schema({
@@ -259,7 +266,8 @@ const ProfileAnalysisSchema = new Schema({
     windows_filtered_out: { type: Number },
     stable_windows: { type: Number },
     meal_windows: { type: Number },
-    recommendation: { type: String }
+    recommendation: { type: String },
+    tuning_suggestions: { type: Schema.Types.Mixed }
 }, { collection: 'profile_analysis' });
 
 export const ProfileAnalysis = mongoose.models.ProfileAnalysis || mongoose.model<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema);

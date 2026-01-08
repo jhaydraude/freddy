@@ -1,6 +1,8 @@
 import { Entry, Treatment } from '../db/models.js';
 import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
 import { getBolusAbsorption } from './cob-logic.js';
+import { getActivityHistory } from './activity-logic.js';
+import { calculateActivityImpact, DEFAULT_ACTIVITY_COEFFICIENTS, ActivityCoefficients } from './activity-impact.js';
 
 /**
  * Time window for holistic profile analysis
@@ -26,6 +28,12 @@ export interface ITimeWindow {
     carbs_consumed: number;          // Raw total
     carb_events_count: number;
     carb_absorption: number;         // Physiological absorption (grams absorbed in window)
+
+    // Activity metrics
+    activity_steps: number;
+    activity_heart_rate: number;
+    activity_impact: number;        // Calculated glucose impact (mg/dL) in window
+    activity_intensity: string;
 
     // Context
     hour_of_day: number;  // 0-23 for start hour
@@ -76,7 +84,7 @@ export async function generateTimeWindows(
     const lookbackHours = 24; // Margin for carbs/basal
     const treatmentsStartDate = new Date(startDate.getTime() - Math.max(diaHours, lookbackHours) * 60 * 60 * 1000);
 
-    const [glucoseEntries, treatments] = await Promise.all([
+    const [glucoseEntries, treatments, activityData] = await Promise.all([
         Entry.find({
             type: 'sgv',
             date: {
@@ -90,11 +98,14 @@ export async function generateTimeWindows(
                 $gte: treatmentsStartDate.toISOString(),
                 $lte: endDate.toISOString()
             }
-        }).sort({ created_at: 1 }).lean()
+        }).sort({ created_at: 1 }).lean(),
+
+        getActivityHistory(startDate, endDate)
     ]);
 
     console.log(`  Loaded ${glucoseEntries.length} glucose readings`);
     console.log(`  Loaded ${treatments.length} treatments (including tails)`);
+    console.log(`  Loaded ${activityData.length} activity points`);
 
     // === FETCH ACTIVE PROFILE ===
     console.log('  Fetching active profile for basal rates...');
@@ -104,11 +115,23 @@ export async function generateTimeWindows(
 
     let dia = 5;
     let peak = 45;
+    let activityCoefficients: ActivityCoefficients = DEFAULT_ACTIVITY_COEFFICIENTS;
+
     if (profileData) {
         dia = profileData.dia || 5;
         // Peak heuristic
         const curveType = (profileData as any).curve || 'ultra-rapid';
         peak = curveType === 'rapid-acting' ? 55 : 45;
+
+        // Activity Coefficients
+        if (profileData.activity_coefficients) {
+            activityCoefficients = {
+                STEPS_PER_MINUTE: profileData.activity_coefficients.steps_per_minute,
+                CALORIES: profileData.activity_coefficients.calories,
+                STAIRS: profileData.activity_coefficients.stairs,
+                HR_SPIKE: profileData.activity_coefficients.hr_spike
+            };
+        }
     }
 
     // === GENERATE WINDOWS ===
@@ -210,6 +233,13 @@ export async function generateTimeWindows(
             const glucoseChange = glucoseAtEnd.sgv - glucoseAtStart.sgv;
             const isStable = Math.abs(glucoseChange) < 20;
 
+            // --- ACTIVITY IMPACT ---
+            const windowActivity = activityData.filter(p => {
+                const pTime = new Date(p.timestamp).getTime();
+                return pTime >= windowStart.getTime() && pTime <= windowEnd.getTime();
+            });
+            const activityImpact = calculateActivityImpact(windowActivity, windowHours * 60, undefined, activityCoefficients);
+
             windows.push({
                 start: windowStart,
                 end: windowEnd,
@@ -228,6 +258,11 @@ export async function generateTimeWindows(
                 carbs_consumed: carbsConsumed,
                 carb_events_count: carbEvents,
                 carb_absorption: Math.round(carbAbsorption * 100) / 100,
+
+                activity_steps: windowActivity.reduce((sum, p) => sum + (p.steps?.count || 0), 0),
+                activity_heart_rate: activityImpact.components.heartRate,
+                activity_impact: activityImpact.totalImpact,
+                activity_intensity: activityImpact.intensity,
 
                 hour_of_day: windowStart.getHours(),
                 is_stable: isStable,

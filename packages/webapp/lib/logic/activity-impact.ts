@@ -24,14 +24,16 @@ export interface IUserBaseline {
 }
 
 /**
- * Literature-based coefficients for activity impact
+ * Literature-based default coefficients for activity impact
  */
-const ACTIVITY_COEFFICIENTS = {
+export const DEFAULT_ACTIVITY_COEFFICIENTS = {
     STEPS_PER_MINUTE: -1.0,      // mg/dL per step/min above baseline
     CALORIES: -0.4,               // mg/dL per kcal
     STAIRS: +10.0,                // mg/dL per floor (initial spike)
     HR_SPIKE: +15.0,              // mg/dL for 50% HR elevation
 };
+
+export type ActivityCoefficients = typeof DEFAULT_ACTIVITY_COEFFICIENTS;
 
 /**
  * Calculate glucose impact from steps (aerobic activity)
@@ -39,6 +41,7 @@ const ACTIVITY_COEFFICIENTS = {
 function calculateStepsImpact(
     totalSteps: number,
     intervalMinutes: number,
+    coefficients: ActivityCoefficients,
     baseline?: IUserBaseline
 ): number {
     if (totalSteps === 0 || intervalMinutes === 0) return 0;
@@ -58,24 +61,24 @@ function calculateStepsImpact(
     // Only apply impact if above baseline
     if (intensity <= 0) return 0;
 
-    return intensity * ACTIVITY_COEFFICIENTS.STEPS_PER_MINUTE * intervalMinutes;
+    return intensity * coefficients.STEPS_PER_MINUTE * intervalMinutes;
 }
 
 /**
  * Calculate glucose impact from calories burned
  */
-function calculateCaloriesImpact(totalCalories: number): number {
+function calculateCaloriesImpact(totalCalories: number, coefficients: ActivityCoefficients): number {
     if (totalCalories === 0) return 0;
-    return totalCalories * ACTIVITY_COEFFICIENTS.CALORIES;
+    return totalCalories * coefficients.CALORIES;
 }
 
 /**
  * Calculate glucose impact from stairs (anaerobic spike)
  */
-function calculateStairsImpact(totalFloors: number): number {
+function calculateStairsImpact(totalFloors: number, coefficients: ActivityCoefficients): number {
     if (totalFloors === 0) return 0;
     // Stairs cause an initial spike due to anaerobic stress
-    return totalFloors * ACTIVITY_COEFFICIENTS.STAIRS;
+    return totalFloors * coefficients.STAIRS;
 }
 
 /**
@@ -84,6 +87,7 @@ function calculateStairsImpact(totalFloors: number): number {
 function calculateHRImpact(
     avgHeartRate: number,
     maxHeartRate: number,
+    coefficients: ActivityCoefficients,
     baseline?: IUserBaseline
 ): number {
     if (avgHeartRate === 0) return 0;
@@ -95,7 +99,7 @@ function calculateHRImpact(
     if (hrElevation < 0.3) return 0;
 
     // High HR elevation indicates anaerobic activity (causes glucose spike)
-    return hrElevation * ACTIVITY_COEFFICIENTS.HR_SPIKE;
+    return hrElevation * coefficients.HR_SPIKE;
 }
 
 /**
@@ -147,7 +151,8 @@ function determineIntensity(
 export function calculateActivityImpact(
     activityData: IActivityPoint[],
     intervalMinutes: number,
-    userBaseline?: IUserBaseline
+    userBaseline?: IUserBaseline,
+    coefficients: ActivityCoefficients = DEFAULT_ACTIVITY_COEFFICIENTS
 ): IActivityImpact {
     // Check for missing data
     const hasData = activityData.some(p =>
@@ -193,10 +198,10 @@ export function calculateActivityImpact(
     }
 
     // Calculate individual impacts
-    const stepsImpact = calculateStepsImpact(totalSteps, intervalMinutes, userBaseline);
-    const caloriesImpact = calculateCaloriesImpact(totalCalories);
-    const stairsImpact = calculateStairsImpact(totalFloors);
-    const hrImpact = calculateHRImpact(avgHeartRate, maxHeartRate, userBaseline);
+    const stepsImpact = calculateStepsImpact(totalSteps, intervalMinutes, coefficients, userBaseline);
+    const caloriesImpact = calculateCaloriesImpact(totalCalories, coefficients);
+    const stairsImpact = calculateStairsImpact(totalFloors, coefficients);
+    const hrImpact = calculateHRImpact(avgHeartRate, maxHeartRate, coefficients, userBaseline);
 
     // Total impact (aerobic effects are negative, anaerobic are positive)
     const totalImpact = stepsImpact + caloriesImpact + stairsImpact + hrImpact;

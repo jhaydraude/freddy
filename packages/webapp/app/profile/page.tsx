@@ -45,6 +45,7 @@ export default function ProfilePage() {
     // Analysis form state
     const [daysBack, setDaysBack] = useState(30);
     const [windowHours, setWindowHours] = useState(2);
+    const [tuneParameters, setTuneParameters] = useState<string[]>(['isf', 'dia', 'basal', 'activity']);
 
     const fetchActiveProfile = async () => {
         setLoadingProfile(true);
@@ -90,7 +91,11 @@ export default function ProfilePage() {
             const res = await fetch('/api/profile/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ daysBack, windowHours })
+                body: JSON.stringify({
+                    daysBack,
+                    windowHours,
+                    parameters: tuneParameters
+                })
             });
 
             if (res.ok) {
@@ -197,7 +202,7 @@ export default function ProfilePage() {
 
             <main className="max-w-4xl mx-auto px-4 py-6 space-y-8">
 
-                {/* 1. Run Analysis Section (Moved to Top) */}
+                {/* 1. Run Analysis Section */}
                 <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm">
                     <h2 className="text-zinc-400 font-medium text-sm uppercase tracking-wider mb-4 flex items-center gap-2">
                         <BarChart2 size={16} /> Run New Analysis
@@ -222,6 +227,36 @@ export default function ProfilePage() {
                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-indigo-500 transition-colors"
                             />
                         </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-4">
+                        {[
+                            { id: 'isf', label: 'ISF' },
+                            { id: 'dia', label: 'DIA' },
+                            { id: 'basal', label: 'Basal' },
+                            { id: 'activity', label: 'Activity' }
+                        ].map(param => (
+                            <label key={param.id} className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="checkbox"
+                                    checked={tuneParameters.includes(param.id)}
+                                    onChange={(e) => {
+                                        if (e.target.checked) {
+                                            setTuneParameters([...tuneParameters, param.id]);
+                                        } else {
+                                            setTuneParameters(tuneParameters.filter(p => p !== param.id));
+                                        }
+                                    }}
+                                    className="w-4 h-4 rounded bg-zinc-950 border-zinc-800 text-indigo-600 focus:ring-indigo-500/20"
+                                />
+                                <span className="text-xs text-zinc-400 group-hover:text-zinc-200 transition-colors uppercase font-bold tracking-tight">
+                                    {param.label}
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+
+                    <div className="mt-6 flex justify-end">
                         <button
                             onClick={runAnalysis}
                             disabled={analyzing}
@@ -232,6 +267,49 @@ export default function ProfilePage() {
                         </button>
                     </div>
                 </div>
+
+                {/* 2. TUNING SUGGESTIONS SECTION */}
+                {
+                    selectedAnalysis?.tuning_suggestions?.length > 0 && (
+                        <div className="p-6 rounded-2xl bg-indigo-500/5 border border-indigo-500/20 backdrop-blur-sm">
+                            <h2 className="text-indigo-400 font-bold text-sm uppercase tracking-wider mb-6 flex items-center gap-2">
+                                <TrendingUp size={16} /> Tuning Recommendations
+                            </h2>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {selectedAnalysis.tuning_suggestions.map((s: any, i: number) => (
+                                    <div key={i} className="p-4 bg-zinc-900/80 rounded-xl border border-zinc-800 hover:border-indigo-500/40 transition-colors">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">
+                                                    {s.parameter === 'activity_steps' ? 'Aerobic (Steps)' :
+                                                        s.parameter === 'activity_hr' ? 'Anaerobic (HR)' :
+                                                            s.parameter === 'activity_stairs' ? 'Stairs' :
+                                                                s.parameter === 'activity_calories' ? 'Calories' : s.parameter}
+                                                </span>
+                                                <span className={`text-lg font-mono font-bold ${s.changePercentage > 0 ? 'text-indigo-400' : 'text-emerald-400'}`}>
+                                                    {s.suggestedValue}
+                                                </span>
+                                            </div>
+                                            <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${s.confidence === 'high' ? 'bg-emerald-500/20 text-emerald-400' : s.confidence === 'medium' ? 'bg-indigo-500/20 text-indigo-400' : 'bg-zinc-500/20 text-zinc-400'}`}>
+                                                {s.confidence} Confidence
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <span className="text-xs text-zinc-500 line-through">{s.currentValue}</span>
+                                            <span className={`text-xs font-bold ${s.changePercentage > 0 ? 'text-indigo-400/80' : 'text-emerald-400/80'}`}>
+                                                {s.changePercentage > 0 ? '+' : ''}{s.changePercentage}%
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-zinc-400 leading-relaxed italic">
+                                            "{s.reason}"
+                                        </p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )
+                }
 
                 {/* 1. CHART SECTION: Active vs Tuned Graph */}
                 <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm">
@@ -297,158 +375,160 @@ export default function ProfilePage() {
                 </div>
 
                 {/* 2. DETAILED DESCRIPTION SECTION */}
-                {selectedAnalysis && (
-                    <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm">
-                        <h2 className="text-zinc-400 font-medium text-sm uppercase tracking-wider mb-6 flex items-center gap-2">
-                            <Info size={16} /> Detailed Loop Entry Settings
-                        </h2>
+                {
+                    selectedAnalysis && (
+                        <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm">
+                            <h2 className="text-zinc-400 font-medium text-sm uppercase tracking-wider mb-6 flex items-center gap-2">
+                                <Info size={16} /> Detailed Loop Entry Settings
+                            </h2>
 
-                        <div className="space-y-6">
-                            {/* Sensitivity (ISF) */}
-                            <div>
-                                <h3 className="text-sm font-semibold text-zinc-300 mb-3 border-b border-zinc-800 pb-2">Sensitivity (ISF)</h3>
-                                <div className="overflow-x-auto rounded-lg border border-zinc-800">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-zinc-950 text-zinc-400 font-medium">
-                                            <tr>
-                                                <th className="px-4 py-3">Time Range</th>
-                                                <th className="px-4 py-3 text-right">Recommended</th>
-                                                <th className="px-4 py-3 text-right">Confidence (95%)</th>
-                                                <th className="px-4 py-3 text-right">Active (Avg)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-zinc-800 bg-zinc-900/30">
-                                            {[0, 1, 2, 3, 4, 5].map((blockIdx) => {
-                                                const startHour = blockIdx * 4;
-                                                const endHour = startHour + 3;
-                                                const timeLabel = `${startHour.toString().padStart(2, '0')}:00 - ${endHour.toString().padStart(2, '0')}:59`;
+                            <div className="space-y-6">
+                                {/* Sensitivity (ISF) */}
+                                <div>
+                                    <h3 className="text-sm font-semibold text-zinc-300 mb-3 border-b border-zinc-800 pb-2">Sensitivity (ISF)</h3>
+                                    <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-zinc-950 text-zinc-400 font-medium">
+                                                <tr>
+                                                    <th className="px-4 py-3">Time Range</th>
+                                                    <th className="px-4 py-3 text-right">Recommended</th>
+                                                    <th className="px-4 py-3 text-right">Confidence (95%)</th>
+                                                    <th className="px-4 py-3 text-right">Active (Avg)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-zinc-800 bg-zinc-900/30">
+                                                {[0, 1, 2, 3, 4, 5].map((blockIdx) => {
+                                                    const startHour = blockIdx * 4;
+                                                    const endHour = startHour + 3;
+                                                    const timeLabel = `${startHour.toString().padStart(2, '0')}:00 - ${endHour.toString().padStart(2, '0')}:59`;
 
-                                                // Handle number vs array for backward compatibility
-                                                const val = Array.isArray(selectedAnalysis.estimated_isf)
-                                                    ? selectedAnalysis.estimated_isf[blockIdx]
-                                                    : selectedAnalysis.estimated_isf;
+                                                    // Handle number vs array for backward compatibility
+                                                    const val = Array.isArray(selectedAnalysis.estimated_isf)
+                                                        ? selectedAnalysis.estimated_isf[blockIdx]
+                                                        : selectedAnalysis.estimated_isf;
 
-                                                const conf = Array.isArray(selectedAnalysis.isf_confidence?.[0])
-                                                    ? selectedAnalysis.isf_confidence[blockIdx]
-                                                    : selectedAnalysis.isf_confidence;
+                                                    const conf = Array.isArray(selectedAnalysis.isf_confidence?.[0])
+                                                        ? selectedAnalysis.isf_confidence[blockIdx]
+                                                        : selectedAnalysis.isf_confidence;
 
-                                                return (
-                                                    <tr key={blockIdx} className="hover:bg-zinc-800/50 transition-colors">
-                                                        <td className="px-4 py-3 font-mono text-zinc-300">{timeLabel}</td>
-                                                        <td className="px-4 py-3 text-right font-mono text-indigo-400 font-bold">
-                                                            {val?.toFixed(0)}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-mono text-zinc-500 text-xs">
-                                                            {Array.isArray(conf) ? `${conf[0]?.toFixed(0)} - ${conf[1]?.toFixed(0)}` : 'N/A'}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-mono text-emerald-500/80">
-                                                            {blockIdx === 0 && <span className="text-[10px] text-zinc-600 mr-2">(Global Avg)</span>}
-                                                            ~{activeISFVal.toFixed(0)}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
+                                                    return (
+                                                        <tr key={blockIdx} className="hover:bg-zinc-800/50 transition-colors">
+                                                            <td className="px-4 py-3 font-mono text-zinc-300">{timeLabel}</td>
+                                                            <td className="px-4 py-3 text-right font-mono text-indigo-400 font-bold">
+                                                                {val?.toFixed(0)}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-mono text-zinc-500 text-xs">
+                                                                {Array.isArray(conf) ? `${conf[0]?.toFixed(0)} - ${conf[1]?.toFixed(0)}` : 'N/A'}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-mono text-emerald-500/80">
+                                                                {blockIdx === 0 && <span className="text-[10px] text-zinc-600 mr-2">(Global Avg)</span>}
+                                                                ~{activeISFVal.toFixed(0)}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Carb Ratio (ICR) */}
-                            <div>
-                                <h3 className="text-sm font-semibold text-zinc-300 mb-3 border-b border-zinc-800 pb-2">Carb Ratio (ICR)</h3>
-                                <div className="overflow-x-auto rounded-lg border border-zinc-800">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-zinc-950 text-zinc-400 font-medium">
-                                            <tr>
-                                                <th className="px-4 py-3">Time Range</th>
-                                                <th className="px-4 py-3 text-right">Recommended</th>
-                                                <th className="px-4 py-3 text-right">Confidence (95%)</th>
-                                                <th className="px-4 py-3 text-right">Active (Avg)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-zinc-800 bg-zinc-900/30">
-                                            {[0, 1, 2, 3, 4, 5].map((blockIdx) => {
-                                                const startHour = blockIdx * 4;
-                                                const endHour = startHour + 3;
-                                                const timeLabel = `${startHour.toString().padStart(2, '0')}:00 - ${endHour.toString().padStart(2, '0')}:59`;
+                                {/* Carb Ratio (ICR) */}
+                                <div>
+                                    <h3 className="text-sm font-semibold text-zinc-300 mb-3 border-b border-zinc-800 pb-2">Carb Ratio (ICR)</h3>
+                                    <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-zinc-950 text-zinc-400 font-medium">
+                                                <tr>
+                                                    <th className="px-4 py-3">Time Range</th>
+                                                    <th className="px-4 py-3 text-right">Recommended</th>
+                                                    <th className="px-4 py-3 text-right">Confidence (95%)</th>
+                                                    <th className="px-4 py-3 text-right">Active (Avg)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-zinc-800 bg-zinc-900/30">
+                                                {[0, 1, 2, 3, 4, 5].map((blockIdx) => {
+                                                    const startHour = blockIdx * 4;
+                                                    const endHour = startHour + 3;
+                                                    const timeLabel = `${startHour.toString().padStart(2, '0')}:00 - ${endHour.toString().padStart(2, '0')}:59`;
 
-                                                const val = Array.isArray(selectedAnalysis.estimated_icr)
-                                                    ? selectedAnalysis.estimated_icr[blockIdx]
-                                                    : selectedAnalysis.estimated_icr;
+                                                    const val = Array.isArray(selectedAnalysis.estimated_icr)
+                                                        ? selectedAnalysis.estimated_icr[blockIdx]
+                                                        : selectedAnalysis.estimated_icr;
 
-                                                const conf = Array.isArray(selectedAnalysis.icr_confidence?.[0])
-                                                    ? selectedAnalysis.icr_confidence[blockIdx]
-                                                    : selectedAnalysis.icr_confidence;
+                                                    const conf = Array.isArray(selectedAnalysis.icr_confidence?.[0])
+                                                        ? selectedAnalysis.icr_confidence[blockIdx]
+                                                        : selectedAnalysis.icr_confidence;
 
-                                                return (
-                                                    <tr key={blockIdx} className="hover:bg-zinc-800/50 transition-colors">
-                                                        <td className="px-4 py-3 font-mono text-zinc-300">{timeLabel}</td>
-                                                        <td className="px-4 py-3 text-right font-mono text-indigo-400 font-bold">
-                                                            {val?.toFixed(1)}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-mono text-zinc-500 text-xs">
-                                                            {Array.isArray(conf) ? `${conf[0]?.toFixed(1)} - ${conf[1]?.toFixed(1)}` : 'N/A'}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-mono text-emerald-500/80">
-                                                            {blockIdx === 0 && <span className="text-[10px] text-zinc-600 mr-2">(Global Avg)</span>}
-                                                            ~{activeICRVal.toFixed(1)}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
+                                                    return (
+                                                        <tr key={blockIdx} className="hover:bg-zinc-800/50 transition-colors">
+                                                            <td className="px-4 py-3 font-mono text-zinc-300">{timeLabel}</td>
+                                                            <td className="px-4 py-3 text-right font-mono text-indigo-400 font-bold">
+                                                                {val?.toFixed(1)}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-mono text-zinc-500 text-xs">
+                                                                {Array.isArray(conf) ? `${conf[0]?.toFixed(1)} - ${conf[1]?.toFixed(1)}` : 'N/A'}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-mono text-emerald-500/80">
+                                                                {blockIdx === 0 && <span className="text-[10px] text-zinc-600 mr-2">(Global Avg)</span>}
+                                                                ~{activeICRVal.toFixed(1)}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Basal Schedule Table */}
-                            <div>
-                                <h3 className="text-sm font-semibold text-zinc-300 mb-3 border-b border-zinc-800 pb-2">Basal Schedule Blocks</h3>
-                                <div className="overflow-x-auto rounded-lg border border-zinc-800">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-zinc-950 text-zinc-400 font-medium">
-                                            <tr>
-                                                <th className="px-4 py-3">Time Range</th>
-                                                <th className="px-4 py-3 text-right">Recommended Rate</th>
-                                                <th className="px-4 py-3 text-right">Confidence (95%)</th>
-                                                <th className="px-4 py-3 text-right">Active Rate</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-zinc-800 bg-zinc-900/30">
-                                            {[0, 1, 2, 3, 4, 5].map((blockIdx) => {
-                                                const startHour = blockIdx * 4;
-                                                const endHour = startHour + 3;
-                                                const timeLabel = `${startHour.toString().padStart(2, '0')}:00 - ${endHour.toString().padStart(2, '0')}:59`;
-                                                const rate = selectedAnalysis.estimated_basal_rates?.[blockIdx];
-                                                const conf = selectedAnalysis.basal_confidence?.[blockIdx];
-                                                // Estimate average active rate for this block for comparison
-                                                const activeRateSum = chartData
-                                                    .filter(d => d.originalHour >= startHour && d.originalHour <= endHour)
-                                                    .reduce((s, d) => s + d.active, 0);
-                                                const activeRateAvg = activeRateSum / 4;
+                                {/* Basal Schedule Table */}
+                                <div>
+                                    <h3 className="text-sm font-semibold text-zinc-300 mb-3 border-b border-zinc-800 pb-2">Basal Schedule Blocks</h3>
+                                    <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-zinc-950 text-zinc-400 font-medium">
+                                                <tr>
+                                                    <th className="px-4 py-3">Time Range</th>
+                                                    <th className="px-4 py-3 text-right">Recommended Rate</th>
+                                                    <th className="px-4 py-3 text-right">Confidence (95%)</th>
+                                                    <th className="px-4 py-3 text-right">Active Rate</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-zinc-800 bg-zinc-900/30">
+                                                {[0, 1, 2, 3, 4, 5].map((blockIdx) => {
+                                                    const startHour = blockIdx * 4;
+                                                    const endHour = startHour + 3;
+                                                    const timeLabel = `${startHour.toString().padStart(2, '0')}:00 - ${endHour.toString().padStart(2, '0')}:59`;
+                                                    const rate = selectedAnalysis.estimated_basal_rates?.[blockIdx];
+                                                    const conf = selectedAnalysis.basal_confidence?.[blockIdx];
+                                                    // Estimate average active rate for this block for comparison
+                                                    const activeRateSum = chartData
+                                                        .filter(d => d.originalHour >= startHour && d.originalHour <= endHour)
+                                                        .reduce((s, d) => s + d.active, 0);
+                                                    const activeRateAvg = activeRateSum / 4;
 
-                                                return (
-                                                    <tr key={blockIdx} className="hover:bg-zinc-800/50 transition-colors">
-                                                        <td className="px-4 py-3 font-mono text-zinc-300">{timeLabel}</td>
-                                                        <td className="px-4 py-3 text-right font-mono text-indigo-400 font-bold">
-                                                            {rate?.toFixed(3)} U/hr
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-mono text-zinc-500 text-xs">
-                                                            {conf ? `${conf[0]?.toFixed(3)} - ${conf[1]?.toFixed(3)}` : 'N/A'}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right font-mono text-emerald-500/80">
-                                                            ~{activeRateAvg?.toFixed(3)} U/hr
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
+                                                    return (
+                                                        <tr key={blockIdx} className="hover:bg-zinc-800/50 transition-colors">
+                                                            <td className="px-4 py-3 font-mono text-zinc-300">{timeLabel}</td>
+                                                            <td className="px-4 py-3 text-right font-mono text-indigo-400 font-bold">
+                                                                {rate?.toFixed(3)} U/hr
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-mono text-zinc-500 text-xs">
+                                                                {conf ? `${conf[0]?.toFixed(3)} - ${conf[1]?.toFixed(3)}` : 'N/A'}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-mono text-emerald-500/80">
+                                                                ~{activeRateAvg?.toFixed(3)} U/hr
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )
+                }
 
 
 
@@ -496,7 +576,7 @@ export default function ProfilePage() {
                         <div className="text-zinc-500 italic px-1">No history available.</div>
                     )}
                 </div>
-            </main>
-        </div>
+            </main >
+        </div >
     );
 }

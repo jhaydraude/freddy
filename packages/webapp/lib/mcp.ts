@@ -45,6 +45,7 @@ export async function getActiveProfile() {
 }
 
 import { generateTimeWindows } from './logic/profile-analysis-logic';
+import { calculateProfileTuning } from './logic/profile-tuning-logic';
 
 export async function runProfileAnalysis(options: any) {
     await ensureConnected();
@@ -59,15 +60,25 @@ export async function runProfileAnalysis(options: any) {
         throw new Error("No valid time windows generated");
     }
 
-    let currentProfile = null;
+    let currentProfile: any = null;
     try {
         const profileInfo = await resolveActiveProfile(new Date());
-        if (profileInfo?.profileData) {
+        if (profileInfo) {
+            // Use profileData if it exists (from an active switch) 
+            // otherwise use the default store from the profile document
             currentProfile = profileInfo.profileData;
+            if (!currentProfile && profileInfo.doc) {
+                const defaultName = profileInfo.doc.defaultProfile;
+                currentProfile = profileInfo.doc.store instanceof Map
+                    ? profileInfo.doc.store.get(defaultName)
+                    : (profileInfo.doc.store as any)?.[defaultName];
+            }
         }
     } catch (e) {
         console.error("Profile fetch error", e);
     }
+
+    console.log(`[ProfileAnalysis] Resolved current profile: ${!!currentProfile}`);
 
     const analysisUrl = process.env.PREDICTION_SERVICE_URL || 'http://localhost:8000';
     const response = await fetch(`${analysisUrl}/api/v1/analyze/profile`, {
@@ -84,6 +95,14 @@ export async function runProfileAnalysis(options: any) {
     }
 
     const analysis = await response.json();
+
+    // Generate Tuning Suggestions
+    const tuningResult = calculateProfileTuning(windows, currentProfile, {
+        parameters: options?.parameters
+    });
+    analysis.tuning_suggestions = tuningResult.suggestions;
+
+    console.log(`[ProfileAnalysis] Generated ${analysis.tuning_suggestions?.length || 0} tuning suggestions`);
 
     // Save to DB
     try {

@@ -1,6 +1,6 @@
 import { IStatusResult, IAttributionResult, IAttributionTimeframe, IAttributionHistoryPoint } from './types.js';
 import { getActivityHistory } from './activity-logic.js';
-import { calculateActivityImpact } from './activity-impact.js';
+import { calculateActivityImpact, DEFAULT_ACTIVITY_COEFFICIENTS, ActivityCoefficients } from './activity-impact.js';
 
 /**
  * Calculate glucose change attribution for multiple timeframes.
@@ -30,6 +30,17 @@ export async function attributeGlucoseChange(
     // Get timeseries data (if available)
     const iobTimeseries = (currentStatus.iob as any)?.timeseries;
     const cobTimeseries = (currentStatus.cob as any)?.timeseries;
+
+    // Resolve Activity Coefficients
+    let activityCoefficients: ActivityCoefficients = DEFAULT_ACTIVITY_COEFFICIENTS;
+    if (currentStatus.profile?.profileData?.activity_coefficients) {
+        activityCoefficients = {
+            STEPS_PER_MINUTE: currentStatus.profile.profileData.activity_coefficients.steps_per_minute,
+            CALORIES: currentStatus.profile.profileData.activity_coefficients.calories,
+            STAIRS: currentStatus.profile.profileData.activity_coefficients.stairs,
+            HR_SPIKE: currentStatus.profile.profileData.activity_coefficients.hr_spike
+        };
+    }
 
     // Fetch activity data for the attribution window
     const now = new Date(currentStatus.meta?.status_date || new Date());
@@ -99,7 +110,9 @@ export async function attributeGlucoseChange(
         // Calculate activity impact
         const activityImpactData = calculateActivityImpact(
             activityData.slice(-intervalCount), // Last N intervals
-            minutes
+            minutes,
+            undefined,
+            activityCoefficients
         );
         const activityImpact = activityImpactData.totalImpact;
 
@@ -166,9 +179,8 @@ export async function attributeGlucoseChange(
 
             // Calculate activity impact for this point
             const activityIdx = activityData.length - intervalsAgo - 1;
-            let pointActivity = 0;
             if (activityIdx >= 0 && activityIdx < activityData.length) {
-                const activityImpact = calculateActivityImpact([activityData[activityIdx]], 5);
+                const activityImpact = calculateActivityImpact([activityData[activityIdx]], 5, undefined, activityCoefficients);
                 pointActivity = activityImpact.totalImpact;
             }
 
