@@ -71,19 +71,24 @@ export default function ProfilePage() {
     const fetchHistory = async () => {
         setLoadingHistory(true);
         try {
-            const res = await fetch('/api/profile/history?limit=10'); // Fetch more history
+            const res = await fetch('/api/profile/history?limit=10');
             if (res.ok) {
                 const data = await res.json();
+                console.log('[DEBUG] fetchHistory received:', data?.length, 'items');
                 setHistory(data);
                 if (data.length > 0) {
                     setSelectedAnalysis(data[0]);
                 }
+                return data; // Return the data for use in runAnalysis
+            } else {
+                console.error('[DEBUG] fetchHistory failed:', res.status, res.statusText);
             }
         } catch (error) {
             console.error('Failed to load history', error);
         } finally {
             setLoadingHistory(false);
         }
+        return null;
     };
 
     useEffect(() => {
@@ -132,7 +137,16 @@ export default function ProfilePage() {
 
                 setAnalysisProgress(90);
                 addLog("💾 Synchronizing results with database...");
-                await fetchHistory();
+                const newHistory = await fetchHistory();
+                console.log('[DEBUG] New history fetched:', newHistory?.length, 'items');
+                if (newHistory && newHistory.length > 0) {
+                    console.log('[DEBUG] Latest analysis:', {
+                        timestamp: newHistory[0].timestamp,
+                        has_coeffs: !!newHistory[0].estimated_activity_coefficients,
+                        coeffs: newHistory[0].estimated_activity_coefficients
+                    });
+                    setSelectedAnalysis(newHistory[0]);
+                }
                 setAnalysisProgress(100);
 
                 // Keep progress showing for a second
@@ -250,6 +264,12 @@ export default function ProfilePage() {
                         <BarChart2 size={16} /> Run New Analysis
                     </h2>
 
+                    {/* DEBUG: Remove later */}
+                    <div className="hidden">
+                        DEBUG: {selectedAnalysis ? Object.keys(selectedAnalysis).join(', ') : 'No data'}
+                        HAS ACTIVITY: {selectedAnalysis?.estimated_activity_coefficients ? 'YES' : 'NO'}
+                    </div>
+
                     <div className="flex flex-col md:flex-row gap-4 items-end">
                         <div className="space-y-1 flex-1">
                             <label className="text-xs text-zinc-500 ml-1">Days Back</label>
@@ -351,17 +371,96 @@ export default function ProfilePage() {
                     </div>
                 </div>
 
+                {/* 1. REGRESSION SECTION (Promoted) */}
+                {selectedAnalysis && selectedAnalysis.estimated_activity_coefficients && (
+                    <div className="p-6 rounded-2xl bg-indigo-500/5 border border-indigo-500/10 backdrop-blur-md">
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-zinc-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
+                                <Activity size={16} className="text-indigo-400" /> Activity Regression Results
+                            </h3>
+                            <div className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${selectedAnalysis.r_squared > 0.6 ? 'bg-emerald-500/10 text-emerald-400' :
+                                selectedAnalysis.r_squared > 0.3 ? 'bg-amber-500/10 text-amber-400' :
+                                    'bg-rose-500/10 text-rose-400'
+                                }`}>
+                                {selectedAnalysis.r_squared > 0.6 ? 'Reliable Fit' :
+                                    selectedAnalysis.r_squared > 0.3 ? 'Moderate Fit' : 'Low Confidence'}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-4 hover:border-indigo-500/30 transition-colors">
+                                <div className="text-[10px] font-bold text-zinc-500 mb-1 uppercase tracking-widest">Steps Coefficient</div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-2xl font-mono font-bold text-white">
+                                        {selectedAnalysis.estimated_activity_coefficients.steps_per_minute?.toFixed(2) || '0.00'}
+                                    </span>
+                                    <span className="text-[10px] text-zinc-500">mg/dL per step/min</span>
+                                </div>
+                                {selectedAnalysis.activity_confidence?.steps_per_minute && (
+                                    <div className="mt-2 text-[10px] text-zinc-600 font-mono">
+                                        CI: [{selectedAnalysis.activity_confidence.steps_per_minute.lower?.toFixed(2)}, {selectedAnalysis.activity_confidence.steps_per_minute.upper?.toFixed(2)}]
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-4 hover:border-indigo-500/30 transition-colors">
+                                <div className="text-[10px] font-bold text-zinc-500 mb-1 uppercase tracking-widest">HR Spike Impact</div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-2xl font-mono font-bold text-white">
+                                        {selectedAnalysis.estimated_activity_coefficients.hr_spike >= 0 ? '+' : ''}
+                                        {selectedAnalysis.estimated_activity_coefficients.hr_spike?.toFixed(1) || '0.0'}
+                                    </span>
+                                    <span className="text-[10px] text-zinc-500">mg/dL per unit</span>
+                                </div>
+                                {selectedAnalysis.activity_confidence?.hr_spike && (
+                                    <div className="mt-2 text-[10px] text-zinc-600 font-mono">
+                                        CI: [{selectedAnalysis.activity_confidence.hr_spike.lower?.toFixed(1)}, {selectedAnalysis.activity_confidence.hr_spike.upper?.toFixed(1)}]
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-xl p-4 lg:col-span-2">
+                                <div className="text-[10px] font-bold text-zinc-500 mb-2 uppercase tracking-widest">Interpretation</div>
+                                <p className="text-[11px] text-zinc-400 leading-relaxed italic">
+                                    {(() => {
+                                        const stepsCoeff = selectedAnalysis.estimated_activity_coefficients.steps_per_minute || 0;
+                                        const hrCoeff = selectedAnalysis.estimated_activity_coefficients.hr_spike || 0;
+                                        const bothZero = Math.abs(stepsCoeff) < 0.01 && Math.abs(hrCoeff) < 0.01;
+
+                                        if (bothZero) {
+                                            return `"Based on ${selectedAnalysis.windows_analyzed} windows, the optimizer found no significant glucose impact from activity. This could mean: (1) insufficient activity data in the analyzed period, (2) activity effects are being absorbed by ISF/ICR parameters, or (3) your glucose is not significantly affected by movement."`;
+                                        } else if (stepsCoeff < 0) {
+                                            return `"Your body's sensitivity to physical activity, calculated from ${selectedAnalysis.windows_analyzed} data windows. Movement consistently lowers your glucose."`;
+                                        } else {
+                                            return `"Your body's sensitivity to physical activity, calculated from ${selectedAnalysis.windows_analyzed} data windows. Movement has a neutral or minimal effect on your glucose."`;
+                                        }
+                                    })()}
+                                </p>
+                                {Math.abs(selectedAnalysis.estimated_activity_coefficients.steps_per_minute || 0) < 0.01 &&
+                                    Math.abs(selectedAnalysis.estimated_activity_coefficients.hr_spike || 0) < 0.01 && (
+                                        <div className="mt-3 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                                            <div className="text-[10px] font-bold text-amber-400 uppercase tracking-wider mb-1">⚠️ Zero Impact Detected</div>
+                                            <div className="text-[10px] text-amber-300/80 leading-relaxed">
+                                                Try running analysis on a period with more varied activity levels, or check if activity data is being recorded properly.
+                                            </div>
+                                        </div>
+                                    )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* 2. TUNING SUGGESTIONS SECTION */}
                 {
                     selectedAnalysis?.tuning_suggestions?.length > 0 && (
-                        <div className="p-6 rounded-2xl bg-indigo-500/5 border border-indigo-500/20 backdrop-blur-sm">
-                            <h2 className="text-indigo-400 font-bold text-sm uppercase tracking-wider mb-6 flex items-center gap-2">
-                                <TrendingUp size={16} /> Tuning Recommendations
+                        <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm">
+                            <h2 className="text-zinc-400 font-bold text-xs uppercase tracking-wider mb-6 flex items-center gap-2">
+                                <TrendingUp size={16} className="text-emerald-400" /> Tuning Recommendations
                             </h2>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {selectedAnalysis.tuning_suggestions.map((s: any, i: number) => (
-                                    <div key={i} className="p-4 bg-zinc-900/80 rounded-xl border border-zinc-800 hover:border-indigo-500/40 transition-colors">
+                                    <div key={i} className="p-4 bg-zinc-100 dark:bg-zinc-950/40 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:border-emerald-500/40 transition-colors">
                                         <div className="flex justify-between items-start mb-2">
                                             <div className="flex flex-col">
                                                 <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">
@@ -393,60 +492,6 @@ export default function ProfilePage() {
                         </div>
                     )
                 }
-
-                {/* Regression Estimates (Activity) */}
-                {selectedAnalysis && selectedAnalysis.estimated_activity_coefficients && (
-                    <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm">
-                        <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-zinc-400 font-medium text-sm uppercase tracking-wider flex items-center gap-2">
-                                <Activity size={16} className="text-indigo-400" /> Activity Regression Results
-                            </h2>
-                            <div className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${selectedAnalysis.r_squared > 0.6 ? 'bg-emerald-500/10 text-emerald-400' :
-                                selectedAnalysis.r_squared > 0.3 ? 'bg-amber-500/10 text-amber-400' :
-                                    'bg-rose-500/10 text-rose-400'
-                                }`}>
-                                {selectedAnalysis.r_squared > 0.6 ? 'Relibale Fit' :
-                                    selectedAnalysis.r_squared > 0.3 ? 'Moderate Fit' : 'Low Confidence'}
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="bg-zinc-950/50 border border-zinc-800/50 rounded-xl p-4">
-                                <div className="text-[10px] font-bold text-zinc-500 mb-1 uppercase tracking-widest">Steps Coefficient</div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl font-mono font-bold text-white">
-                                        {selectedAnalysis.estimated_activity_coefficients.steps_per_minute.toFixed(2)}
-                                    </span>
-                                    <span className="text-xs text-zinc-400">mg/dL per step/min</span>
-                                </div>
-                                {selectedAnalysis.activity_confidence?.steps_per_minute && (
-                                    <div className="mt-2 text-[10px] text-zinc-600 font-mono">
-                                        95% CI: [{selectedAnalysis.activity_confidence.steps_per_minute.lower.toFixed(2)}, {selectedAnalysis.activity_confidence.steps_per_minute.upper.toFixed(2)}]
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="bg-zinc-950/50 border border-zinc-800/50 rounded-xl p-4">
-                                <div className="text-[10px] font-bold text-zinc-500 mb-1 uppercase tracking-widest">HR Spike Impact</div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl font-mono font-bold text-white">
-                                        +{selectedAnalysis.estimated_activity_coefficients.hr_spike.toFixed(1)}
-                                    </span>
-                                    <span className="text-xs text-zinc-400">mg/dL per unit</span>
-                                </div>
-                                {selectedAnalysis.activity_confidence?.hr_spike && (
-                                    <div className="mt-2 text-[10px] text-zinc-600 font-mono">
-                                        95% CI: [{selectedAnalysis.activity_confidence.hr_spike.lower.toFixed(1)}, {selectedAnalysis.activity_confidence.hr_spike.upper.toFixed(1)}]
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        <p className="text-[11px] text-zinc-500 mt-4 leading-relaxed italic opacity-80">
-                            These values represent your body's personalized sensitivity to physical activity,
-                            calculated by modeling glucose swings against movement and heart rate.
-                        </p>
-                    </div>
-                )}
 
                 {/* 1. CHART SECTION: Active vs Tuned Graph */}
                 <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm">
@@ -702,9 +747,16 @@ export default function ProfilePage() {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="text-xs font-mono text-indigo-400">
-                                        ISF: {Array.isArray(item.estimated_isf) ? item.estimated_isf.reduce((a: number, b: number) => a + b, 0) / item.estimated_isf.length : item.estimated_isf?.toFixed(0)}
-                                        • ICR: {Array.isArray(item.estimated_icr) ? item.estimated_icr.reduce((a: number, b: number) => a + b, 0) / item.estimated_icr.length : item.estimated_icr?.toFixed(0)}
+                                    <div className="text-right">
+                                        <div className="text-xs font-mono text-indigo-400">
+                                            ISF: {Array.isArray(item.estimated_isf) ? Math.round(item.estimated_isf.reduce((a: number, b: number) => a + b, 0) / item.estimated_isf.length) : item.estimated_isf?.toFixed(0)}
+                                            • ICR: {Array.isArray(item.estimated_icr) ? Math.round(item.estimated_icr.reduce((a: number, b: number) => a + b, 0) / item.estimated_icr.length) : item.estimated_icr?.toFixed(0)}
+                                        </div>
+                                        {item.estimated_activity_coefficients && (
+                                            <div className="text-[10px] font-mono text-zinc-500 mt-1">
+                                                Steps: {item.estimated_activity_coefficients.steps_per_minute?.toFixed(2)} • HR: {item.estimated_activity_coefficients.hr_spike?.toFixed(1)}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

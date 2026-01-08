@@ -152,7 +152,8 @@ async def analyze_profile(request: ProfileAnalysisRequest):
             windows_filtered_out=result.windows_filtered_out,
             stable_windows=result.stable_windows,
             meal_windows=result.meal_windows,
-            recommendation=recommendation
+            recommendation=recommendation,
+            logs=result.logs
         )
         
     except HTTPException:
