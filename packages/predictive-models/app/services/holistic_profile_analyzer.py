@@ -113,15 +113,14 @@ class HolisticProfileAnalyzer:
             self._log(f"Error validating windows: {e}")
             return None
         
-        # Filter out windows with large unexplained glucose increases
-        filtered_windows = self._filter_quality_windows(window_objects)
+        # Calculate quality-based weights for each window (soft weighting instead of hard filtering)
+        window_weights = self._calculate_window_weights(window_objects)
         
-        if len(filtered_windows) < 10:
-            self._log(f"⚠️  Only {len(filtered_windows)} quality windows after filtering (need at least 10)")
-            return None
+        self._log(f"\n🔧 Optimizing parameters for {len(window_objects)} windows...")
+        self._log(f"   (Using soft weighting based on data quality)")
         
-        self._log(f"\n🔧 Optimizing parameters for {len(filtered_windows)} windows...")
-        self._log(f"   (Filtered out {len(window_objects) - len(filtered_windows)} windows with unexplained glucose increases)")
+        # Store weights for use in objective function
+        self.window_weights = window_weights
         
         # Initial parameter guesses
         initial_isf = [50.0] * 6  # mg/dL per unit (6 blocks)
@@ -144,11 +143,15 @@ class HolisticProfileAnalyzer:
         ub = [200.0] * 6 + [50.0] * 6 + [5.0] * 6 + [b[1] for b in bounds_activity]
         bounds = Bounds(lb=lb, ub=ub)
         
-        # Optimize
+        # Optimize with regularization
+        # Regularization parameters (tunable)
+        lambda_l2 = 0.1  # L2 regularization strength
+        lambda_smooth = 0.05  # Smoothness penalty strength
+        
         result = minimize(
             fun=self._objective_function,
             x0=x0,
-            args=(filtered_windows, estimate_activity),
+            args=(window_objects, estimate_activity, x0, lambda_l2, lambda_smooth),
             method='L-BFGS-B',
             bounds=bounds,
             options={'maxiter': 1000, 'disp': True}
@@ -179,7 +182,7 @@ class HolisticProfileAnalyzer:
         errors = []
         actual_vs_pred = []
         
-        for window in filtered_windows:
+        for window in window_objects:
             predicted = self._predict_glucose_change(
                 window, isf_values, icr_values, basal_rates, activity_coeffs
             )
@@ -196,8 +199,8 @@ class HolisticProfileAnalyzer:
         
         # Calculate R²
         ss_res = np.sum(np.array(errors) ** 2)
-        ss_tot = np.sum((np.array([w.glucose_change for w in filtered_windows]) - 
-                        np.mean([w.glucose_change for w in filtered_windows])) ** 2)
+        ss_tot = np.sum((np.array([w.glucose_change for w in window_objects]) - 
+                        np.mean([w.glucose_change for w in window_objects])) ** 2)
         r_squared = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
         
         # RMSE and MAE
@@ -207,7 +210,7 @@ class HolisticProfileAnalyzer:
         # Calculate confidence intervals using bootstrap
         self._log(f"\n📊 Calculating confidence intervals via bootstrap...")
         confidence_intervals = self._calculate_confidence_intervals(
-            filtered_windows, isf_values, icr_values, basal_rates, activity_coeffs, estimate_activity
+            window_objects, isf_values, icr_values, basal_rates, activity_coeffs, estimate_activity
         )
         
         return ProfileAnalysisResult(
@@ -222,10 +225,10 @@ class HolisticProfileAnalyzer:
             r_squared=float(r_squared),
             rmse=float(rmse),
             mae=float(mae),
-            windows_analyzed=len(filtered_windows),
-            windows_filtered_out=len(window_objects) - len(filtered_windows),
-            stable_windows=len([w for w in filtered_windows if w.is_stable]),
-            meal_windows=len([w for w in filtered_windows if w.has_meals]),
+            windows_analyzed=len(window_objects),
+            windows_filtered_out=0,  # No longer filtering
+            stable_windows=len([w for w in window_objects if w.is_stable]),
+            meal_windows=len([w for w in window_objects if w.has_meals]),
             prediction_errors=errors,
             actual_vs_predicted=actual_vs_pred,
             logs=self.logs
@@ -241,55 +244,61 @@ class HolisticProfileAnalyzer:
     
 
 
-    def _filter_quality_windows(
+    def _calculate_window_weights(
         self, 
         windows: List[TimeWindow]
-    ) -> List[TimeWindow]:
+    ) -> List[float]:
         """
-        Filter out windows with large unexplained glucose increases.
+        Calculate quality-based weights for each window instead of filtering.
         
-        These are likely due to unreported or under-reported carbs and
-        will negatively affect parameter estimation.
+        This soft weighting approach preserves all data while down-weighting
+        windows with potential quality issues (e.g., unreported carbs).
         
-        Filtering criteria:
-        - If glucose increases >50 mg/dL but carbs < 20g, likely unreported meal
-        - If glucose increases >80 mg/dL but carbs < 40g, definitely unreported meal
-        - Allow decreases (negative glucose change) regardless of carbs
+        Returns:
+            List of weights (0.0 to 1.5) for each window
         """
-        filtered = []
-        filtered_count = 0
+        weights = []
+        low_weight_count = 0
         
         for window in windows:
-            # Always allow glucose decreases
-            if window.glucose_change < 0:
-                filtered.append(window)
-                continue
+            weight = 1.0
             
-            # Check for unexplained increases
-            glucose_increase = window.glucose_change
-            carbs = window.carbs_consumed
+            # Penalize windows with few glucose readings
+            readings = window.data_quality.get('readings_count', 12)
+            if readings < 6:
+                weight *= 0.3
+                low_weight_count += 1
+            elif readings < 10:
+                weight *= 0.6
             
-            # Heuristic thresholds
-            # Roughly: 1g carb raises glucose ~3-5 mg/dL depending on ICR/ISF
-            # So 50 mg/dL increase should have at least ~15-20g carbs
-            # 80 mg/dL increase should have at least ~25-40g carbs
+            # Penalize unexplained glucose increases (soft penalty instead of removal)
+            if window.glucose_change > 0:
+                glucose_increase = window.glucose_change
+                carbs = window.carbs_consumed
+                
+                # Heuristic: 1g carb raises glucose ~3-5 mg/dL
+                # Large increases with few carbs suggest unreported meals
+                if glucose_increase > 80 and carbs < 40:
+                    weight *= 0.2  # Strong penalty but don't remove
+                    low_weight_count += 1
+                elif glucose_increase > 50 and carbs < 20:
+                    weight *= 0.4  # Moderate penalty
+                    low_weight_count += 1
             
-            is_unexplained = False
+            # Reward stable windows (less noise)
+            if window.is_stable:
+                weight *= 1.3
             
-            if glucose_increase > 80 and carbs < 40:
-                is_unexplained = True
-                filtered_count += 1
-            elif glucose_increase > 50 and carbs < 20:
-                is_unexplained = True
-                filtered_count += 1
+            # Reward windows with good data quality
+            if readings >= 12:
+                weight *= 1.1
             
-            if not is_unexplained:
-                filtered.append(window)
+            weights.append(weight)
         
-        if filtered_count > 0:
-            self._log(f"   Filtered {filtered_count} windows with unexplained glucose increases")
+        if low_weight_count > 0:
+            self._log(f"   Applied low weights to {low_weight_count} windows with quality concerns")
         
-        return filtered
+        return weights
     
     
     def _calculate_confidence_intervals(
@@ -335,10 +344,14 @@ class HolisticProfileAnalyzer:
             bootstrap_windows = random.choices(windows, k=len(windows))
             
             try:
+                # Use same regularization as main optimization
+                lambda_l2 = 0.1
+                lambda_smooth = 0.05
+                
                 result = minimize(
                     fun=self._objective_function,
                     x0=initial_guess,
-                    args=(bootstrap_windows, estimate_activity),
+                    args=(bootstrap_windows, estimate_activity, initial_guess, lambda_l2, lambda_smooth),
                     method='L-BFGS-B',
                     bounds=bounds,
                     options={'maxiter': 500, 'disp': False}
@@ -396,10 +409,22 @@ class HolisticProfileAnalyzer:
         self, 
         params: np.ndarray, 
         windows: List[TimeWindow],
-        estimate_activity: bool = False
+        estimate_activity: bool = False,
+        initial_guess: Optional[np.ndarray] = None,
+        lambda_l2: float = 0.0,
+        lambda_smooth: float = 0.0
     ) -> float:
         """
         Objective function to minimize: sum of weighted squared prediction errors
+        with L2 regularization and smoothness penalties.
+        
+        Args:
+            params: Current parameter values
+            windows: Time windows for analysis
+            estimate_activity: Whether to estimate activity coefficients
+            initial_guess: Initial parameter values for L2 regularization
+            lambda_l2: L2 regularization strength (prevents overfitting)
+            lambda_smooth: Smoothness penalty strength (encourages gradual transitions)
         """
         # Unpack 18-20 parameters
         isf_rates = params[0:6]
@@ -414,32 +439,41 @@ class HolisticProfileAnalyzer:
             }
         
         total_error = 0.0
-        for window in windows:
+        for idx, window in enumerate(windows):
             predicted = self._predict_glucose_change(
                 window, isf_rates, icr_rates, basal_rates, activity_coeffs
             )
             actual = window.glucose_change
             
-            # Calculate window weight (quality indicator)
-            weight = 1.0
-            readings = window.data_quality.get('readings_count', 12)
-            
-            # Penalize windows with few readings (standard is 12 for 1 hour at 5min intervals)
-            if readings < 10:
-                weight *= 0.5
-            elif readings < 6:
-                weight *= 0.1
-                
-            # Reward stable windows (less noise/unexplained factors)
-            if window.is_stable:
-                weight *= 1.2
+            # Get weight for this window from stored weights
+            weight = self.window_weights[idx] if hasattr(self, 'window_weights') and idx < len(self.window_weights) else 1.0
             
             total_error += weight * (actual - predicted) ** 2
+        
+        # L2 Regularization: Penalize large deviations from initial guess
+        # Helps prevent overfitting on small datasets
+        if initial_guess is not None and lambda_l2 > 0:
+            regularization = lambda_l2 * np.sum((params - initial_guess) ** 2)
+            total_error += regularization
+        
+        # Smoothness Penalty: Encourage gradual transitions between adjacent time blocks
+        # Makes parameters more physiologically plausible
+        if lambda_smooth > 0:
+            smoothness_penalty = 0.0
             
-        # Optional: Add L2 regularization to tether to initial guesses
-        # (Helps prevent wild swings on small datasets)
-        # regularization = 0.01 * np.sum((params - initial_guess)**2) 
-        # total_error += regularization
+            # ISF smoothness (blocks 0-5)
+            for i in range(5):
+                smoothness_penalty += (params[i+1] - params[i]) ** 2
+            
+            # ICR smoothness (blocks 6-11)
+            for i in range(5):
+                smoothness_penalty += (params[6+i+1] - params[6+i]) ** 2
+            
+            # Basal smoothness (blocks 12-17)
+            for i in range(5):
+                smoothness_penalty += (params[12+i+1] - params[12+i]) ** 2
+            
+            total_error += lambda_smooth * smoothness_penalty
         
         return total_error
     

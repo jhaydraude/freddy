@@ -1,7 +1,7 @@
 {
-  "name": "nightmanager-monorepo",
+  "name": "freddy-monorepo",
   "version": "2.0.0",
-  "description": "NightManager monorepo - MCP server, Predictive Models service, and WebApp for Nightscout diabetes management",
+  "description": "Freddy - The Intelligent Loop Manager: AI-powered diabetes management platform with MCP server, Predictive Models service, and WebApp",
   "private": true,
   "type": "module",
   "workspaces": [

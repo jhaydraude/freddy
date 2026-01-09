@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  prediction-service:
+    build:
+      context: .
+      dockerfile: packages/predictive-models/Dockerfile
+    container_name: freddy-prediction
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+    networks:
+      - freddy
+
+  webapp:
+    build:
+      context: .
+      dockerfile: packages/webapp/Dockerfile
+    container_name: freddy-webapp
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGO_URI=${MONGO_URI}
+      - PREDICTION_SERVICE_URL=http://prediction-service:8000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - NODE_ENV=production
+    depends_on:
+      - prediction-service
+    networks:
+      - freddy
+
+networks:
+  freddy:
+    driver: bridge

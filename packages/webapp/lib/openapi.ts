@@ -228,9 +228,9 @@ const StatusResponseSchema = z.object({
 export const openApiDocument = createDocument({
     openapi: '3.1.0',
     info: {
-        title: 'NightManager API',
+        title: 'Freddy API',
         version: '1.0.0',
-        description: 'Diabetes Management and Predictive Analysis API',
+        description: 'The Intelligent Loop Manager - AI-powered diabetes management and predictive analysis API',
     },
     servers: [{ url: '/api' }],
     paths: {

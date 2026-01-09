@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Moon, Settings, LayoutDashboard, BookOpen } from 'lucide-react';
 
 export default function Header({
-    title = "NightManager",
+    title = "Freddy",
     action
 }: {
     title?: string;

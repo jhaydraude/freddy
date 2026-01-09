@@ -1,4 +1,4 @@
-# NightManager
+# Freddy - The Intelligent Loop Manager
 
 A comprehensive diabetes management platform with MCP server, predictive ML models, and web interface for Nightscout data.
 

@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.env.production
+*.log
+npm-debug.log*
+.DS_Store
+coverage
+.vscode
+dist
+build
+__pycache__
+*.pyc
+.pytest_cache

@@ -9,7 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@nightmanager/mcp-server": "*",
+    "@freddy/mcp-server": "*",
     "@scalar/api-reference-react": "^0.8.15",
     "@scalar/nextjs-api-reference": "^0.9.7",
     "date-fns": "^4.1.0",

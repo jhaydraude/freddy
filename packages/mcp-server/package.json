@@ -1,7 +1,7 @@
 {
-    "name": "@nightmanager/mcp-server",
+    "name": "@freddy/mcp-server",
     "version": "1.0.0",
-    "description": "NightManager MCP (Model Context Protocol) server for Nightscout database access",
+    "description": "Freddy MCP (Model Context Protocol) server for intelligent diabetes management",
     "main": "src/index.ts",
     "type": "module",
     "scripts": {
