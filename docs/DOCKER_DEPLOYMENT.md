@@ -44,13 +44,13 @@ Required environment variables:
 
 ```bash
 # Build containers
-docker-compose build
+docker compose build
 
 # Start services
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ### 4. Access Application
@@ -162,16 +162,16 @@ NODE_ENV=production
 
 ```bash
 # Build containers
-docker-compose build
+docker compose build
 
 # Start in foreground (see logs)
-docker-compose up
+docker compose up
 
 # Start in background
-docker-compose up -d
+docker compose up -d
 
 # Stop services
-docker-compose down
+docker compose down
 ```
 
 ### Production Deployment
@@ -222,38 +222,38 @@ ssh user@server "cd /opt/freddy && git pull && ./deploy.sh"
 
 ```bash
 # List running containers
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f
-docker-compose logs -f webapp
-docker-compose logs -f prediction-service
+docker compose logs -f
+docker compose logs -f webapp
+docker compose logs -f prediction-service
 
 # Restart services
-docker-compose restart
-docker-compose restart webapp
+docker compose restart
+docker compose restart webapp
 
 # Stop services
-docker-compose down
+docker compose down
 
 # Remove containers and volumes
-docker-compose down -v
+docker compose down -v
 ```
 
 ### Building
 
 ```bash
 # Build all services
-docker-compose build
+docker compose build
 
 # Build specific service
-docker-compose build webapp
+docker compose build webapp
 
 # Build without cache
-docker-compose build --no-cache
+docker compose build --no-cache
 
 # Build and start
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ### Debugging
@@ -312,15 +312,15 @@ Expected response:
 
 ```bash
 # Check logs for errors
-docker-compose logs webapp
+docker compose logs webapp
 
 # Check container status
 docker ps -a
 
 # Rebuild from scratch
-docker-compose down -v
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down -v
+docker compose build --no-cache
+docker compose up -d
 ```
 
 ### MongoDB Connection Failed
@@ -345,7 +345,7 @@ docker exec freddy-webapp sh -c 'echo $MONGO_URI'
 netstat -tulpn | grep :3000
 netstat -tulpn | grep :8000
 
-# Change ports in docker-compose.yml
+# Change ports in docker compose.yml
 ports:
   - "3001:3000"  # Map to different host port
 ```
@@ -361,7 +361,7 @@ docker system prune -a
 
 # Check Docker version
 docker --version
-docker-compose --version
+docker compose --version
 ```
 
 ---
@@ -370,7 +370,7 @@ docker-compose --version
 
 ### Resource Limits
 
-Add to `docker-compose.yml`:
+Add to `docker compose.yml`:
 
 ```yaml
 services:
@@ -436,13 +436,13 @@ docker stats freddy-webapp
 
 ```bash
 # Follow logs
-docker-compose logs -f
+docker compose logs -f
 
 # Last 100 lines
-docker-compose logs --tail=100
+docker compose logs --tail=100
 
 # Since specific time
-docker-compose logs --since 2024-01-08T10:00:00
+docker compose logs --since 2024-01-08T10:00:00
 ```
 
 ---
@@ -475,7 +475,7 @@ git checkout v1.0.0
 
 # Restore container images
 docker load < freddy-webapp.tar.gz
-docker-compose up -d
+docker compose up -d
 ```
 
 ---
@@ -486,7 +486,7 @@ docker-compose up -d
 
 ```bash
 git pull origin main
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ### Major Updates
@@ -499,7 +499,7 @@ git tag -a v1.0.0 -m "Stable version"
 git pull origin main
 
 # Test in separate environment first
-docker-compose -f docker-compose.test.yml up
+docker compose -f docker compose.test.yml up
 
 # Deploy
 ./deploy.sh
@@ -519,7 +519,7 @@ docker-compose -f docker-compose.test.yml up
 ## Support
 
 For issues or questions:
-1. Check logs: `docker-compose logs -f`
+1. Check logs: `docker compose logs -f`
 2. Review troubleshooting section above
 3. Check GitHub issues
 4. Verify MongoDB connectivity

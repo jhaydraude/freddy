@@ -21,15 +21,15 @@ if [ -z "$MONGO_URI" ]; then
 fi
 
 # Build and start containers
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 
 echo "✅ Deployment complete!"
 echo "📊 Checking service health..."
 sleep 5
-docker-compose ps
+docker compose ps
 
 # Show logs
 echo "📝 Recent logs:"
-docker-compose logs --tail=50
+docker compose logs --tail=50
