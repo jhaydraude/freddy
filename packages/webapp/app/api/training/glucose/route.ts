@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateGlucoseTrainingData } from '@/lib/mcp';
+import { generateGlucoseTrainingData } from '@/lib/server-actions';
 
 export async function POST(request: Request) {
     try {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { runProfileAnalysis } from '@/lib/mcp';
+import { runProfileAnalysis } from '@/lib/server-actions';
 
 export async function POST(request: Request) {
     try {

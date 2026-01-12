@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getActiveProfile } from '@/lib/mcp';
+import { getActiveProfile } from '@/lib/server-actions';
 
 export async function GET() {
     try {

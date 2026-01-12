@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAnalysisData } from '@/lib/mcp';
+import { getAnalysisData } from '@/lib/server-actions';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);

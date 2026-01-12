@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateProfileTrainingData } from '@/lib/mcp';
+import { generateProfileTrainingData } from '@/lib/server-actions';
 
 export async function POST(request: Request) {
     try {

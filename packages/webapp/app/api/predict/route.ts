@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getGlucosePrediction } from '@/lib/mcp';
+import { getGlucosePrediction } from '@/lib/server-actions';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);

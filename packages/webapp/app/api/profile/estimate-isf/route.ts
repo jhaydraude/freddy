@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { runISFEstimation } from '@/lib/mcp';
+import { runISFEstimation } from '@/lib/server-actions';
 
 export async function POST(request: Request) {
     try {
