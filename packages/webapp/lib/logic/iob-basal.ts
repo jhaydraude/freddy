@@ -1,8 +1,8 @@
-import { Treatment } from '../db/models.js';
-import { resolveActiveProfile, getProfileStore } from './profile-logic.js';
-import { getBasalFromSchedule } from './basal-logic.js';
-import { decayIOB } from './insulin-math.js';
-import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve } from './iob-curves.js';
+import { Treatment } from '../db/models';
+import { resolveActiveProfile, getProfileStore } from './profile-logic';
+import { getBasalFromSchedule } from './basal-logic';
+import { decayIOB } from './insulin-math';
+import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve } from './iob-curves';
 
 /**
  * Calculates both Scheduled and Delivered Basal IOB for a given time window.

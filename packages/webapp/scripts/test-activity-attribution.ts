@@ -1,5 +1,5 @@
-import { connectToDatabase } from '../lib/db/connection.js';
-import { getStatus } from '../lib/logic/status-logic.js';
+import { connectToDatabase } from '../lib/db/connection';
+import { getStatus } from '../lib/logic/status-logic';
 
 async function main() {
     await connectToDatabase();

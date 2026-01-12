@@ -1,8 +1,8 @@
 """Pydantic schemas for profile tuning model."""
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
-from datetime import datetime
+from pydantic import BaseModel, Field, ConfigDict
+from datetime import datetime, timezone
 
 
 class BasalTimeBlock(BaseModel):
@@ -85,8 +85,8 @@ class ProfileTuneRequest(BaseModel):
         description="XGBoost hyperparameters (optional)"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "profile_tuner",
                 "samples": [
@@ -110,6 +110,7 @@ class ProfileTuneRequest(BaseModel):
                 }
             }
         }
+    )
 
 
 class ProfileRecommendRequest(BaseModel):
@@ -136,8 +137,8 @@ class ProfileRecommendRequest(BaseModel):
         description="Current basal rates (24 hourly values)"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "profile_tuner",
                 "status_history": [],
@@ -149,6 +150,7 @@ class ProfileRecommendRequest(BaseModel):
                 ]
             }
         }
+    )
 
 
 class ProfileRecommendResponse(BaseModel):
@@ -175,10 +177,10 @@ class ProfileRecommendResponse(BaseModel):
     features_used: Dict[str, float] = Field(
         description="Extracted features used for recommendation"
     )
-    predicted_at: datetime = Field(default_factory=datetime.utcnow)
+    predicted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "profile_tuner",
                 "recommended_isf": 3.2,
@@ -195,6 +197,7 @@ class ProfileRecommendResponse(BaseModel):
                 "predicted_at": "2024-01-01T12:00:00"
             }
         }
+    )
 
 
 class ProfileTuneResponse(BaseModel):
@@ -212,10 +215,10 @@ class ProfileTuneResponse(BaseModel):
     )
     samples_trained: int
     samples_validated: int
-    trained_at: datetime = Field(default_factory=datetime.utcnow)
+    trained_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "profile_tuner",
                 "status": "success",
@@ -236,3 +239,4 @@ class ProfileTuneResponse(BaseModel):
                 "trained_at": "2024-01-01T12:00:00"
             }
         }
+    )

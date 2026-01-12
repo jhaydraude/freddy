@@ -1,7 +1,7 @@
-import { getStatusHistory } from './history-logic.js';
-import type { IStatusResult } from './types.js';
-import { Entry } from '../db/models.js';
-import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
+import { getStatusHistory } from './history-logic';
+import type { IStatusResult } from './types';
+import { Entry } from '../db/models';
+import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic';
 
 /**
  * Options for generating profile training data.

@@ -1,8 +1,8 @@
-import { getStatus } from './status-logic.js';
-import { getStatusHistory } from './history-logic.js';
-import { calculateProjectedGlucose, getGlucosePrediction } from './prediction-logic.js';
-import { generateExplanation } from './llm-service.js';
-import { EXPLAIN_SYSTEM_PROMPT, generateExplainUserPrompt } from './prompts.js';
+import { getStatus } from './status-logic';
+import { getStatusHistory } from './history-logic';
+import { calculateProjectedGlucose, getGlucosePrediction } from './prediction-logic';
+import { generateExplanation } from './llm-service';
+import { EXPLAIN_SYSTEM_PROMPT, generateExplainUserPrompt } from './prompts';
 
 export async function explainStatus(timestamp: string | Date = new Date()): Promise<string> {
     const now = new Date(timestamp);

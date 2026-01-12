@@ -1,6 +1,6 @@
-import { connectToDatabase } from '../lib/db/connection.js';
-import { generateTimeWindows } from '../lib/logic/profile-analysis-logic.js';
-import { resolveActiveProfile } from '../lib/logic/profile-logic.js';
+import { connectToDatabase } from '../lib/db/connection';
+import { generateTimeWindows } from '../lib/logic/profile-analysis-logic';
+import { resolveActiveProfile } from '../lib/logic/profile-logic';
 
 async function main() {
     console.log('🚀 Starting Profile Analysis...');
@@ -11,7 +11,7 @@ async function main() {
 
     const profile = await resolveActiveProfile(new Date());
     const currentISF = profile?.profileData?.sens?.[0]?.value || 50;
-    const currentCR = profile?.profileData?.carbs?.[0]?.value || 10;
+    const currentCR = profile?.profileData?.carbratio?.[0]?.value || 10;
 
     console.log(`\n📋 Current Profile: ISF=${currentISF}, CR=${currentCR}`);
     console.log(`Analyzing ${windows.length} windows over ${days} days...\n`);

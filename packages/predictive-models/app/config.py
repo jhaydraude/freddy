@@ -1,5 +1,6 @@
 """Application configuration."""
 
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 from typing import List
 
@@ -30,10 +31,11 @@ class Settings(BaseSettings):
         """Parse CORS origins into a list."""
         return [origin.strip() for origin in self.allowed_origins.split(",")]
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-        extra = "ignore"
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 # Global settings instance

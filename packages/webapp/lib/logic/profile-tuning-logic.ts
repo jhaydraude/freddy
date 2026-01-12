@@ -1,4 +1,4 @@
-import { ITimeWindow } from './profile-analysis-logic.js';
+import { ITimeWindow } from './profile-analysis-logic';
 
 export interface ITuningSuggestion {
     parameter: 'isf' | 'cr' | 'basal' | 'dia' | 'activity' | 'activity_steps' | 'activity_hr' | 'activity_stairs' | 'activity_calories';

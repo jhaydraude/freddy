@@ -1,6 +1,6 @@
-import { generateExplanation } from './llm-service.js';
-import { PROFILE_EXPLAIN_SYSTEM_PROMPT, generateProfileExplainPrompt } from './prompts.js';
-import type { IProfileAnalysis } from '../db/models.js';
+import { generateExplanation } from './llm-service';
+import { PROFILE_EXPLAIN_SYSTEM_PROMPT, generateProfileExplainPrompt } from './prompts';
+import type { IProfileAnalysis } from '../db/models';
 
 /**
  * Generate an LLM-powered explanation for a profile analysis result.

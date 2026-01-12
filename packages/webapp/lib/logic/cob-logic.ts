@@ -1,7 +1,7 @@
-import { Treatment, Entry, DeviceStatus } from '../db/models.js';
-import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
-import { getIOB, calculateInsulinActivityRate } from './iob-logic.js';
-import { ICOBResult } from './types.js';
+import { Treatment, Entry, DeviceStatus } from '../db/models';
+import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic';
+import { getIOB, calculateInsulinActivityRate } from './iob-logic';
+import { ICOBResult } from './types';
 
 /** Result for a single carb event's absorption curve */
 export interface ICarbEventCurve {

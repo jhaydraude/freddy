@@ -1,5 +1,5 @@
-import { connectToDatabase } from '../lib/db/connection.js';
-import { ActivityRecord } from '../lib/db/models.js';
+import { connectToDatabase } from '../lib/db/connection';
+import { ActivityRecord } from '../lib/db/models';
 
 async function main() {
     await connectToDatabase();

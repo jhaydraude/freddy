@@ -1,6 +1,6 @@
-import { IStatusResult, IAttributionResult, IAttributionTimeframe, IAttributionHistoryPoint } from './types.js';
-import { getActivityHistory } from './activity-logic.js';
-import { calculateActivityImpact, DEFAULT_ACTIVITY_COEFFICIENTS, ActivityCoefficients } from './activity-impact.js';
+import { IStatusResult, IAttributionResult, IAttributionTimeframe, IAttributionHistoryPoint } from './types';
+import { getActivityHistory } from './activity-logic';
+import { calculateActivityImpact, DEFAULT_ACTIVITY_COEFFICIENTS, ActivityCoefficients } from './activity-impact';
 
 /**
  * Calculate glucose change attribution for multiple timeframes.
@@ -178,6 +178,7 @@ export async function attributeGlucoseChange(
             const pointCarbs = (cobIdx >= 0 && cobData[cobIdx]) ? (cobData[cobIdx].glucoseImpact || 0) : 0;
 
             // Calculate activity impact for this point
+            let pointActivity = 0;
             const activityIdx = activityData.length - intervalsAgo - 1;
             if (activityIdx >= 0 && activityIdx < activityData.length) {
                 const activityImpact = calculateActivityImpact([activityData[activityIdx]], 5, undefined, activityCoefficients);

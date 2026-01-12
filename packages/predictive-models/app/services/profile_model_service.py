@@ -4,7 +4,7 @@ import os
 import json
 import joblib
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
@@ -141,7 +141,7 @@ class ProfileModelService:
             metadata = {
                 'model_name': request.model_name,
                 'model_type': 'profile_tuner',
-                'trained_at': datetime.utcnow().isoformat(),
+                'trained_at': datetime.now(timezone.utc).isoformat(),
                 'feature_names': feature_names,
                 'output_names': output_names,
                 'parameters': params,
@@ -170,7 +170,7 @@ class ProfileModelService:
                 feature_importance=feature_importance,
                 samples_trained=len(X_train),
                 samples_validated=len(X_test),
-                trained_at=datetime.utcnow()
+                trained_at=datetime.now(timezone.utc)
             )
             
         except Exception as e:
@@ -247,7 +247,7 @@ class ProfileModelService:
                 isf_change_percent=isf_change_percent,
                 icr_change_percent=icr_change_percent,
                 features_used=features,
-                predicted_at=datetime.utcnow()
+                predicted_at=datetime.now(timezone.utc)
             )
             
         except Exception as e:

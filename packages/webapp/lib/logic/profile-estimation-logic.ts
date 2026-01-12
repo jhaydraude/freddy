@@ -1,7 +1,7 @@
-import { Entry, Treatment } from '../db/models.js';
-import { getGlucose } from './status-logic.js';
-import { getIOB } from './iob-logic.js';
-import { resolveActiveProfile, getProfileStore } from './profile-logic.js';
+import { Entry, Treatment } from '../db/models';
+import { getGlucose } from './status-logic';
+import { getIOB } from './iob-logic';
+import { resolveActiveProfile, getProfileStore } from './profile-logic';
 
 /**
  * Insulin correction event for ISF estimation

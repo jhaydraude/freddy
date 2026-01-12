@@ -1,4 +1,4 @@
-import { IActivityPoint } from './activity-logic.js';
+import { IActivityPoint } from './activity-logic';
 
 /**
  * Activity impact on glucose

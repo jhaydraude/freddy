@@ -1,5 +1,5 @@
-import { ITimeWindow } from '../lib/logic/profile-analysis-logic.js';
-import { calculateProfileTuning } from '../lib/logic/profile-tuning-logic.js';
+import { ITimeWindow } from '../lib/logic/profile-analysis-logic';
+import { calculateProfileTuning } from '../lib/logic/profile-tuning-logic';
 
 function runTest() {
     console.log('🧪 Testing Profile Tuning Logic...\n');

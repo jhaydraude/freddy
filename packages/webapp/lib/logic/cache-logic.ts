@@ -1,6 +1,6 @@
-import { ComputedStatus } from '../db/models.js';
-import { getStatus } from './status-logic.js';
-import { floorToInterval } from './cache-utils.js';
+import { ComputedStatus } from '../db/models';
+import { getStatus } from './status-logic';
+import { floorToInterval } from './cache-utils';
 
 /**
  * Recalculates and caches computed statuses for a given time range.

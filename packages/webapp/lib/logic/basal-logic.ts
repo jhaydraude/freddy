@@ -1,5 +1,5 @@
-import { Treatment } from '../db/models.js';
-import { resolveActiveProfile, getProfileStore } from './profile-logic.js';
+import { Treatment } from '../db/models';
+import { resolveActiveProfile, getProfileStore } from './profile-logic';
 
 /**
  * Calculates the scheduled basal rate for a given time of day.

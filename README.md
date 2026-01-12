@@ -1,6 +1,6 @@
 # Freddy - The Intelligent Loop Manager
 
-A comprehensive diabetes management platform with MCP server, predictive ML models, and web interface for Nightscout data.
+A comprehensive diabetes management platform with predictive ML models, and web interface for Nightscout data.
 
 ## Architecture
 
@@ -9,38 +9,26 @@ This is a monorepo containing multiple independent packages:
 ```
 NightManager/
 ├── packages/
-│   ├── mcp-server/           # Model Context Protocol server
 │   ├── predictive-models/    # Python ML prediction service
-│   ├── webapp/               # Web application (planned)
+│   ├── webapp/               # Web application (Next.js 16)
 │   └── shared/               # Shared TypeScript utilities
 ├── docs/                     # Documentation
-└── scripts/                  # Build and deployment scripts
+└── archive/                  # Archived legacy code
 ```
 
 ## Packages
-
-### 🔌 MCP Server ([packages/mcp-server](packages/mcp-server/))
-
-Model Context Protocol server providing tools for:
-- Glucose data retrieval and analysis
-- IOB/COB calculations with timeseries
-- Profile analysis and recommendations
-- AI-powered explanations
-- Training data generation
-
-**Technologies**: TypeScript, MongoDB (Mongoose), Google Gemini AI
 
 ### 🤖 Predictive Models ([packages/predictive-models](packages/predictive-models/))
 
 Python-based machine learning service for glucose prediction and profile optimization.
 
-**Technologies**: Python, FastAPI, scikit-learn, TensorFlow
+**Technologies**: Python, FastAPI, XGBoost, scikit-learn
 
 ### 🌐 WebApp ([packages/webapp](packages/webapp/))
 
-Web application interface (under development).
+Next.js-based dashboard and API service for Nightscout data and predictive analysis.
 
-**Technologies**: TBD (likely Next.js or similar)
+**Technologies**: Next.js 16, TypeScript, TailwindCSS, Mongoose
 
 ### 📦 Shared ([packages/shared](packages/shared/))
 
@@ -60,14 +48,14 @@ This will install dependencies for all workspace packages.
 
 ### Start Services
 
-**Start MCP Server:**
-```bash
-.\start-mcp.bat
-```
-
 **Start Predictive Models Service:**
 ```bash
 .\start-prediction-service.bat
+```
+
+**Start WebApp:**
+```bash
+.\start-webapp.bat
 ```
 
 **Start All Services:**
@@ -84,7 +72,7 @@ This will install dependencies for all workspace packages.
 
 ```env
 # MongoDB Connection
-MONGODB_URI=mongodb://localhost:27017/nightscout
+MONGO_URI=mongodb://localhost:27017/nightscout
 
 # AI Services
 GEMINI_API_KEY=your_gemini_api_key_here
@@ -102,8 +90,8 @@ This monorepo uses npm workspaces. Each package is independent but can reference
 ### Running Tests
 
 ```bash
-# Run tests in specific package
-cd packages/mcp-server
+# Run tests in webapp
+cd packages/webapp
 npm test
 ```
 
@@ -114,21 +102,17 @@ npm test
 npm run build --workspaces
 
 # Build specific package
-cd packages/mcp-server
+cd packages/webapp
 npm run build
 ```
 
 ## Documentation
 
-- [MCP Server Documentation](packages/mcp-server/README.md)
 - [Predictive Models Documentation](packages/predictive-models/README.md)
+- [Training Guide](docs/training-guide.md)
 - [Technical Documentation](docs/)
 
 ## Services
-
-### MCP Server
-- **Port**: N/A (stdio-based MCP)
-- **Inspector**: http://localhost:5173
 
 ### Predictive Models Service
 - **Port**: 8000

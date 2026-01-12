@@ -1,8 +1,7 @@
-
-import { getStatus } from './lib/logic/status-logic.js';
-import { getGlucosePrediction } from './lib/logic/prediction-logic.js';
-import { attributeGlucoseChange } from './lib/logic/attribution-logic.js';
-import { connectToDatabase } from './lib/db/connection.js';
+import { getStatus } from './lib/logic/status-logic';
+import { getGlucosePrediction } from './lib/logic/prediction-logic';
+import { attributeGlucoseChange } from './lib/logic/attribution-logic';
+import { connectToDatabase } from './lib/db/connection';
 
 async function debugPoint(timestamp: string) {
     await connectToDatabase();

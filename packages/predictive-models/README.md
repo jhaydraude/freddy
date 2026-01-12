@@ -1,11 +1,11 @@
 # Predictive Models Microservice
 
-A FastAPI-based microservice for training and serving machine learning models.
+A FastAPI-based microservice for training and serving machine learning models for blood glucose prediction and profile optimization.
 
 ## Features
 
 - 🚀 **Fast API**: Built with FastAPI for high performance and automatic API documentation
-- 🤖 **Model Training**: RESTful endpoint for training models
+- 🤖 **Model Training**: RESTful endpoint for training models (XGBoost)
 - 🔮 **Predictions**: RESTful endpoint for making predictions
 - 📦 **Model Registry**: Simple file-based model storage and versioning
 - 🐳 **Docker Ready**: Containerized for easy deployment
@@ -14,30 +14,18 @@ A FastAPI-based microservice for training and serving machine learning models.
 ## Project Structure
 
 ```
-PredictiveModelsService/
+packages/predictive-models/
 ├── app/
-│   ├── __init__.py
 │   ├── main.py              # FastAPI application entry point
 │   ├── config.py            # Configuration settings
-│   ├── models/              # Pydantic models for request/response
-│   │   ├── __init__.py
-│   │   └── schemas.py
+│   ├── models/              # Pydantic models (Pydantic v2)
 │   ├── routers/             # API route handlers
-│   │   ├── __init__.py
-│   │   ├── train.py
-│   │   └── predict.py
-│   ├── services/            # Business logic
-│   │   ├── __init__.py
-│   │   └── model_service.py
-│   └── utils/               # Utility functions
-│       ├── __init__.py
-│       └── logging.py
-├── models/                  # Stored trained models
-├── tests/                   # Test files
+│   └── services/            # Business logic (ModelService, GlucoseModelService)
+├── models/                  # Stored trained models (.joblib)
+├── tests/                   # Test files (pytest)
+├── scripts/                 # Training and utility scripts
 ├── Dockerfile
 ├── requirements.txt
-├── .env.example
-├── .gitignore
 └── README.md
 ```
 
@@ -45,15 +33,21 @@ PredictiveModelsService/
 
 ### Easy Start (Recommended)
 
+From the project root:
+
+```bash
+.\start-prediction-service.bat
+```
+
+Or from this directory:
+
 **Windows:**
 ```bash
-cd PredictiveModelsService
 start.bat
 ```
 
 **Linux/Mac:**
 ```bash
-cd PredictiveModelsService
 chmod +x start.sh
 ./start.sh
 ```
@@ -95,17 +89,9 @@ This will:
    - Interactive Docs: http://localhost:8000/docs
    - Alternative Docs: http://localhost:8000/redoc
 
-### Docker Deployment
+## Training Models
 
-1. **Build the image**:
-   ```bash
-   docker build -t predictive-models-service .
-   ```
-
-2. **Run the container**:
-   ```bash
-   docker run -p 8000:8000 -v $(pwd)/models:/app/models predictive-models-service
-   ```
+For detailed instructions on generating training data and training models, see the [Training Guide](../../docs/training-guide.md).
 
 ## API Endpoints
 
@@ -115,47 +101,21 @@ This will:
 GET /health
 ```
 
-Returns the service health status.
-
-### Train Model
-
-```http
-POST /api/v1/train
-Content-Type: application/json
-
-{
-  "model_name": "my_model",
-  "model_type": "regression",
-  "data": [...],
-  "parameters": {
-    "param1": "value1"
-  }
-}
-```
-
 ### Make Prediction
 
 ```http
-POST /api/v1/predict
+POST /api/v1/predict/glucose
 Content-Type: application/json
 
 {
-  "model_name": "my_model",
-  "data": [...]
+  "model_name": "glucose_predictor_v1",
+  "status_history": [...]
 }
 ```
 
-### List Models
-
-```http
-GET /api/v1/models
-```
-
-Returns a list of all available trained models.
-
 ## Configuration
 
-Configuration is managed through environment variables. See `.env.example` for available options:
+Configuration is managed through environment variables or a `.env` file:
 
 - `APP_NAME`: Application name
 - `APP_VERSION`: Application version
@@ -164,18 +124,8 @@ Configuration is managed through environment variables. See `.env.example` for a
 
 ## Development
 
-### Adding a New Model Type
-
-1. Update `app/services/model_service.py` with your model logic
-2. Add model-specific parameters to `app/models/schemas.py`
-3. Update the training logic in `app/routers/train.py`
-
 ### Running Tests
 
 ```bash
 pytest tests/
 ```
-
-## License
-
-MIT

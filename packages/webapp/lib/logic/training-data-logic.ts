@@ -8,8 +8,8 @@
  * - Optionally filters samples with interventions
  */
 
-import { getStatusHistory } from './history-logic.js';
-import { getGlucose } from './status-logic.js';
+import { getStatusHistory } from './history-logic';
+import { getGlucose } from './status-logic';
 
 export interface ITrainingSample {
     training_point: string;

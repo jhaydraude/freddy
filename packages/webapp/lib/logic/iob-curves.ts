@@ -1,4 +1,4 @@
-import { decayIOB } from './insulin-math.js';
+import { decayIOB } from './insulin-math';
 
 /** Result for a single insulin event's IOB curve */
 export interface IInsulinEventCurve {

@@ -1,5 +1,5 @@
-import { ActivityRecord } from '../db/models.js';
-import { connectToDatabase } from '../db/connection.js';
+import { ActivityRecord } from '../db/models';
+import { connectToDatabase } from '../db/connection';
 
 export interface IActivityPoint {
     timestamp: string;

@@ -4,7 +4,7 @@ import os
 import json
 import joblib
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -108,7 +108,7 @@ class ModelService:
             metadata = {
                 "model_name": model_name,
                 "model_type": model_type,
-                "trained_at": datetime.utcnow().isoformat(),
+                "trained_at": datetime.now(timezone.utc).isoformat(),
                 "feature_columns": list(X.columns),
                 "target_column": target_column,
                 "parameters": parameters or {},
@@ -127,7 +127,7 @@ class ModelService:
                 status="success",
                 message=f"Model trained successfully with {len(data)} samples",
                 metrics=metrics,
-                trained_at=datetime.utcnow()
+                trained_at=datetime.now(timezone.utc)
             )
             
         except Exception as e:
@@ -194,7 +194,7 @@ class ModelService:
                 model_name=model_name,
                 predictions=predictions_list,
                 confidence=confidence,
-                predicted_at=datetime.utcnow()
+                predicted_at=datetime.now(timezone.utc)
             )
             
         except Exception as e:

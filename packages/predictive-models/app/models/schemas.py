@@ -1,8 +1,8 @@
 """Pydantic schemas for request/response validation."""
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
-from datetime import datetime
+from pydantic import BaseModel, Field, ConfigDict
+from datetime import datetime, timezone
 
 
 class TrainRequest(BaseModel):
@@ -14,8 +14,8 @@ class TrainRequest(BaseModel):
     target_column: str = Field(..., description="Name of the target/label column")
     parameters: Optional[Dict[str, Any]] = Field(default={}, description="Model-specific parameters")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "sales_predictor",
                 "model_type": "regression",
@@ -30,6 +30,7 @@ class TrainRequest(BaseModel):
                 }
             }
         }
+    )
 
 
 class TrainResponse(BaseModel):
@@ -40,10 +41,10 @@ class TrainResponse(BaseModel):
     status: str
     message: str
     metrics: Optional[Dict[str, float]] = None
-    trained_at: datetime = Field(default_factory=datetime.utcnow)
+    trained_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "sales_predictor",
                 "model_type": "regression",
@@ -56,6 +57,7 @@ class TrainResponse(BaseModel):
                 "trained_at": "2024-01-01T12:00:00"
             }
         }
+    )
 
 
 class PredictRequest(BaseModel):
@@ -64,8 +66,8 @@ class PredictRequest(BaseModel):
     model_name: str = Field(..., description="Name of the trained model to use")
     data: List[Dict[str, Any]] = Field(..., description="Input data for prediction")
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "sales_predictor",
                 "data": [
@@ -74,6 +76,7 @@ class PredictRequest(BaseModel):
                 ]
             }
         }
+    )
 
 
 class PredictResponse(BaseModel):
@@ -82,10 +85,10 @@ class PredictResponse(BaseModel):
     model_name: str
     predictions: List[Any]
     confidence: Optional[List[float]] = None
-    predicted_at: datetime = Field(default_factory=datetime.utcnow)
+    predicted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "sales_predictor",
                 "predictions": [125.5, 175.8],
@@ -93,6 +96,7 @@ class PredictResponse(BaseModel):
                 "predicted_at": "2024-01-01T12:00:00"
             }
         }
+    )
 
 
 class ModelInfo(BaseModel):

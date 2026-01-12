@@ -7,7 +7,6 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 COPY packages/webapp/package*.json ./packages/webapp/
-COPY packages/mcp-server/package*.json ./packages/mcp-server/
 COPY packages/shared/package*.json ./packages/shared/
 
 # Install dependencies

@@ -1,8 +1,8 @@
-import { Treatment, DeviceStatus } from '../db/models.js';
-import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
-import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve } from './iob-curves.js';
-import { getBasalIOB, createBasalCurvesForTimeseries } from './iob-basal.js';
-import { IIOBResult } from './types.js';
+import { Treatment, DeviceStatus } from '../db/models';
+import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic';
+import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve } from './iob-curves';
+import { getBasalIOB, createBasalCurvesForTimeseries } from './iob-basal';
+import { IIOBResult } from './types';
 
 /**
  * Service to get detailed IOB at a specific time.

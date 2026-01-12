@@ -4,7 +4,7 @@ import os
 import json
 import joblib
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
@@ -125,7 +125,7 @@ class GlucoseModelService:
             metadata = {
                 'model_name': request.model_name,
                 'model_type': 'glucose_predictor',
-                'trained_at': datetime.utcnow().isoformat(),
+                'trained_at': datetime.now(timezone.utc).isoformat(),
                 'feature_names': feature_names,
                 'parameters': params,
                 'metrics': metrics,
@@ -148,7 +148,7 @@ class GlucoseModelService:
                 feature_importance=feature_importance,
                 samples_trained=len(X_train),
                 samples_validated=len(X_test),
-                trained_at=datetime.utcnow()
+                trained_at=datetime.now(timezone.utc)
             )
             
         except Exception as e:
@@ -198,7 +198,7 @@ class GlucoseModelService:
                 current_glucose=current_glucose,
                 predicted_change=predicted_change,
                 features_used=features,
-                predicted_at=datetime.utcnow()
+                predicted_at=datetime.now(timezone.utc)
             )
             
         except Exception as e:

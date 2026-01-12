@@ -1,5 +1,5 @@
-import { Profile, Treatment } from '../db/models.js';
-import type { IProfile, IProfileStore } from '../db/models.js';
+import { Profile, Treatment } from '../db/models';
+import type { IProfile, IProfileStore } from '../db/models';
 
 // Simple cache to prevent excessive DB calls during bulk processing
 const profileCache = new Map<string, any>();

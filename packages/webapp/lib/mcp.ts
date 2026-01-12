@@ -1,7 +1,6 @@
 import { connectToDatabase } from './db/connection';
 import { getStatusHistory } from './logic/history-logic';
 import { ProfileAnalysis } from './db/models';
-// import { handler as analyzeProfileHandler } from '../../../mcp-server/src/tools/analyze-profile'; // Still need this for now or move tool logic
 import { resolveActiveProfile } from './logic/profile-logic';
 import { getGlucosePrediction as getPredictionLogic } from './logic/prediction-logic';
 import { getStatus, getGlucose } from './logic/status-logic';

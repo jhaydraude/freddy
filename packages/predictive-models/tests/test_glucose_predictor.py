@@ -1,7 +1,7 @@
 """Tests for glucose prediction functionality."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.services.glucose_predictor import GlucoseFeatureExtractor, prepare_training_data
 from app.services.glucose_model_service import GlucoseModelService
@@ -62,7 +62,7 @@ def create_mock_status(glucose_value: float, timestamp: datetime, iob: float = 1
         },
         "meta": {
             "status_date": timestamp.isoformat(),
-            "created_date": datetime.utcnow().isoformat(),
+            "created_date": datetime.now(timezone.utc).isoformat(),
             "app": "NightManage"
         }
     }
@@ -71,7 +71,7 @@ def create_mock_status(glucose_value: float, timestamp: datetime, iob: float = 1
 def test_feature_extraction():
     """Test feature extraction from status_history."""
     # Create mock status history (60 minutes, 5-minute intervals)
-    start_time = datetime.utcnow() - timedelta(minutes=60)
+    start_time = datetime.now(timezone.utc) - timedelta(minutes=60)
     status_history = []
     
     for i in range(13):  # 0, 5, 10, ... 60 minutes
@@ -103,7 +103,7 @@ def test_prepare_training_data():
     """Test preparation of training data."""
     # Create mock training samples
     samples = []
-    base_time = datetime.utcnow()
+    base_time = datetime.now(timezone.utc)
     
     for sample_idx in range(5):
         status_history = []
@@ -138,7 +138,7 @@ async def test_glucose_model_training():
     """Test glucose model training."""
     # Create synthetic training data
     samples = []
-    base_time = datetime.utcnow()
+    base_time = datetime.now(timezone.utc)
     
     for sample_idx in range(20):  # Need at least 10 samples
         status_history = []
@@ -187,7 +187,7 @@ async def test_glucose_prediction():
     """Test glucose prediction."""
     # First train a model (reuse training logic)
     samples = []
-    base_time = datetime.utcnow()
+    base_time = datetime.now(timezone.utc)
     
     for sample_idx in range(20):
         status_history = []
@@ -216,7 +216,7 @@ async def test_glucose_prediction():
     
     # Now make a prediction
     test_status_history = []
-    current_time = datetime.utcnow()
+    current_time = datetime.now(timezone.utc)
     for i in range(13):
         ts = current_time + timedelta(minutes=i * 5)
         glucose = 120 + i * 0.3
@@ -247,6 +247,6 @@ def test_invalid_status_history():
         extractor.extract_features([])
     
     # Status history with no glucose data
-    invalid_status = [{"meta": {"status_date": datetime.utcnow().isoformat()}}]
+    invalid_status = [{"meta": {"status_date": datetime.now(timezone.utc).isoformat()}}]
     with pytest.raises(ValueError, match="No valid glucose"):
         extractor.extract_features(invalid_status)

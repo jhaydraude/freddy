@@ -1,8 +1,8 @@
-import { Entry, Treatment } from '../db/models.js';
-import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic.js';
-import { getBolusAbsorption } from './cob-logic.js';
-import { getActivityHistory } from './activity-logic.js';
-import { calculateActivityImpact, DEFAULT_ACTIVITY_COEFFICIENTS, ActivityCoefficients } from './activity-impact.js';
+import { Entry, Treatment } from '../db/models';
+import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic';
+import { getBolusAbsorption } from './cob-logic';
+import { getActivityHistory } from './activity-logic';
+import { calculateActivityImpact, DEFAULT_ACTIVITY_COEFFICIENTS, ActivityCoefficients } from './activity-impact';
 
 /**
  * Time window for holistic profile analysis

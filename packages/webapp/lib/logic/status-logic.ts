@@ -1,10 +1,10 @@
-import { Entry, DeviceStatus, Treatment } from '../db/models.js';
-import { resolveActiveProfile, getProfileStore } from './profile-logic.js';
-import { getBasalRate } from './basal-logic.js';
-import { getIOB } from './iob-logic.js';
-import { getCOB } from './cob-logic.js';
-import { attributeGlucoseChange } from './attribution-logic.js';
-import { IGlucoseResult, IStatusResult, IIOBResult, ICOBResult, IAttributionResult } from './types.js';
+import { Entry, DeviceStatus, Treatment } from '../db/models';
+import { resolveActiveProfile, getProfileStore } from './profile-logic';
+import { getBasalRate } from './basal-logic';
+import { getIOB } from './iob-logic';
+import { getCOB } from './cob-logic';
+import { attributeGlucoseChange } from './attribution-logic';
+import { IGlucoseResult, IStatusResult, IIOBResult, ICOBResult, IAttributionResult } from './types';
 
 /**
  * Fetches the latest glucose readings and calculates 5m/10m deltas.
@@ -214,8 +214,8 @@ export async function getStatus(
     const dateObj = new Date(ts);
 
     // Import cache utilities and models
-    const { floorToInterval, isCacheValid } = await import('./cache-utils.js');
-    const { ComputedStatus } = await import('../db/models.js');
+    const { floorToInterval, isCacheValid } = await import('./cache-utils');
+    const { ComputedStatus } = await import('../db/models');
 
     // Round timestamp to 5-minute bucket for cache key
     const bucketTime = floorToInterval(dateObj, 5);
@@ -306,7 +306,7 @@ export async function getStatus(
     // Use setImmediate or process.nextTick to defer cache write
     setImmediate(async () => {
         try {
-            const { ComputedStatus } = await import('../db/models.js');
+            const { ComputedStatus } = await import('../db/models');
             await ComputedStatus.updateOne(
                 { timestamp: bucketTime },
                 {

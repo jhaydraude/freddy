@@ -1,13 +1,13 @@
-import { getStatus } from './status-logic.js';
-import { calculateInsulinEventCurve, INTERVAL_MINUTES } from './iob-curves.js';
-import { getProfileStore, resolveActiveProfile } from './profile-logic.js';
-import { getIOB } from './iob-logic.js';
+import { getStatus } from './status-logic';
+import { calculateInsulinEventCurve, INTERVAL_MINUTES } from './iob-curves';
+import { getProfileStore, resolveActiveProfile } from './profile-logic';
+import { getIOB } from './iob-logic';
 
-import { getGlucose } from './status-logic.js';
-import { getCOB } from './cob-logic.js';
+import { getGlucose } from './status-logic';
+import { getCOB } from './cob-logic';
 
-import { getStatusHistory } from './history-logic.js';
-import { getBasalFromSchedule } from './basal-logic.js';
+import { getStatusHistory } from './history-logic';
+import { getBasalFromSchedule } from './basal-logic';
 
 /**
  * Generates a glucose prediction array by projecting glucose into the future

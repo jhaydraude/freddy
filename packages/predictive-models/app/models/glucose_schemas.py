@@ -1,8 +1,8 @@
 """Pydantic schemas specific to glucose prediction."""
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
-from datetime import datetime
+from pydantic import BaseModel, Field, ConfigDict
+from datetime import datetime, timezone
 
 
 class GlucoseTrainingSample(BaseModel):
@@ -38,8 +38,8 @@ class GlucoseTrainRequest(BaseModel):
         description="XGBoost hyperparameters (optional)"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "glucose_predictor",
                 "samples": [
@@ -58,6 +58,7 @@ class GlucoseTrainRequest(BaseModel):
                 }
             }
         }
+    )
 
 
 class GlucosePredictRequest(BaseModel):
@@ -72,8 +73,8 @@ class GlucosePredictRequest(BaseModel):
         description="Array of IStatusResult objects from get_status_history"
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "glucose_predictor",
                 "status_history": [
@@ -81,6 +82,7 @@ class GlucosePredictRequest(BaseModel):
                 ]
             }
         }
+    )
 
 
 class GlucosePredictResponse(BaseModel):
@@ -99,10 +101,10 @@ class GlucosePredictResponse(BaseModel):
     features_used: Dict[str, float] = Field(
         description="Extracted features used for prediction"
     )
-    predicted_at: datetime = Field(default_factory=datetime.utcnow)
+    predicted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "glucose_predictor",
                 "predicted_glucose_60min": 135.5,
@@ -116,6 +118,7 @@ class GlucosePredictResponse(BaseModel):
                 "predicted_at": "2024-01-01T12:00:00"
             }
         }
+    )
 
 
 class GlucoseTrainResponse(BaseModel):
@@ -133,10 +136,10 @@ class GlucoseTrainResponse(BaseModel):
     )
     samples_trained: int
     samples_validated: int
-    trained_at: datetime = Field(default_factory=datetime.utcnow)
+    trained_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model_name": "glucose_predictor",
                 "status": "success",
@@ -158,3 +161,4 @@ class GlucoseTrainResponse(BaseModel):
                 "trained_at": "2024-01-01T12:00:00"
             }
         }
+    )
