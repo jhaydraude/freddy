@@ -179,6 +179,7 @@ export interface IStatusResult {
         battery: number | undefined;
         device: string;
     };
+    treatments?: any[]; // Recent insulin and carb treatments for chart markers
     meta: {
         reported_date: string | undefined;
         status_date: string;

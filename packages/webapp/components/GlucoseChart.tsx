@@ -11,7 +11,8 @@ import {
     ResponsiveContainer,
     ReferenceArea,
     ReferenceLine,
-    Label
+    Label,
+    Scatter
 } from 'recharts';
 import { format } from 'date-fns';
 
@@ -56,6 +57,33 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick, h
                 raw: item
             }))
             .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    }, [data]);
+
+    // Extract bolus and carb events for markers
+    const { bolusEvents, carbEvents } = useMemo(() => {
+        const boluses: Array<{ timestamp: number; insulin: number }> = [];
+        const carbs: Array<{ timestamp: number; carbs: number }> = [];
+
+        for (const item of data) {
+            const treatment = item.treatments;
+            if (!treatment || treatment.length === 0) continue;
+
+            for (const t of treatment) {
+                const timestamp = new Date(t.created_at).getTime();
+
+                // Bolus events (filter out SMBs < 0.6U)
+                if (t.insulin && t.insulin >= 0.6) {
+                    boluses.push({ timestamp, insulin: t.insulin });
+                }
+
+                // Carb events
+                if (t.carbs && t.carbs > 0) {
+                    carbs.push({ timestamp, carbs: t.carbs });
+                }
+            }
+        }
+
+        return { bolusEvents: boluses, carbEvents: carbs };
     }, [data]);
 
     const CustomTooltip = ({ active, payload, label, units }: any) => {
@@ -123,7 +151,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick, h
     // Determine units from data
     const units = data.length > 0 ? data[0].glucose?.units || 'mg/dL' : 'mg/dL';
     const isMmol = units.toLowerCase().includes('mmol');
-    const yDomain: [number | 'auto', number | 'auto'] = isMmol ? [0, 'auto'] : [40, 'auto'];
+    const yDomain: [number, number] = isMmol ? [0, 15] : [0, 270]; // Fixed ranges
 
     if (isLoading) {
         return (
@@ -160,11 +188,11 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick, h
                         </linearGradient>
                     </defs>
 
-                    {/* Target Range Background - Adjusted for units */}
+                    {/* Target Range Background (Sweet Spot: 4-10 mmol/L or 70-180 mg/dL) */}
                     {isMmol ? (
-                        <ReferenceArea yAxisId="left-glucose" y1={3.9} y2={10} fill="#10b981" fillOpacity={0.05} />
+                        <ReferenceArea yAxisId="left-glucose" y1={4} y2={10} fill="#10b981" fillOpacity={0.08} />
                     ) : (
-                        <ReferenceArea yAxisId="left-glucose" y1={70} y2={180} fill="#10b981" fillOpacity={0.05} />
+                        <ReferenceArea yAxisId="left-glucose" y1={70} y2={180} fill="#10b981" fillOpacity={0.08} />
                     )}
 
                     <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
@@ -328,6 +356,28 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick, h
                             activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}
                             animationDuration={1000}
                             connectNulls
+                        />
+                    )}
+
+                    {/* Bolus Event Markers (Insulin >= 0.6U) */}
+                    {visibleLines.iob && bolusEvents.length > 0 && (
+                        <Scatter
+                            yAxisId="right-insulin"
+                            data={bolusEvents}
+                            fill="#06b6d4"
+                            shape="circle"
+                            r={4}
+                        />
+                    )}
+
+                    {/* Carb Event Markers */}
+                    {visibleLines.cob && carbEvents.length > 0 && (
+                        <Scatter
+                            yAxisId="right-carbs"
+                            data={carbEvents}
+                            fill="#f59e0b"
+                            shape="circle"
+                            r={4}
                         />
                     )}
 

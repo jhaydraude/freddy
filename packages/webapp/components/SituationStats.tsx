@@ -31,6 +31,7 @@ interface SituationStatsProps {
 export default function SituationStats({ hideLabelLink = false }: SituationStatsProps) {
     const [stats, setStats] = useState<StatsData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [regenerating, setRegenerating] = useState(false);
 
     useEffect(() => {
         const fetchStats = async () => {
@@ -85,7 +86,17 @@ export default function SituationStats({ hideLabelLink = false }: SituationStats
                             />
                         </div>
                         <p className="text-[10px] text-zinc-500 italic">
-                            {trainingStatus.pendingCount} windows awaiting labels in the queue.
+                            {regenerating ? (
+                                <span className="flex items-center gap-2 text-blue-400">
+                                    <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Regenerating queue...
+                                </span>
+                            ) : (
+                                `${trainingStatus.pendingCount} windows awaiting labels in the queue.`
+                            )}
                         </p>
                     </div>
 
@@ -135,27 +146,55 @@ export default function SituationStats({ hideLabelLink = false }: SituationStats
                                 <button className="w-full py-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-[10px] text-zinc-400 font-bold rounded-lg transition-all">
                                     Regenerate...
                                 </button>
-                                <div className="absolute bottom-full left-0 mb-1 w-full bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all z-20 overflow-hidden">
-                                    {[3, 7, 30, 90].map(days => (
-                                        <button
-                                            key={days}
-                                            onClick={async () => {
-                                                try {
-                                                    // Clear first
-                                                    await fetch('/api/classify/queue/clear', { method: 'POST' });
-                                                    // Then generate
-                                                    await fetch(`/api/classify/generate?days=${days}`, { method: 'POST' });
-                                                    // Refresh stats
-                                                    const statsRes = await fetch('/api/classify/stats');
-                                                    if (statsRes.ok) setStats(await statsRes.json());
-                                                    alert(`Started generating windows for the last ${days} days.`);
-                                                } catch (e) { console.error(e); }
-                                            }}
-                                            className="w-full text-left px-3 py-1.5 text-[9px] font-bold text-zinc-400 hover:text-white hover:bg-emerald-600/20 transition-all uppercase tracking-wider"
-                                        >
-                                            {days} Days
-                                        </button>
-                                    ))}
+                                <div className="absolute bottom-full left-0 pb-1 w-full invisible group-hover:visible opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100 transition-all z-20">
+                                    <div className="bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl overflow-hidden">
+                                        {[3, 7, 30, 90].map(days => (
+                                            <button
+                                                key={days}
+                                                onClick={async () => {
+                                                    setRegenerating(true);
+                                                    const initialCount = stats?.trainingStatus.pendingCount || 0;
+                                                    try {
+                                                        // Clear first
+                                                        await fetch('/api/classify/queue/clear', { method: 'POST' });
+                                                        // Then generate
+                                                        await fetch(`/api/classify/generate?days=${days}`, { method: 'POST' });
+
+                                                        // Poll for completion (check every 3 seconds)
+                                                        const pollInterval = setInterval(async () => {
+                                                            const statsRes = await fetch('/api/classify/stats');
+                                                            if (statsRes.ok) {
+                                                                const newStats = await statsRes.json();
+                                                                const newCount = newStats.trainingStatus.pendingCount;
+
+                                                                // If we have new windows, regeneration is complete
+                                                                if (newCount > 0 && newCount !== initialCount) {
+                                                                    setStats(newStats);
+                                                                    setRegenerating(false);
+                                                                    clearInterval(pollInterval);
+                                                                }
+                                                            }
+                                                        }, 3000);
+
+                                                        // Safety timeout after 2 minutes
+                                                        setTimeout(() => {
+                                                            clearInterval(pollInterval);
+                                                            setRegenerating(false);
+                                                            fetch('/api/classify/stats').then(async (res) => {
+                                                                if (res.ok) setStats(await res.json());
+                                                            });
+                                                        }, 120000);
+                                                    } catch (e) {
+                                                        console.error(e);
+                                                        setRegenerating(false);
+                                                    }
+                                                }}
+                                                className="w-full text-left px-3 py-1.5 text-[9px] font-bold text-zinc-400 hover:text-white hover:bg-emerald-600/20 transition-all uppercase tracking-wider"
+                                            >
+                                                {days} Days
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>

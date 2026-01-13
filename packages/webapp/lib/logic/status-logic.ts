@@ -238,15 +238,25 @@ export async function getStatus(
     }
 
     // Cache miss or invalid - calculate status
-    // Fetch necessary data
-    const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange] = await Promise.all([
+    // Fetch necessary data (including treatments for chart markers)
+    const lookbackMinutes = 240; // 4 hours of treatment data for chart markers
+    const treatmentStart = new Date(dateObj.getTime() - (lookbackMinutes * 60 * 1000)).toISOString();
+
+    const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange, recentTreatments] = await Promise.all([
         resolveActiveProfile(ts),
         getCOB(ts, includeTimeseries),
         DeviceStatus.findOne({ created_at: { $lte: ts } }).sort({ created_at: -1 }),
         getGlucose({ timestamp: ts, count: 1 }),
         getIOB(ts, includeTimeseries),
         getBasalRate(ts),
-        Treatment.findOne({ eventType: "Site Change", created_at: { $lte: ts } }).sort({ created_at: -1 })
+        Treatment.findOne({ eventType: "Site Change", created_at: { $lte: ts } }).sort({ created_at: -1 }),
+        Treatment.find({
+            created_at: { $gte: treatmentStart, $lte: ts },
+            $or: [
+                { insulin: { $exists: true, $gte: 0.1 } },
+                { carbs: { $exists: true, $gt: 0 } }
+            ]
+        }).sort({ created_at: 1 }).lean()
     ]);
 
     if (!profileInfo) throw new Error("No profile found.");
@@ -285,6 +295,7 @@ export async function getStatus(
             battery: latestDeviceStatus?.uploaderBattery,
             device: "phone"
         },
+        treatments: recentTreatments,
         meta: {
             reported_date: latestDeviceStatus?.created_at,
             status_date: ts,

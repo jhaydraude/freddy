@@ -1,4 +1,5 @@
 FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -7,7 +8,6 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 COPY packages/webapp/package*.json ./packages/webapp/
-COPY packages/shared/package*.json ./packages/shared/
 
 # Install dependencies
 RUN npm ci
