@@ -41,3 +41,7 @@ yarn-error.log*
 # Training data and outputs (optional - uncomment if you want to ignore)
 # *.json
 # models/
+
+# Database backups
+backups/
+**/backups/

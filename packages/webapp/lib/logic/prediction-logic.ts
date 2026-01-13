@@ -8,6 +8,7 @@ import { getCOB } from './cob-logic';
 
 import { getStatusHistory } from './history-logic';
 import { getBasalFromSchedule } from './basal-logic';
+import { getSituationAdjustments } from './situation-inference';
 
 /**
  * Generates a glucose prediction array by projecting glucose into the future
@@ -142,6 +143,15 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
         activeCOB: cobTs.data && cobTs.data[safeCobNowIdx] ? cobTs.data[safeCobNowIdx].activeCOB : 0
     });
 
+    // 5. Apply Situation-based Adjustments
+    const { adjustments } = await getSituationAdjustments(now);
+    const situationAdjustedISF = isf * adjustments.isf_multiplier;
+
+    // Calculate phantom carb impact per interval (if any)
+    // We treat the adjustment as a lump sum COB that decays over 3 hours
+    let phantomCOB = adjustments.cob_adjustment;
+    const phantomImpactPerInterval = Math.max(0, (phantomCOB * (situationAdjustedISF / status.iob.settings.effectiveCR)) / (180 / INTERVAL_MINUTES));
+
 
     // Iterate future intervals
     const diaMinutes = dia * 60;
@@ -180,7 +190,10 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
         const decayFactor = Math.pow(adjustedDecay, intervalsSinceNow - 1);
         const currentUnexplainedImpact = unexplainedTrendPerInterval * decayFactor;
 
-        runningSgv = runningSgv - iobImpact + cobImpact - futureBasalImpact + currentUnexplainedImpact;
+        // Apply phantom carb impact (decays linearly over 3 hours)
+        const phantomImpact = Math.max(0, phantomImpactPerInterval * (1 - (offset * INTERVAL_MINUTES / 180)));
+
+        runningSgv = runningSgv - (iobImpact * adjustments.isf_multiplier) + cobImpact - (futureBasalImpact * adjustments.isf_multiplier) + currentUnexplainedImpact + phantomImpact;
 
         if (runningSgv < 0) runningSgv = 0;
 

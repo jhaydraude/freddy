@@ -5,7 +5,7 @@ import Header from '@/components/Header';
 import GlucoseChart from '@/components/GlucoseChart';
 import ActivityChart from '@/components/ActivityChart';
 import AnalysisTile from '@/components/AnalysisTile';
-import { Activity, Clock, RefreshCw, Battery, Footprints, HeartPulse } from 'lucide-react';
+import { Activity, Clock, RefreshCw, Battery, Footprints, HeartPulse, Brain, Plus, Minus, ArrowLeft, ArrowRight } from 'lucide-react';
 
 const TIME_RANGES = [
   { label: '3h', value: 3 * 60 },
@@ -22,6 +22,7 @@ export default function Home() {
   const [activitySummary, setActivitySummary] = useState<any>(null);
   const [activityHistory, setActivityHistory] = useState<any[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [viewOffsetMinutes, setViewOffsetMinutes] = useState(0);
 
   const fetchActivitySummary = useCallback(async () => {
     try {
@@ -37,7 +38,12 @@ export default function Home() {
   const fetchActivityHistory = useCallback(async () => {
     setActivityLoading(true);
     try {
-      const res = await fetch(`/api/activity/history?windowSize=${windowSize}`);
+      let url = `/api/activity/history?windowSize=${windowSize}`;
+      if (viewOffsetMinutes > 0) {
+        const endTime = new Date(Date.now() - viewOffsetMinutes * 60 * 1000);
+        url += `&startTime=${endTime.toISOString()}`;
+      }
+      const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch activity history');
       const json = await res.json();
       setActivityHistory(json);
@@ -46,12 +52,17 @@ export default function Home() {
     } finally {
       setActivityLoading(false);
     }
-  }, [windowSize]);
+  }, [windowSize, viewOffsetMinutes]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/history?windowSize=${windowSize}&bucketSize=5`);
+      let url = `/api/history?windowSize=${windowSize}&bucketSize=5`;
+      if (viewOffsetMinutes > 0) {
+        const endTime = new Date(Date.now() - viewOffsetMinutes * 60 * 1000);
+        url += `&startTime=${endTime.toISOString()}`;
+      }
+      const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch');
       const json = await res.json();
       setData(json);
@@ -61,7 +72,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [windowSize]);
+  }, [windowSize, viewOffsetMinutes]);
 
   // Analysis state
   const [analysisTimestamp, setAnalysisTimestamp] = useState<string | null>(null);
@@ -125,11 +136,11 @@ export default function Home() {
   // Line visibility state
   const [visibleLines, setVisibleLines] = useState({
     glucose: true,
-    iob: false,
-    cob: false,
-    insulinImpact: false,
-    carbImpact: false,
-    basal: false
+    iob: true,
+    cob: true,
+    insulinImpact: true,
+    carbImpact: true,
+    basal: true
   });
 
   const toggleLine = (key: keyof typeof visibleLines) => {
@@ -142,9 +153,9 @@ export default function Home() {
     setSelectedPoint(null);
     setAnalysisTimestamp(null);
     setAnalysisData(null);
-    // Clear cache when time range changes to prevent stale data
+    // Clear cache when time range or view changes
     analysisCache.current.clear();
-  }, [windowSize]);
+  }, [windowSize, viewOffsetMinutes]);
 
   return (
     <div className="min-h-screen bg-black text-zinc-100 pb-20 relative">
@@ -234,22 +245,69 @@ export default function Home() {
           </div>
         </div>
 
+
+
         {/* Chart Section */}
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 overflow-x-auto no-scrollbar">
-              {TIME_RANGES.map((range) => (
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
+              <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 shrink-0">
+                {TIME_RANGES.map((range) => (
+                  <button
+                    key={range.label}
+                    onClick={() => {
+                      setWindowSize(range.value);
+                      setViewOffsetMinutes(0);
+                    }}
+                    className={`px-3 py-1 rounded-md text-sm font-medium transition-all whitespace-nowrap ${windowSize === range.value && viewOffsetMinutes === 0
+                      ? 'bg-zinc-800 text-white shadow-sm'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                  >
+                    {range.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Pan & Zoom Controls */}
+              <div className="flex items-center gap-0.5 bg-zinc-900 p-1 rounded-lg border border-zinc-800 shrink-0">
                 <button
-                  key={range.label}
-                  onClick={() => setWindowSize(range.value)}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-all whitespace-nowrap ${windowSize === range.value
-                    ? 'bg-zinc-800 text-white shadow-sm'
-                    : 'text-zinc-500 hover:text-zinc-300'
-                    }`}
+                  onClick={() => setViewOffsetMinutes(prev => prev + 60)}
+                  className="p-1.5 text-zinc-500 hover:text-white transition-colors"
+                  title="Pan Back 1h"
                 >
-                  {range.label}
+                  <ArrowLeft size={16} />
                 </button>
-              ))}
+                <button
+                  onClick={() => setViewOffsetMinutes(0)}
+                  className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${viewOffsetMinutes === 0 ? 'bg-emerald-500/10 text-emerald-500' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
+                  Live
+                </button>
+                <button
+                  onClick={() => setViewOffsetMinutes(prev => Math.max(0, prev - 60))}
+                  disabled={viewOffsetMinutes === 0}
+                  className="p-1.5 text-zinc-500 hover:text-white disabled:opacity-30 transition-colors"
+                  title="Pan Forward 1h"
+                >
+                  <ArrowRight size={16} />
+                </button>
+                <div className="w-[1px] h-4 bg-zinc-800 mx-1" />
+                <button
+                  onClick={() => setWindowSize(prev => Math.max(60, prev - 60))}
+                  className="p-1.5 text-zinc-500 hover:text-white transition-colors"
+                  title="Zoom In"
+                >
+                  <Plus size={16} />
+                </button>
+                <button
+                  onClick={() => setWindowSize(prev => Math.min(1440, prev + 60))}
+                  className="p-1.5 text-zinc-500 hover:text-white transition-colors"
+                  title="Zoom Out"
+                >
+                  <Minus size={16} />
+                </button>
+              </div>
             </div>
 
             {/* Line Toggles */}

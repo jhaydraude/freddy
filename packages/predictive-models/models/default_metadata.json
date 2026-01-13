@@ -1,0 +1,63 @@
+{
+  "model_name": "default",
+  "trained_at": "2026-01-13T18:23:09.544000+00:00",
+  "tag_metrics": {
+    "eating": {
+      "precision": 0.8,
+      "recall": 0.8,
+      "f1": 0.8,
+      "support": 5
+    },
+    "normal": {
+      "precision": 0.8333333333333334,
+      "recall": 0.8333333333333334,
+      "f1": 0.8333333333333334,
+      "support": 6
+    },
+    "sensor_failure": {
+      "precision": 1.0,
+      "recall": 0.75,
+      "f1": 0.8571428571428571,
+      "support": 4
+    },
+    "slow_absorption": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 0
+    },
+    "under_reported_carbs": {
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6666666666666666,
+      "support": 1
+    }
+  },
+  "feature_importance": {
+    "minutes_since_last_carbs": 0.34044911433011293,
+    "steps_density": 0.1567838452756405,
+    "hour_sin": 0.1503148004412651,
+    "hour_cos": 0.10258876681327819,
+    "bolus_count_3h": 0.10115575492382049,
+    "unexplained_mean_30m": 0.07246394157409668,
+    "active_insulin_3h": 0.03133022533729672,
+    "last_meal_cob": 0.01943425741046667,
+    "minutes_since_last_bolus": 0.018629337288439275,
+    "is_weekend": 0.006849979609251022,
+    "glucose_mean": 0.0,
+    "glucose_std": 0.0,
+    "glucose_trend_slope": 0.0,
+    "glucose_volatility": 0.0,
+    "glucose_delta_30m": 0.0,
+    "iob": 0.0,
+    "cob": 0.0,
+    "activity_impact_1h": 0.0,
+    "activity_impact_3h": 0.0,
+    "activity_impact_6h": 0.0,
+    "activity_impact_12h": 0.0,
+    "sensor_age_hours": 0.0,
+    "glucose_density": 0.0,
+    "hr_density": 0.0
+  },
+  "samples_count": 72
+}

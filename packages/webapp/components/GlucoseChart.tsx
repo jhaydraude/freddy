@@ -10,7 +10,8 @@ import {
     Tooltip,
     ResponsiveContainer,
     ReferenceArea,
-    ReferenceLine
+    ReferenceLine,
+    Label
 } from 'recharts';
 import { format } from 'date-fns';
 
@@ -23,20 +24,27 @@ export interface VisibleLines {
     basal: boolean;
 }
 
+export interface HighlightRange {
+    start: string;
+    end: string;
+    label?: string;
+}
+
 interface GlucoseChartProps {
     data: any[];
     isLoading?: boolean;
     visibleLines: VisibleLines;
     onClick?: (data: any) => void;
+    highlightRange?: HighlightRange;
 }
 
-export default function GlucoseChart({ data, isLoading, visibleLines, onClick }: GlucoseChartProps) {
+export default function GlucoseChart({ data, isLoading, visibleLines, onClick, highlightRange }: GlucoseChartProps) {
     // Optimized: Single-pass transformation - filter, map, and sort in one operation
     const chartData = useMemo(() => {
         return data
             .filter(item => item.meta?.status_date || item.glucose?.timestamp)
             .map(item => ({
-                timestamp: item.meta?.status_date || item.glucose?.timestamp,
+                timestamp: new Date(item.meta?.status_date || item.glucose?.timestamp).getTime(),
                 sgv: item.glucose?.current?.sgv || null,
                 iob: item.iob?.calculated?.totalIOB ?? null,
                 cob: item.cob?.calculated?.cob ?? null,
@@ -138,7 +146,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
             <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                     data={chartData}
-                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    margin={{ top: 20, right: 10, left: 10, bottom: 0 }}
                     onClick={(e) => {
                         if (e && e.activePayload && e.activePayload.length > 0) {
                             onClick?.(e.activePayload[0].payload.raw);
@@ -154,16 +162,18 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
 
                     {/* Target Range Background - Adjusted for units */}
                     {isMmol ? (
-                        <ReferenceArea yAxisId="left" y1={3.9} y2={10} fill="#10b981" fillOpacity={0.05} />
+                        <ReferenceArea yAxisId="left-glucose" y1={3.9} y2={10} fill="#10b981" fillOpacity={0.05} />
                     ) : (
-                        <ReferenceArea yAxisId="left" y1={70} y2={180} fill="#10b981" fillOpacity={0.05} />
+                        <ReferenceArea yAxisId="left-glucose" y1={70} y2={180} fill="#10b981" fillOpacity={0.05} />
                     )}
 
                     <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
 
                     <XAxis
                         dataKey="timestamp"
-                        tickFormatter={(str) => format(new Date(str), 'HH:mm')}
+                        type="number"
+                        domain={['dataMin', 'dataMax']}
+                        tickFormatter={(val) => format(new Date(val), 'HH:mm')}
                         stroke="#52525b"
                         tick={{ fontSize: 12 }}
                         tickMargin={10}
@@ -172,29 +182,63 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
                         minTickGap={30}
                     />
 
-                    {/* Left Axis: Glucose */}
+                    {/* Left Axis 1: Glucose (Emerald) */}
                     <YAxis
-                        yAxisId="left"
+                        yAxisId="left-glucose"
                         domain={yDomain}
-                        stroke="#52525b"
-                        tick={{ fontSize: 12 }}
+                        stroke="#10b981"
+                        tick={{ fontSize: 10, fill: '#10b981' }}
                         axisLine={false}
                         tickLine={false}
-                        width={40}
-                    />
+                        width={35}
+                    >
+                        <Label value={units} angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#10b981', fontSize: 10, fontWeight: 'bold' }} />
+                    </YAxis>
 
-                    {/* Right Axis: Other Metrics */}
+                    {/* Left Axis 2: Impacts (Indigo/Rose) */}
                     <YAxis
-                        yAxisId="right"
-                        orientation="right"
-                        stroke="#52525b"
-                        tick={{ fontSize: 12 }}
+                        yAxisId="left-impact"
+                        orientation="left"
+                        stroke="#818cf8"
+                        tick={{ fontSize: 10, fill: '#818cf8' }}
                         axisLine={false}
                         tickLine={false}
-                        width={40}
-                        // Only show if secondary metrics are visible
-                        hide={!visibleLines.iob && !visibleLines.cob && !visibleLines.insulinImpact && !visibleLines.carbImpact && !visibleLines.basal}
-                    />
+                        width={30}
+                        hide={!visibleLines.insulinImpact && !visibleLines.carbImpact}
+                        domain={['auto', 'auto']}
+                    >
+                        <Label value="Δ" angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#818cf8', fontSize: 10, fontWeight: 'bold' }} />
+                    </YAxis>
+
+                    {/* Right Axis 1: Insulin (Cyan) */}
+                    <YAxis
+                        yAxisId="right-insulin"
+                        orientation="right"
+                        stroke="#06b6d4"
+                        tick={{ fontSize: 10, fill: '#06b6d4' }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={35}
+                        hide={!visibleLines.iob && !visibleLines.basal}
+                        domain={[0, 'auto']}
+                    >
+                        <Label value="U" angle={90} position="insideRight" style={{ textAnchor: 'middle', fill: '#06b6d4', fontSize: 10, fontWeight: 'bold' }} />
+                    </YAxis>
+
+                    {/* Right Axis 2: Carbs (Amber) */}
+                    <YAxis
+                        yAxisId="right-carbs"
+                        orientation="right"
+                        stroke="#f59e0b"
+                        tick={{ fontSize: 10, fill: '#f59e0b' }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={30}
+                        hide={!visibleLines.cob}
+                        domain={[0, 'auto']}
+                    >
+                        <Label value="g" angle={90} position="insideRight" style={{ textAnchor: 'middle', fill: '#f59e0b', fontSize: 10, fontWeight: 'bold' }} />
+                    </YAxis>
 
                     <Tooltip
                         content={<CustomTooltip units={units} />}
@@ -203,7 +247,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
 
                     {visibleLines.glucose && (
                         <Line
-                            yAxisId="left"
+                            yAxisId="left-glucose"
                             type="monotone"
                             dataKey="sgv"
                             stroke="#10b981"
@@ -217,7 +261,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
 
                     {visibleLines.iob && (
                         <Line
-                            yAxisId="right"
+                            yAxisId="right-insulin"
                             type="monotone"
                             dataKey="iob"
                             stroke="#3b82f6"
@@ -231,7 +275,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
 
                     {visibleLines.cob && (
                         <Line
-                            yAxisId="right"
+                            yAxisId="right-carbs"
                             type="monotone"
                             dataKey="cob"
                             stroke="#f59e0b"
@@ -245,7 +289,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
 
                     {visibleLines.basal && (
                         <Line
-                            yAxisId="right"
+                            yAxisId="right-insulin"
                             type="stepAfter"
                             dataKey="basal"
                             stroke="#06b6d4"
@@ -259,7 +303,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
 
                     {visibleLines.insulinImpact && (
                         <Line
-                            yAxisId="right"
+                            yAxisId="left-impact"
                             type="monotone"
                             dataKey="insulinImpact"
                             stroke="#6366f1"
@@ -274,7 +318,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
 
                     {visibleLines.carbImpact && (
                         <Line
-                            yAxisId="right"
+                            yAxisId="left-impact"
                             type="monotone"
                             dataKey="carbImpact"
                             stroke="#f43f5e"
@@ -284,6 +328,18 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick }:
                             activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}
                             animationDuration={1000}
                             connectNulls
+                        />
+                    )}
+
+                    {highlightRange && (
+                        <ReferenceArea
+                            yAxisId="left-glucose"
+                            x1={new Date(highlightRange.start).getTime()}
+                            x2={new Date(highlightRange.end).getTime()}
+                            fill="#3b82f6"
+                            fillOpacity={0.15}
+                            stroke="#3b82f6"
+                            strokeDasharray="3 3"
                         />
                     )}
 

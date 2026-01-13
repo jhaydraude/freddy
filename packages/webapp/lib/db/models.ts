@@ -323,4 +323,126 @@ const ActivityRecordSchema = new Schema({
     created_at: { type: Date, default: Date.now, index: true }
 }, { collection: 'activities', strict: false });
 
+
 export const ActivityRecord = mongoose.models.ActivityRecord || mongoose.model<IActivityRecord>('ActivityRecord', ActivityRecordSchema);
+
+// ---------------------------------------------------------------------------
+// SITUATION CLASSIFIER (Tags, Segments, and Windows)
+// ---------------------------------------------------------------------------
+
+export interface ISituationTag extends Document {
+    tag_id: string;           // e.g., "heavy_activity"
+    display_name: string;     // e.g., "Heavy Activity"
+    description: string;
+    category: "activity" | "nutrition" | "sensor" | "physiological" | "other";
+    color: string;            // For UI display
+    typical_duration_min: number;
+    delayed_impact_hours: number;  // How long after onset it affects glucose
+    prediction_adjustments: {
+        isf_multiplier?: number;     // e.g., 1.3 for activity
+        cob_adjustment?: number;     // e.g., +20 for under-reported carbs
+        confidence_penalty?: number; // e.g., 0.5 for noisy sensor
+    };
+    is_system: boolean;       // System-defined vs user-defined
+    is_active: boolean;
+    created_at: Date;
+}
+
+const SituationTagSchema = new Schema({
+    tag_id: { type: String, required: true, unique: true, index: true },
+    display_name: { type: String, required: true },
+    description: { type: String },
+    category: { type: String, enum: ["activity", "nutrition", "sensor", "physiological", "other"], required: true },
+    color: { type: String, default: "#666666" },
+    typical_duration_min: { type: Number, default: 30 },
+    delayed_impact_hours: { type: Number, default: 0 },
+    prediction_adjustments: {
+        isf_multiplier: { type: Number },
+        cob_adjustment: { type: Number },
+        confidence_penalty: { type: Number }
+    },
+    is_system: { type: Boolean, default: false },
+    is_active: { type: Boolean, default: true },
+    created_at: { type: Date, default: Date.now }
+}, { collection: 'situation_tags' });
+
+export const SituationTag = mongoose.models.SituationTag || mongoose.model<ISituationTag>('SituationTag', SituationTagSchema);
+
+export interface ISituationSegment extends Document {
+    userId: string;
+    tagId: string;           // Ref to SituationTag.tag_id
+    startTime: Date;
+    endTime: Date;
+    source: 'manual' | 'model_confirmed' | 'auto_rule';
+    confidence: number;
+    metadata?: {
+        intensity?: number;    // e.g. 1-10 for activity
+        notes?: string;
+    };
+    created_at: Date;
+}
+
+const SituationSegmentSchema = new Schema({
+    userId: { type: String, required: true, index: true },
+    tagId: { type: String, required: true, index: true },
+    startTime: { type: Date, required: true, index: true },
+    endTime: { type: Date, required: true, index: true },
+    source: { type: String, enum: ['manual', 'model_confirmed', 'auto_rule'], required: true },
+    confidence: { type: Number, default: 1.0 },
+    metadata: { type: Schema.Types.Mixed },
+    created_at: { type: Date, default: Date.now }
+}, { collection: 'situation_segments' });
+
+export const SituationSegment = mongoose.models.SituationSegment || mongoose.model<ISituationSegment>('SituationSegment', SituationSegmentSchema);
+
+export interface ISituationWindow extends Document {
+    window_id: string;        // UUID
+    window_start: Date;
+    window_end: Date;
+    duration_minutes: number;
+    features: Record<string, number>;
+    tags: Array<{
+        tag_id: string;
+        confidence: number;       // 0-1
+        source: "manual" | "system_validated" | "system_unvalidated";
+        validated_at?: Date;
+    }>;
+    predicted_tags?: Array<{  // ML model suggestions (before user validation)
+        tag_id: string;
+        confidence: number;       // 0-1
+        source: "model_suggestion";
+    }>;
+    anomaly_score?: number;
+    selection_reason: "anomaly" | "random" | "user_initiated";
+    status: "pending" | "labeled" | "skipped";
+    created_at: Date;
+    labeled_at?: Date;
+    labeled_by?: string;
+}
+
+const SituationWindowSchema = new Schema({
+    window_id: { type: String, required: true, unique: true, index: true },
+    window_start: { type: Date, required: true, index: true },
+    window_end: { type: Date, required: true, index: true },
+    duration_minutes: { type: Number, required: true },
+    features: { type: Map, of: Number },
+    tags: [{
+        tag_id: { type: String, required: true },
+        confidence: { type: Number, required: true },
+        source: { type: String, enum: ["manual", "system_validated", "system_unvalidated"], required: true },
+        validated_at: { type: Date }
+    }],
+    predicted_tags: [{
+        tag_id: { type: String, required: true },
+        confidence: { type: Number, required: true },
+        source: { type: String, enum: ["model_suggestion"], required: true }
+    }],
+    anomaly_score: { type: Number },
+    selection_reason: { type: String, enum: ["anomaly", "random", "user_initiated"], required: true },
+    status: { type: String, enum: ["pending", "labeled", "skipped"], default: "pending", index: true },
+    created_at: { type: Date, default: Date.now },
+    labeled_at: { type: Date },
+    labeled_by: { type: String }
+}, { collection: 'situation_windows' });
+
+export const SituationWindow = mongoose.models.SituationWindow || mongoose.model<ISituationWindow>('SituationWindow', SituationWindowSchema);
