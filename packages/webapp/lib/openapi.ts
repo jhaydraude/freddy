@@ -123,14 +123,14 @@ const COBResponseSchema = z.object({
 // --- New Activity Schemas (UploadRequest Spec) ---
 
 const PointHeartRateSchema = z.object({
-    bpm: z.number().meta({ example: 72.5 }),
+    bpm: z.number().int().meta({ example: 72 }),
     accuracy: z.number().int().min(0).max(2).optional().meta({ description: '0: Unknown, 1: Low, 2: High' })
 });
 
 const AggregateHeartRateSchema = z.object({
-    bpm_avg: z.number().optional(),
-    bpm_min: z.number().optional(),
-    bpm_max: z.number().optional(),
+    bpm_avg: z.number().int().optional(),
+    bpm_min: z.number().int().optional(),
+    bpm_max: z.number().int().optional(),
     measurement_count: z.number().int().optional(),
     accuracy: z.number().int().min(0).max(2).optional().meta({ description: '0: Unknown, 1: Low, 2: High' })
 }).refine(data => data.bpm_avg !== undefined || data.bpm_min !== undefined || data.bpm_max !== undefined, {
