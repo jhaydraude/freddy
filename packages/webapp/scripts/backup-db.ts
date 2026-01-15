@@ -35,10 +35,37 @@ async function backupDatabase() {
         console.log(`Backing up collection: ${collectionName}...`);
 
         try {
-            // Use native MongoDB driver to export
-            const docs = await mongoose.connection.db.collection(collectionName).find({}).toArray();
-            fs.writeFileSync(outputFile, JSON.stringify(docs, null, 2));
-            console.log(`  ✓ Exported ${docs.length} documents to ${collectionName}.json`);
+            const cursor = mongoose.connection.db.collection(collectionName).find({});
+            const totalDocs = await mongoose.connection.db.collection(collectionName).countDocuments();
+
+            const writeStream = fs.createWriteStream(outputFile, { flags: 'w' });
+            writeStream.write('[\n');
+
+            let count = 0;
+            let hasError = false;
+
+            for await (const doc of cursor) {
+                if (count > 0) {
+                    writeStream.write(',\n');
+                }
+                const success = writeStream.write(JSON.stringify(doc, null, 2));
+                if (!success) {
+                    // Handle backpressure if needed, though simple write works for local files usually
+                    await new Promise(resolve => writeStream.once('drain', resolve));
+                }
+                count++;
+            }
+
+            writeStream.write('\n]');
+            writeStream.end();
+
+            await new Promise((resolve, reject) => {
+                writeStream.on('finish', resolve);
+                writeStream.on('error', reject);
+            });
+
+            console.log(`  ✓ Exported ${count} documents to ${collectionName}.json`);
+
         } catch (error) {
             console.error(`  ✗ Failed to backup ${collectionName}:`, error);
         }

@@ -1,4 +1,4 @@
-import { SituationTag, ActivityRecord, Treatment } from '../db/models';
+import { SituationTag, Entry, Treatment } from '../db/models';
 import { IStatusResult } from './status-logic';
 import { getStatusHistory } from './history-logic';
 
@@ -55,7 +55,7 @@ export function calculateActivityImpact(
     let impact = 0;
 
     for (const activity of activities) {
-        const activityTime = new Date(activity.startTime || activity.timestamp);
+        const activityTime = new Date(activity.date || activity.startTime || activity.timestamp);
         const hoursAgo = (currentTime.getTime() - activityTime.getTime()) / (1000 * 60 * 60);
 
         if (hoursAgo < 0 || hoursAgo > lookbackHours) continue;
@@ -67,14 +67,15 @@ export function calculateActivityImpact(
             : Math.exp(0.5 * timeSincePeak); // Ramp up before peak
 
         let intensity = 0;
-        const data = activity.data || {};
 
-        if (activity.type === 'steps') {
-            intensity = (data.steps || 0) / 100;
-        } else if (activity.type === 'heart_rate') {
-            intensity = (data.bpm - 70) / 20;
+        if (activity.steps != null) {
+            intensity = (activity.steps || 0) / 100;
+        } else if (activity.heartrate != null) {
+            intensity = (activity.heartrate - 70) / 20;
         } else if (activity.type === 'exercise') {
-            intensity = (data.intensity || 5) * 5; // Scale to match others
+            // Support legacy or other types if they exist
+            const data = activity.data || {};
+            intensity = (data.intensity || 5) * 5;
         }
 
         impact += Math.max(0, intensity) * decayFactor;
@@ -165,12 +166,10 @@ export class SituationFeatureExtractor {
 
         // Activity (Need to fetch from DB for longer lookback - extended to 12h)
         const lookbackStart = new Date(windowEnd.getTime() - 12 * 60 * 60 * 1000);
-        const activities = await ActivityRecord.find({
-            $or: [
-                { timestamp: { $gte: lookbackStart.getTime(), $lte: windowEnd.getTime() } },
-                { startTime: { $gte: lookbackStart.getTime(), $lte: windowEnd.getTime() } }
-            ]
-        });
+        const activities = await Entry.find({
+            type: 'activity',
+            date: { $gte: lookbackStart.getTime(), $lte: windowEnd.getTime() }
+        }).lean();
 
         const activity_impact_1h = calculateActivityImpact(windowEnd, activities, 1);
         const activity_impact_3h = calculateActivityImpact(windowEnd, activities, 3);
@@ -186,16 +185,18 @@ export class SituationFeatureExtractor {
         const expectedGlucosePoints = Math.ceil(windowSizeMin / 5);
         const glucose_density = Math.min(1.0, glucoseValues.length / expectedGlucosePoints);
 
-        const hrRecords = activities.filter(a => a.type === 'heart_rate');
-        const hrMinutesWithData = new Set(hrRecords.map(r =>
-            new Date(r.timestamp).getMinutes() + 60 * new Date(r.timestamp).getHours()
-        )).size;
+        const hrRecords = activities.filter(a => a.heartrate != null);
+        const hrMinutesWithData = new Set(hrRecords.map(r => {
+            const d = new Date(r.date);
+            return d.getMinutes() + 60 * d.getHours();
+        })).size;
         const hr_density = Math.min(1.0, hrMinutesWithData / totalMinutes);
 
-        const stepRecords = activities.filter(a => a.type === 'steps');
-        const stepsMinutesWithData = new Set(stepRecords.map(r =>
-            new Date(r.timestamp).getMinutes() + 60 * new Date(r.timestamp).getHours()
-        )).size;
+        const stepRecords = activities.filter(a => a.steps != null);
+        const stepsMinutesWithData = new Set(stepRecords.map(r => {
+            const d = new Date(r.date);
+            return d.getMinutes() + 60 * d.getHours();
+        })).size;
         const steps_density = Math.min(1.0, stepsMinutesWithData / totalMinutes);
 
         const features: ISituationFeatures = {

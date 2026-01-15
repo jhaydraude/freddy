@@ -4,23 +4,31 @@ import mongoose, { Schema, Document } from 'mongoose';
 // ENTRIES (Glucose Readings)
 // ---------------------------------------------------------------------------
 export interface IEntry extends Document {
-    sgv: number;          // Glucose value
+    sgv?: number;         // Glucose value (optional as activity entries don't have it)
     date: number;         // Epoch timestamp
     dateString: string;   // ISO date string
-    trend: number;        // Trend value
-    direction: string;    // Arrow direction (Flat, DoubleUp, etc)
-    device: string;       // Uplink device
-    type: string;         // 'sgv' is primary
+    trend?: number;       // Trend value
+    direction?: string;   // Arrow direction (Flat, DoubleUp, etc)
+    device?: string;      // Uplink device
+    type: string;         // 'sgv' or 'activity'
+    heartrate?: number;   // Heart rate (for type: 'activity')
+    steps?: number;       // Steps (for type: 'activity')
+    identifier?: string;  // Client-side unique ID
+    app?: string;         // Source app
 }
 
 const EntrySchema = new Schema({
-    sgv: { type: Number, required: true },
+    sgv: { type: Number },
     date: { type: Number, required: true, index: true },
     dateString: { type: String, required: true },
     trend: { type: Number },
     direction: { type: String },
     device: { type: String },
-    type: { type: String, default: 'sgv' }
+    type: { type: String, default: 'sgv', index: true },
+    heartrate: { type: Number },
+    steps: { type: Number },
+    identifier: { type: String, index: true },
+    app: { type: String }
 }, { collection: 'entries', strict: false });
 
 export const Entry = mongoose.models.Entry || mongoose.model<IEntry>('Entry', EntrySchema);
@@ -288,9 +296,10 @@ const ProfileAnalysisSchema = new Schema({
 
 export const ProfileAnalysis = mongoose.models.ProfileAnalysis || mongoose.model<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema);
 
+// DEPRECATED: Activity data has moved to the 'entries' collection (type: 'activity').
+// This collection and model are kept for legacy data access only.
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// NEW ACTIVITY (Heart Rate, Steps, Exercise - Based on UploadRequest Spec)
+// NEW ACTIVITY (Legacy Collection - Heart Rate, Steps, Exercise)
 // ---------------------------------------------------------------------------
 
 export interface IActivityRecord extends Document {
