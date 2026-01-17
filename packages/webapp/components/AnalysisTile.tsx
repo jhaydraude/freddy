@@ -231,25 +231,25 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                                                 <div className="bg-zinc-900 border border-zinc-700 p-3 rounded-lg shadow-xl text-xs min-w-[150px] space-y-2">
                                                     <p className="text-zinc-400 border-b border-zinc-800 pb-1">{format(new Date(label), 'HH:mm')}</p>
 
-                                                    {pointData.actual !== undefined && (
+                                                    {pointData.actual != null && (
                                                         <div className="flex justify-between gap-4">
                                                             <span className="text-emerald-400 font-medium">Actual</span>
                                                             <span className="text-white font-mono">{pointData.actual}</span>
                                                         </div>
                                                     )}
-                                                    {pointData.projection !== undefined && (
+                                                    {pointData.projection != null && (
                                                         <div className="flex justify-between gap-4">
                                                             <span className="text-emerald-400/70 font-medium">Projected</span>
                                                             <span className="text-white font-mono">{pointData.projection.toFixed(0)}</span>
                                                         </div>
                                                     )}
-                                                    {pointData.iob !== undefined && (
+                                                    {pointData.iob != null && (
                                                         <div className="flex justify-between gap-4">
                                                             <span className="text-blue-400 font-medium">IOB</span>
                                                             <span className="text-white font-mono">{pointData.iob.toFixed(1)}u</span>
                                                         </div>
                                                     )}
-                                                    {pointData.cob !== undefined && (
+                                                    {pointData.cob != null && (
                                                         <div className="space-y-0.5 pt-1 border-t border-zinc-800">
                                                             <div className="flex justify-between gap-4">
                                                                 <span className="text-amber-400 font-medium">COB</span>
@@ -263,7 +263,7 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                                                             )}
                                                         </div>
                                                     )}
-                                                    {pointData.activity !== undefined && pointData.activity !== 0 && (
+                                                    {pointData.activity != null && pointData.activity !== 0 && (
                                                         <div className="flex justify-between gap-4 pt-1 border-t border-zinc-800">
                                                             <span className="text-fuchsia-400 font-medium">Activity</span>
                                                             <span className="text-white font-mono">

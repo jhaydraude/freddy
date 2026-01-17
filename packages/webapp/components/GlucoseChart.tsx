@@ -117,8 +117,8 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick, h
                                 </div>
                                 {(point.cob?.calculated?.pendingCOB ?? 0) > 0 && (
                                     <div className="text-[10px] text-zinc-500 flex justify-between px-1">
-                                        <span>Active: {point.cob.calculated.activeCOB.toFixed(1)}g</span>
-                                        <span>Pending: {point.cob.calculated.pendingCOB.toFixed(1)}g</span>
+                                        <span>Active: {(point.cob?.calculated?.activeCOB ?? 0).toFixed(1)}g</span>
+                                        <span>Pending: {(point.cob?.calculated?.pendingCOB ?? 0).toFixed(1)}g</span>
                                     </div>
                                 )}
                             </div>

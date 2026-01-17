@@ -26,7 +26,7 @@ export async function POST(request: Request) {
         let labelSource: 'manual' | 'system_validated' | 'system_unvalidated' = 'manual';
 
         if (existingWindow.predicted_tags && existingWindow.predicted_tags.length > 0) {
-            const predictedIds = existingWindow.predicted_tags.map(pt => pt.tag_id).sort();
+            const predictedIds = existingWindow.predicted_tags.map((pt: { tag_id: string }) => pt.tag_id).sort();
             const submittedIds = [...tags].sort();
 
             // Check if user confirmed predictions unchanged

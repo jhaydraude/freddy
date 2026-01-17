@@ -1,47 +1,73 @@
 # Dependencies
 node_modules/
 **/node_modules/
+package-lock.json
 
-# Build outputs
+# Build and Next.js outputs
+.next/
+**/.next/
 dist/
 **/dist/
 build/
 **/build/
+out/
+**/out/
+*.tsbuildinfo
+next-env.d.ts
 
-# Environment files
+# Environment and secrets
 .env
 **/.env
 .env.local
 **/.env.local
+.env.production
+**/.env.production
+.env*.local
+*.pem
 
-# Python
+# Python caching and environments
 __pycache__/
 **/__pycache__/
 *.py[cod]
+*$py.class
 *.so
+*.egg
 *.egg-info/
+.eggs/
 venv/
 **/venv/
+env/
+**/env/
+.pytest_cache/
+**/.pytest_cache/
 
-# OS
+# Machine Learning Models (keeping metadata, ignoring large binaries)
+packages/predictive-models/models/*.joblib
+packages/predictive-models/models/*.pkl
+packages/predictive-models/models/*.h5
+packages/predictive-models/models/*.pt
+packages/predictive-models/models/*.pth
+!packages/predictive-models/models/.gitkeep
+
+# IDEs, OS, and AI tools
+.idea/
+.vscode/
+**/.vscode/
+.gemini/
 .DS_Store
 **/.DS_Store
+Thumbs.db
 
 # Logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
 
-# IDEs
-.idea/
-.vscode/
-.gemini/
-
-# Training data and outputs (optional - uncomment if you want to ignore)
-# *.json
-# models/
-
-# Database backups
+# Project specific
 backups/
 **/backups/
+coverage/
+**/coverage/
+htmlcov/

@@ -1,5 +1,5 @@
 import { SituationTag, Entry, Treatment } from '../db/models';
-import { IStatusResult } from './status-logic';
+import { IStatusResult } from './types';
 import { getStatusHistory } from './history-logic';
 
 export interface ISituationFeatures {
@@ -94,7 +94,7 @@ export class SituationFeatureExtractor {
         }
 
         const latestStatus = history[history.length - 1]!;
-        const glucoseValues = history.map(h => h.glucose?.sgv).filter(g => g !== undefined) as number[];
+        const glucoseValues = history.map(h => h.glucose?.current.sgv).filter(g => g !== undefined) as number[];
 
         // Temporal
         const hours = windowEnd.getHours() + windowEnd.getMinutes() / 60;
@@ -122,8 +122,8 @@ export class SituationFeatureExtractor {
             : 0;
 
         // IOB/COB
-        const iob = latestStatus.iob?.calculated?.iob || 0;
-        const cob = latestStatus.cob?.cob || 0;
+        const iob = latestStatus.iob?.calculated?.totalIOB || 0;
+        const cob = latestStatus.cob?.calculated?.cob || 0;
 
         // Unexplained drift (30m average)
         const unexplainedValues = history.map(h => {
@@ -220,7 +220,7 @@ export class SituationFeatureExtractor {
             activity_impact_3h,
             activity_impact_6h,
             activity_impact_12h,
-            sensor_age_hours: latestStatus.glucose?.sensorAge || 0,
+            sensor_age_hours: latestStatus.glucose?.sensor.age || 0,
             glucose_density,
             hr_density,
             steps_density

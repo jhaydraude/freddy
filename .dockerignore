@@ -1,16 +1,41 @@
-node_modules
-.next
-.git
-.env
-.env.local
-.env.production
+# Dependencies
+node_modules/
+packages/predictive-models/venv/
+
+# Build outputs
+.next/
+dist/
+build/
+coverage/
+.pytest_cache/
+
+# Git
+.git/
+.gitattributes
+
+# Environment and secrets
+.env*
+! .env.example
+
+# OS and IDE files
+.DS_Store
+.vscode/
+
+# Logs
 *.log
 npm-debug.log*
-.DS_Store
-coverage
-.vscode
-dist
-build
-__pycache__
-*.pyc
-.pytest_cache
+
+# Project specific exclusions
+backups/
+docs/
+scripts/
+packages/webapp/scripts/
+packages/predictive-models/tests/
+packages/predictive-models/__pycache__/
+packages/predictive-models/*.pyc
+
+# Deployment and Windows scripts
+*.bat
+deploy.sh
+README.md
+DOCKER_DEPLOYMENT.md

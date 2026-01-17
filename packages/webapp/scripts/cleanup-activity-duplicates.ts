@@ -23,6 +23,8 @@ async function main() {
             [type]: { $exists: true }
         }).sort({ date: 1 }).lean();
 
+        console.log(`  Fetched ${records.length} records for ${type}. Processing...`);
+
         if (records.length === 0) {
             console.log(`  No records found for ${type}.`);
             continue;
@@ -44,8 +46,22 @@ async function main() {
                 totalOriginalStepSum += (currentValue as number || 0);
             }
 
-            if (currentValue === lastValue && (currentTime - lastTime) < thresholdMs) {
-                // REDUNDANT BURST
+            let isRedundant = false;
+            if (type === 'heartrate') {
+                // Strict time-based spacing (keep first record per minute)
+                isRedundant = (currentTime - lastTime) < thresholdMs;
+            } else { // type === 'steps'
+                // 1. Delete all zeros
+                // 2. Keep only if value differs OR enough time has passed
+                if (currentValue === 0) {
+                    isRedundant = true;
+                } else if (currentValue === lastValue && (currentTime - lastTime) < thresholdMs) {
+                    isRedundant = true;
+                }
+            }
+
+            if (isRedundant) {
+                // REDUNDANT RECORD
                 idsToDelete.push(r._id as mongoose.Types.ObjectId);
                 typeDeleted++;
             } else {

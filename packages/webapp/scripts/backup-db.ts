@@ -22,8 +22,13 @@ async function backupDatabase() {
 
     await connectToDatabase();
 
+    const db = mongoose.connection.db;
+    if (!db) {
+        throw new Error('Database connection not established');
+    }
+
     // Get all collection names
-    const collections = await mongoose.connection.db.listCollections().toArray();
+    const collections = await db.listCollections().toArray();
     console.log(`Found ${collections.length} collections to backup`);
 
     const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/nightscout';
@@ -35,8 +40,8 @@ async function backupDatabase() {
         console.log(`Backing up collection: ${collectionName}...`);
 
         try {
-            const cursor = mongoose.connection.db.collection(collectionName).find({});
-            const totalDocs = await mongoose.connection.db.collection(collectionName).countDocuments();
+            const cursor = db.collection(collectionName).find({});
+            const totalDocs = await db.collection(collectionName).countDocuments();
 
             const writeStream = fs.createWriteStream(outputFile, { flags: 'w' });
             writeStream.write('[\n');

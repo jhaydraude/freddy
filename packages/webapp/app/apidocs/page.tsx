@@ -6,9 +6,7 @@ export default function ApiDocsPage() {
     return (
         <ApiReferenceReact
             configuration={{
-                spec: {
-                    url: '/api/openapi.json',
-                },
+                url: '/api/openapi.json',
                 theme: 'purple',
                 showSidebar: true,
                 hideDownloadButton: false,

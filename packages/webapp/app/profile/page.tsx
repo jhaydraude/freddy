@@ -133,7 +133,7 @@ export default function ProfilePage() {
                 const data = await res.json();
 
                 if (data.logs && data.logs.length > 0) {
-                    data.logs.forEach(l => addLog(l));
+                    data.logs.forEach((l: string) => addLog(l));
                 }
 
                 setAnalysisProgress(90);

@@ -8,7 +8,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MONGO_URI=${MONGO_URI}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
     networks:
       - freddy
 
@@ -21,10 +23,10 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - MONGO_URI=${MONGO_URI}
-      - PREDICTION_SERVICE_URL=http://prediction-service:8000
+      - MONGO_URI=${MONGO_URI:-mongodb://localhost:27017/nightscout}
+      - PREDICTION_SERVICE_URL=${PREDICTION_SERVICE_URL:-http://prediction-service:8000}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - NODE_ENV=production
+      - NODE_ENV=${NODE_ENV:-production}
     depends_on:
       - prediction-service
     networks:

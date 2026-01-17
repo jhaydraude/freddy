@@ -150,7 +150,7 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
     // Calculate phantom carb impact per interval (if any)
     // We treat the adjustment as a lump sum COB that decays over 3 hours
     let phantomCOB = adjustments.cob_adjustment;
-    const phantomImpactPerInterval = Math.max(0, (phantomCOB * (situationAdjustedISF / status.iob.settings.effectiveCR)) / (180 / INTERVAL_MINUTES));
+    const phantomImpactPerInterval = Math.max(0, (phantomCOB * (situationAdjustedISF / status.cob.settings.cr)) / (180 / INTERVAL_MINUTES));
 
 
     // Iterate future intervals
