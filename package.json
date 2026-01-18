@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "webapp": "cd packages/webapp && npm run dev",
+    "setup-db": "tsx packages/webapp/scripts/setup-db.ts",
     "test": "echo \"Run tests in individual packages\""
   },
   "keywords": [

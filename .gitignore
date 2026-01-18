@@ -66,6 +66,8 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # Project specific
+.nightscout/
+nightscout/
 backups/
 **/backups/
 coverage/

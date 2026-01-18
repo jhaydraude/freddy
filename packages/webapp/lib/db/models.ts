@@ -28,8 +28,9 @@ const EntrySchema = new Schema({
     heartrate: { type: Number },
     steps: { type: Number },
     identifier: { type: String, index: true },
-    app: { type: String }
-}, { collection: 'entries', strict: false });
+    app: { type: String },
+    expireAt: { type: Date, expires: 0 } // TTL index support
+}, { collection: 'entries_cache', strict: false });
 
 export const Entry = mongoose.models.Entry || mongoose.model<IEntry>('Entry', EntrySchema);
 
@@ -66,8 +67,9 @@ const TreatmentSchema = new Schema({
     timeshift: { type: Number },
     originalDuration: { type: Number },
     profileJson: { type: String },
-    percentage: { type: Number }
-}, { collection: 'treatments', strict: false });
+    percentage: { type: Number },
+    expireAt: { type: Date, expires: 0 } // TTL index support
+}, { collection: 'treatments_cache', strict: false });
 
 export const Treatment = mongoose.models.Treatment || mongoose.model<ITreatment>('Treatment', TreatmentSchema);
 
@@ -101,8 +103,9 @@ const ProfileSchema = new Schema({
     startDate: { type: String, required: true, index: true },
     defaultProfile: { type: String, required: true },
     store: { type: Map, of: Object }, // Store can have multiple profiles by name
-    created_at: { type: String }
-}, { collection: 'profile', strict: false });
+    created_at: { type: String },
+    expireAt: { type: Date, expires: 0 } // TTL index support
+}, { collection: 'profiles_cache', strict: false });
 
 export const Profile = mongoose.models.Profile || mongoose.model<IProfile>('Profile', ProfileSchema);
 
@@ -198,8 +201,9 @@ const DeviceStatusSchema = new Schema({
         enacted: Schema.Types.Mixed
     },
     uploaderBattery: Number,
-    device: String
-}, { collection: 'devicestatus', strict: false });
+    device: String,
+    expireAt: { type: Date, expires: 0 } // TTL index support
+}, { collection: 'devicestatus_cache', strict: false });
 
 export const DeviceStatus = mongoose.models.DeviceStatus || mongoose.model<IDeviceStatus>('DeviceStatus', DeviceStatusSchema);
 
@@ -455,3 +459,37 @@ const SituationWindowSchema = new Schema({
 }, { collection: 'situation_windows' });
 
 export const SituationWindow = mongoose.models.SituationWindow || mongoose.model<ISituationWindow>('SituationWindow', SituationWindowSchema);
+
+// ---------------------------------------------------------------------------
+// CONFIGURATION MODELS
+// ---------------------------------------------------------------------------
+
+export interface ISystemConfig extends Document {
+    key: string;
+    value: any;
+    updated_at: Date;
+}
+
+const SystemConfigSchema = new Schema({
+    key: { type: String, required: true, unique: true, index: true },
+    value: { type: Schema.Types.Mixed, required: true },
+    updated_at: { type: Date, default: Date.now }
+}, { collection: 'system_config' });
+
+export const SystemConfig = mongoose.models.SystemConfig || mongoose.model<ISystemConfig>('SystemConfig', SystemConfigSchema);
+
+export interface IUserPreference extends Document {
+    userId: string;
+    key: string;
+    value: any;
+    updated_at: Date;
+}
+
+const UserPreferenceSchema = new Schema({
+    userId: { type: String, required: true, index: true },
+    key: { type: String, required: true, index: true },
+    value: { type: Schema.Types.Mixed, required: true },
+    updated_at: { type: Date, default: Date.now }
+}, { collection: 'user_preferences' });
+
+export const UserPreference = mongoose.models.UserPreference || mongoose.model<IUserPreference>('UserPreference', UserPreferenceSchema);

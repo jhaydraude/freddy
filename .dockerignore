@@ -26,6 +26,8 @@ coverage/
 npm-debug.log*
 
 # Project specific exclusions
+.nightscout/
+nightscout/
 backups/
 docs/
 scripts/

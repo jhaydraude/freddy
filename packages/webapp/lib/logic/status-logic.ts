@@ -228,8 +228,14 @@ export async function getStatus(
             }).lean();
 
             if (cached && isCacheValid(cached, 7)) {
-                // Cache hit! Return cached status
-                return cached.status as IStatusResult;
+                const status = cached.status as IStatusResult;
+                // Self-healing: If cached status has NO glucose entry but we are within recent range, 
+                // bypass once to see if data has since arrived.
+                if (status.glucose?.current?.sgv === null || isNaN(status.glucose?.current?.sgv as any)) {
+                    console.warn('getStatus: Cached status is poisoned (NaN/null SGV). Bypassing cache to self-heal...');
+                } else {
+                    return status;
+                }
             }
         } catch (error) {
             // Cache read failed, continue with calculation
@@ -259,7 +265,34 @@ export async function getStatus(
         }).sort({ created_at: 1 }).lean()
     ]);
 
-    if (!profileInfo) throw new Error("No profile found.");
+    if (!profileInfo) {
+        console.warn("SyncWorker: No profile found during status calculation. Returning partial status.");
+        return {
+            pump: {
+                basal: null,
+                pumpAge: null,
+                reservoir: latestDeviceStatus?.pump?.reservoir,
+                clock: latestDeviceStatus?.pump?.clock,
+                status: latestDeviceStatus?.pump?.status || {}
+            },
+            iob: calcIOB,
+            cob,
+            glucose: glucoseEntries[0] || null,
+            profile: null as any,
+            uploader: {
+                battery: latestDeviceStatus?.uploaderBattery,
+                device: "phone"
+            },
+            treatments: recentTreatments,
+            meta: {
+                reported_date: latestDeviceStatus?.created_at,
+                status_date: ts,
+                created_date: new Date().toISOString(),
+                app: "Freddy",
+                warning: "No profile found. Please configure Nightscout settings."
+            }
+        };
+    }
 
     // --- Pump Info ---
     let pumpAge: number | null = null;

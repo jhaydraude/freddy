@@ -1,14 +1,30 @@
-import { connectToDatabase } from '../lib/db/connection';
-import { Entry } from '../lib/db/models';
-import mongoose from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
+
+// Local schema definition targeting the real 'entries' collection in Nightscout
+const EntrySchema = new Schema({
+    sgv: { type: Number },
+    date: { type: Number, required: true, index: true },
+    type: { type: String, index: true },
+    heartrate: { type: Number },
+    steps: { type: Number },
+}, { collection: 'entries', strict: false });
 
 async function main() {
     const isDryRun = process.argv.includes('--execute') ? false : true;
+    const nsUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/nightscout';
 
-    await connectToDatabase();
+    console.log(`--- Activity Data Cleanup (${isDryRun ? 'DRY RUN' : 'EXECUTE'}) ---`);
+    console.log(`Target: ${nsUri.split('@').pop()}\n`);
 
-    console.log(`--- Activity Data Cleanup (${isDryRun ? 'DRY RUN' : 'EXECUTE'}) ---\n`);
+    try {
+        await mongoose.connect(nsUri);
+        console.log('Connected to Nightscout database successfully.');
+    } catch (err) {
+        console.error('Failed to connect to Nightscout database:', err);
+        process.exit(1);
+    }
 
+    const Entry = mongoose.model('EntryCleanup', EntrySchema);
     const activityTypes = ['steps', 'heartrate'];
     const idsToDelete: mongoose.Types.ObjectId[] = [];
 
@@ -37,13 +53,13 @@ async function main() {
         // Thresholds
         const thresholdMs = type === 'steps' ? 300000 : 60000;
 
-        for (const r of records) {
-            const currentValue = r[type as keyof typeof r];
+        for (const r of records as any[]) {
+            const currentValue = r[type];
             const currentTime = r.date;
 
             // Tracking for Step Verification
             if (type === 'steps') {
-                totalOriginalStepSum += (currentValue as number || 0);
+                totalOriginalStepSum += (currentValue || 0);
             }
 
             let isRedundant = false;
@@ -61,13 +77,11 @@ async function main() {
             }
 
             if (isRedundant) {
-                // REDUNDANT RECORD
-                idsToDelete.push(r._id as mongoose.Types.ObjectId);
+                idsToDelete.push(r._id);
                 typeDeleted++;
             } else {
-                // UNIQUE RECORD
                 if (type === 'steps') {
-                    totalSmartStepSum += (currentValue as number || 0);
+                    totalSmartStepSum += (currentValue || 0);
                 }
                 lastTime = currentTime;
                 lastValue = currentValue;
@@ -106,7 +120,7 @@ async function main() {
             type: 'activity',
             steps: { $exists: true }
         }).lean();
-        const finalStepSum = finalStepSumRecords.reduce((sum, r) => sum + (r.steps || 0), 0);
+        const finalStepSum = (finalStepSumRecords as any[]).reduce((sum, r) => sum + (r.steps || 0), 0);
 
         console.log('\n--- Post-Cleanup Verification ---');
         console.log(`Target Smart Sum: ${totalSmartStepSum}`);
@@ -115,7 +129,7 @@ async function main() {
         if (finalStepSum === totalSmartStepSum) {
             console.log('  ✓ SUCCESS: Additive integrity maintained.');
         } else {
-            console.log('  ✗ WARNING: Sum mismatch detect. Please investigate.');
+            console.log('  ✗ WARNING: Sum mismatch detected. Please investigate.');
         }
     }
 
