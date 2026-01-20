@@ -23,7 +23,7 @@ export async function getGlucose(options: { timestamp?: string | Date, count?: n
     // 30 mins = 6 entries, + buffer for gaps = 10 entries
     const fetchCount = Math.max(count + 9, 12);
     const [entries, profileInfo, lastSensorChange, lastCalibration] = await Promise.all([
-        Entry.find({ date: { $lte: tsNumber } }).sort({ date: -1 }).limit(fetchCount).lean(),
+        Entry.find({ date: { $lte: tsNumber }, type: 'sgv' }).sort({ date: -1 }).limit(fetchCount).lean(),
         resolveActiveProfile(dateObj),
         Treatment.findOne({ eventType: "Sensor Change" }).sort({ created_at: -1 }).lean(),
         Treatment.findOne({ eventType: "BG Check", mbg: { $exists: true }, created_at: { $lte: dateObj.toISOString() } }).sort({ created_at: -1 }).lean()

@@ -185,5 +185,6 @@ export interface IStatusResult {
         status_date: string;
         created_date: string;
         app: string;
+        warning?: string;
     };
 }

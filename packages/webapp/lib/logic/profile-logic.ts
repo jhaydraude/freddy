@@ -134,6 +134,13 @@ export async function resolveActiveProfile(timestamp: string | Date): Promise<{ 
 }
 
 /**
+ * Clears the profile cache. Should be called when a profile is updated or tuning is applied.
+ */
+export function clearProfileCache(): void {
+    profileCache.clear();
+}
+
+/**
  * Legacy wrapper: Finds the profile document active at a specific timestamp.
  */
 export async function getProfileAtTime(timestamp: string | Date): Promise<IProfile | null> {

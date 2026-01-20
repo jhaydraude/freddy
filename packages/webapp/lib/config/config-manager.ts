@@ -5,6 +5,7 @@ export interface SystemConfig {
     nightscout_url?: string;
     nightscout_api_key?: string;
     gemini_api_key?: string;
+    nightscout_mongo_uri?: string;
     prediction_service_url?: string;
     sync_frequency_ms: number;
 }

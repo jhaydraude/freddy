@@ -13,6 +13,7 @@ export default function SettingsPage() {
 
     // Form states for secrets (not loaded from API)
     const [nsApiKey, setNsApiKey] = useState('');
+    const [nsMongoUri, setNsMongoUri] = useState('');
     const [geminiApiKey, setGeminiApiKey] = useState('');
 
     const fetchSettings = async () => {
@@ -70,6 +71,7 @@ export default function SettingsPage() {
             if (res.ok) {
                 setMessage({ type: 'success', text: `${key.replace(/_/g, ' ')} updated` });
                 if (key === 'nightscout_api_key') setNsApiKey('');
+                if (key === 'nightscout_mongo_uri') setNsMongoUri('');
                 if (key === 'gemini_api_key') setGeminiApiKey('');
             } else {
                 const err = await res.json();
@@ -174,6 +176,29 @@ export default function SettingsPage() {
                                     <Key className="absolute right-3 top-2.5 text-zinc-700" size={16} />
                                 )}
                             </div>
+                        </div>
+
+                        {/* Mongo URI (Direct Access) */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-zinc-500 ml-1">Nightscout Mongo URI (Direct Access)</label>
+                            <div className="relative">
+                                <input
+                                    type="password"
+                                    value={nsMongoUri}
+                                    onChange={(e) => setNsMongoUri(e.target.value)}
+                                    onBlur={(e) => handleSaveSecret('nightscout_mongo_uri', e.target.value)}
+                                    placeholder="Stored (click to update)"
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 transition-all font-mono"
+                                />
+                                {saving === 'nightscout_mongo_uri' ? (
+                                    <RefreshCw className="absolute right-3 top-2.5 animate-spin text-zinc-600" size={16} />
+                                ) : (
+                                    <Database className="absolute right-3 top-2.5 text-zinc-700" size={16} />
+                                )}
+                            </div>
+                            <p className="text-[10px] text-zinc-600 ml-1 flex items-center gap-1">
+                                <AlertTriangle size={10} className="text-amber-500" /> Enables high-performance direct data access.
+                            </p>
                         </div>
                     </div>
                 </section>

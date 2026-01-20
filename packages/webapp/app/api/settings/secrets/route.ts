@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     const { key, value } = await req.json();
 
     try {
-        if (!['nightscout_api_key', 'gemini_api_key'].includes(key)) {
+        if (!['nightscout_api_key', 'gemini_api_key', 'nightscout_mongo_uri'].includes(key)) {
             return NextResponse.json({ error: 'Invalid secret key' }, { status: 400 });
         }
 

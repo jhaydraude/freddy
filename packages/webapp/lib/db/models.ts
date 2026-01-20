@@ -1,20 +1,40 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { getNightscoutConn, getFreddyConn } from './connection';
+
+// Helper to lazily bind a model to the correct connection
+function getModel<T>(name: string, schema: Schema, connectionGetter: () => mongoose.Connection, collection?: string) {
+    // We use a dummy function as target so the Proxy is recognized as a constructor
+    const dummy = function () { } as unknown as mongoose.Model<T & Document>;
+
+    return new Proxy(dummy, {
+        get(target, prop) {
+            const conn = connectionGetter();
+            const model = conn.models[name] || conn.model<T & Document>(name, schema, collection);
+            return (model as any)[prop];
+        },
+        construct(target, args) {
+            const conn = connectionGetter();
+            const model = conn.models[name] || conn.model<T & Document>(name, schema, collection);
+            return Reflect.construct(model as any, args);
+        }
+    });
+}
 
 // ---------------------------------------------------------------------------
-// ENTRIES (Glucose Readings)
+// ENTRIES (Glucose Readings) - Nightscout Owned
 // ---------------------------------------------------------------------------
 export interface IEntry extends Document {
-    sgv?: number;         // Glucose value (optional as activity entries don't have it)
-    date: number;         // Epoch timestamp
-    dateString: string;   // ISO date string
-    trend?: number;       // Trend value
-    direction?: string;   // Arrow direction (Flat, DoubleUp, etc)
-    device?: string;      // Uplink device
-    type: string;         // 'sgv' or 'activity'
-    heartrate?: number;   // Heart rate (for type: 'activity')
-    steps?: number;       // Steps (for type: 'activity')
-    identifier?: string;  // Client-side unique ID
-    app?: string;         // Source app
+    sgv?: number;
+    date: number;
+    dateString: string;
+    trend?: number;
+    direction?: string;
+    device?: string;
+    type: string;
+    heartrate?: number;
+    steps?: number;
+    identifier?: string;
+    app?: string;
 }
 
 const EntrySchema = new Schema({
@@ -28,30 +48,29 @@ const EntrySchema = new Schema({
     heartrate: { type: Number },
     steps: { type: Number },
     identifier: { type: String, index: true },
-    app: { type: String },
-    expireAt: { type: Date, expires: 0 } // TTL index support
-}, { collection: 'entries_cache', strict: false });
+    app: { type: String }
+}, { collection: 'entries', strict: false });
 
-export const Entry = mongoose.models.Entry || mongoose.model<IEntry>('Entry', EntrySchema);
+export const Entry = getModel<IEntry>('Entry', EntrySchema, getNightscoutConn, 'entries');
 
 // ---------------------------------------------------------------------------
-// TREATMENTS (Insulin, Carbs, Temp Basals)
+// TREATMENTS (Insulin, Carbs, Temp Basals) - Nightscout Owned
 // ---------------------------------------------------------------------------
 export interface ITreatment extends Document {
-    eventType: string;    // Correction Bolus, Meal Bolus, Temp Basal, etc.
-    insulin?: number;     // Units of insulin
-    carbs?: number;       // Grams of carbs
-    created_at: string;   // ISO string
+    eventType: string;
+    insulin?: number;
+    carbs?: number;
+    created_at: string;
     enteredBy: string;
     notes?: string;
-    duration?: number;    // For temp basals
-    percent?: number;     // For temp basals
-    rate?: number;        // For temp basals
-    profile?: string;     // For profile switches
-    timeshift?: number;   // Delay in minutes
-    originalDuration?: number; // Duration in minutes (0 means no end)
-    profileJson?: string; // Embedded profile data
-    percentage?: number;  // Profile percentage (e.g. 130)
+    duration?: number;
+    percent?: number;
+    rate?: number;
+    profile?: string;
+    timeshift?: number;
+    originalDuration?: number;
+    profileJson?: string;
+    percentage?: number;
 }
 
 const TreatmentSchema = new Schema({
@@ -67,23 +86,22 @@ const TreatmentSchema = new Schema({
     timeshift: { type: Number },
     originalDuration: { type: Number },
     profileJson: { type: String },
-    percentage: { type: Number },
-    expireAt: { type: Date, expires: 0 } // TTL index support
-}, { collection: 'treatments_cache', strict: false });
+    percentage: { type: Number }
+}, { collection: 'treatments', strict: false });
 
-export const Treatment = mongoose.models.Treatment || mongoose.model<ITreatment>('Treatment', TreatmentSchema);
+export const Treatment = getModel<ITreatment>('Treatment', TreatmentSchema, getNightscoutConn, 'treatments');
 
 // ---------------------------------------------------------------------------
-// PROFILE (User Settings)
+// PROFILE (User Settings) - Nightscout Owned
 // ---------------------------------------------------------------------------
 export interface IProfileStore {
-    dia: number;          // Duration of insulin action
+    dia: number;
     carbratio: Array<{ time: string, value: number, timeAsSeconds?: number }>;
     sens: Array<{ time: string, value: number, timeAsSeconds?: number }>;
     basal: Array<{ time: string, value: number, timeAsSeconds?: number }>;
     target_low: Array<{ time: string, value: number, timeAsSeconds?: number }>;
     target_high: Array<{ time: string, value: number, timeAsSeconds?: number }>;
-    units: string;        // mg/dL or mmol
+    units: string;
     activity_coefficients?: {
         steps_per_minute: number;
         calories: number;
@@ -93,7 +111,7 @@ export interface IProfileStore {
 }
 
 export interface IProfile extends Document {
-    startDate: string;    // ISO string when profile became active
+    startDate: string;
     defaultProfile: string;
     store: Record<string, IProfileStore>;
     created_at: string;
@@ -102,36 +120,28 @@ export interface IProfile extends Document {
 const ProfileSchema = new Schema({
     startDate: { type: String, required: true, index: true },
     defaultProfile: { type: String, required: true },
-    store: { type: Map, of: Object }, // Store can have multiple profiles by name
-    created_at: { type: String },
-    expireAt: { type: Date, expires: 0 } // TTL index support
-}, { collection: 'profiles_cache', strict: false });
+    store: { type: Map, of: Object },
+    created_at: { type: String }
+}, { collection: 'profile', strict: false });
 
-export const Profile = mongoose.models.Profile || mongoose.model<IProfile>('Profile', ProfileSchema);
+export const Profile = getModel<IProfile>('Profile', ProfileSchema, getNightscoutConn, 'profile');
 
 // ---------------------------------------------------------------------------
-// DEVICE STATUS (Pump & Uploader Status)
+// DEVICE STATUS (Pump & Uploader Status) - Nightscout Owned
 // ---------------------------------------------------------------------------
 export interface IDeviceStatus extends Document {
     created_at: string;
     pump?: {
-        battery?: {
-            percent?: number;
-            voltage?: number;
-            status?: string;
-        };
+        battery?: { percent?: number; voltage?: number; status?: string; };
         reservoir?: number;
         clock?: string;
-        status?: {
-            status?: string;
-            timestamp?: string;
-        };
+        status?: { status?: string; timestamp?: string; };
         extended?: {
             Version?: string;
             ActiveProfile?: string;
             TempBasalAbsoluteRate?: number;
             TempBasalStart?: string;
-            TempBasalRemaining?: number; // minutes
+            TempBasalRemaining?: number;
             LastBolus?: string;
             LastBolusAmount?: number;
             BaseBasalRate?: number;
@@ -139,14 +149,7 @@ export interface IDeviceStatus extends Document {
         };
     };
     openaps?: {
-        iob?: {
-            iob?: number;
-            activity?: number;
-            basaliob?: number;
-            bolusiob?: number;
-            timestamp?: string;
-            time?: string;
-        };
+        iob?: { iob?: number; activity?: number; basaliob?: number; bolusiob?: number; timestamp?: string; time?: string; };
         suggested?: any;
         enacted?: any;
     };
@@ -164,65 +167,25 @@ export interface IDeviceStatus extends Document {
 
 const DeviceStatusSchema = new Schema({
     created_at: { type: String, required: true, index: true },
-    pump: {
-        battery: {
-            percent: Number,
-            voltage: Number,
-            status: String
-        },
-        reservoir: Number,
-        clock: String,
-        status: {
-            status: String,
-            timestamp: String
-        },
-        extended: {
-            Version: String,
-            ActiveProfile: String,
-            TempBasalAbsoluteRate: Number,
-            TempBasalStart: String,
-            TempBasalRemaining: Number,
-            LastBolus: String,
-            LastBolusAmount: Number,
-            BaseBasalRate: Number,
-            IOB: Number
-        }
-    },
-    openaps: {
-        iob: {
-            iob: Number,
-            activity: Number,
-            basaliob: Number,
-            bolusiob: Number,
-            timestamp: String,
-            time: String
-        },
-        suggested: Schema.Types.Mixed,
-        enacted: Schema.Types.Mixed
-    },
+    pump: { type: Schema.Types.Mixed },
+    openaps: { type: Schema.Types.Mixed },
     uploaderBattery: Number,
-    device: String,
-    expireAt: { type: Date, expires: 0 } // TTL index support
-}, { collection: 'devicestatus_cache', strict: false });
+    device: String
+}, { collection: 'devicestatus', strict: false });
 
-export const DeviceStatus = mongoose.models.DeviceStatus || mongoose.model<IDeviceStatus>('DeviceStatus', DeviceStatusSchema);
+export const DeviceStatus = getModel<IDeviceStatus>('DeviceStatus', DeviceStatusSchema, getNightscoutConn, 'devicestatus');
 
 // ---------------------------------------------------------------------------
-// COMPUTED STATUS (Cached Status Snapshots - WRITE ALLOWED)
+// COMPUTED STATUS (Freddy Owned)
 // ---------------------------------------------------------------------------
 export interface IComputedStatus extends Document {
-    timestamp: Date;          // Bucketed to 5-minute intervals (floor)
-    status: any;              // Complete IStatusResult from getStatus()
-    attribution?: {           // Optional: Added by attribution tool
-        "5min"?: any;
-        "10min"?: any;
-        "15min"?: any;
-        "30min"?: any;
-    };
+    timestamp: Date;
+    status: any;
+    attribution?: any;
     prediction?: Array<{ timestamp: string, sgv: number }>;
-    created_at: Date;         // When first computed
-    updated_at: Date;         // When last recalculated
-    version: string;          // Schema version
+    created_at: Date;
+    updated_at: Date;
+    version: string;
 }
 
 const ComputedStatusSchema = new Schema({
@@ -235,10 +198,10 @@ const ComputedStatusSchema = new Schema({
     version: { type: String, default: "1.0" }
 }, { collection: 'computedstatus' });
 
-export const ComputedStatus = mongoose.models.ComputedStatus || mongoose.model<IComputedStatus>('ComputedStatus', ComputedStatusSchema);
+export const ComputedStatus = getModel<IComputedStatus>('ComputedStatus', ComputedStatusSchema, getFreddyConn, 'computedstatus');
 
 // ---------------------------------------------------------------------------
-// PROFILE ANALYSIS (Analysis History)
+// PROFILE ANALYSIS (Freddy Owned)
 // ---------------------------------------------------------------------------
 export interface IProfileAnalysis extends Document {
     timestamp: Date;
@@ -247,29 +210,14 @@ export interface IProfileAnalysis extends Document {
     estimated_isf: number[];
     estimated_icr: number[];
     estimated_basal_rates: number[];
-    isf_confidence: number[][];       // [[lower, upper], ...]
-    icr_confidence: number[][];       // [[lower, upper], ...]
-    basal_confidence: number[][];   // [[lower, upper], ...]
-    estimated_activity_coefficients?: {
-        steps_per_minute: number;
-        hr_spike: number;
-    };
-    activity_confidence?: {
-        steps_per_minute: { lower: number, upper: number, std_error: number };
-        hr_spike: { lower: number, upper: number, std_error: number };
-    };
+    isf_confidence: number[][];
+    icr_confidence: number[][];
+    basal_confidence: number[][];
     r_squared: number;
     rmse: number;
     mae: number;
     windows_analyzed: number;
-    windows_filtered_out: number;
-    stable_windows: number;
-    meal_windows: number;
     recommendation: string;
-    tuning_suggestions?: any;
-    logs?: string[];
-    llm_explanation?: string;
-    explanation_generated_at?: Date;
 }
 
 const ProfileAnalysisSchema = new Schema({
@@ -281,189 +229,68 @@ const ProfileAnalysisSchema = new Schema({
     estimated_basal_rates: [{ type: Number }],
     isf_confidence: { type: Schema.Types.Mixed },
     icr_confidence: { type: Schema.Types.Mixed },
-    basal_confidence: { type: Schema.Types.Mixed }, // Array of arrays
-    estimated_activity_coefficients: { type: Schema.Types.Mixed },
-    activity_confidence: { type: Schema.Types.Mixed },
+    basal_confidence: { type: Schema.Types.Mixed },
     r_squared: { type: Number },
     rmse: { type: Number },
     mae: { type: Number },
     windows_analyzed: { type: Number },
-    windows_filtered_out: { type: Number },
-    stable_windows: { type: Number },
-    meal_windows: { type: Number },
-    recommendation: { type: String },
-    tuning_suggestions: { type: Schema.Types.Mixed },
-    logs: [{ type: String }],
-    llm_explanation: { type: String },
-    explanation_generated_at: { type: Date }
+    recommendation: { type: String }
 }, { collection: 'profile_analysis' });
 
-export const ProfileAnalysis = mongoose.models.ProfileAnalysis || mongoose.model<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema);
-
-// DEPRECATED: Activity data has moved to the 'entries' collection (type: 'activity').
-// This collection and model are kept for legacy data access only.
-// ---------------------------------------------------------------------------
-// NEW ACTIVITY (Legacy Collection - Heart Rate, Steps, Exercise)
-// ---------------------------------------------------------------------------
-
-export interface IActivityRecord extends Document {
-    id: string;            // UUID for idempotency
-    type: 'heart_rate' | 'steps' | 'exercise';
-    timestamp?: number;    // Epoch ms for point data
-    startTime?: number;    // Epoch ms for intervals
-    endTime?: number;      // Epoch ms for intervals
-    data: any;             // HeartRateData, StepsData, or ExerciseData
-    metadata: {
-        device_id: string;
-        source_app: string;
-        sync_timestamp?: string;
-    };
-    created_at: Date;
-}
-
-const ActivityRecordSchema = new Schema({
-    id: { type: String, required: true, unique: true, index: true },
-    type: { type: String, enum: ['heart_rate', 'steps', 'exercise'], required: true, index: true },
-    timestamp: { type: Number, index: true },
-    startTime: { type: Number, index: true },
-    endTime: { type: Number, index: true },
-    data: { type: Schema.Types.Mixed, required: true },
-    metadata: {
-        device_id: { type: String, required: true },
-        source_app: { type: String, required: true },
-        sync_timestamp: { type: String }
-    },
-    created_at: { type: Date, default: Date.now, index: true }
-}, { collection: 'activities', strict: false });
-
-
-export const ActivityRecord = mongoose.models.ActivityRecord || mongoose.model<IActivityRecord>('ActivityRecord', ActivityRecordSchema);
+export const ProfileAnalysis = getModel<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema, getFreddyConn, 'profile_analysis');
 
 // ---------------------------------------------------------------------------
-// SITUATION CLASSIFIER (Tags, Segments, and Windows)
+// SITUATION CLASSIFIER (Freddy Owned)
 // ---------------------------------------------------------------------------
-
 export interface ISituationTag extends Document {
-    tag_id: string;           // e.g., "heavy_activity"
-    display_name: string;     // e.g., "Heavy Activity"
-    description: string;
-    category: "activity" | "nutrition" | "sensor" | "physiological" | "other";
-    color: string;            // For UI display
-    typical_duration_min: number;
-    delayed_impact_hours: number;  // How long after onset it affects glucose
-    prediction_adjustments: {
-        isf_multiplier?: number;     // e.g., 1.3 for activity
-        cob_adjustment?: number;     // e.g., +20 for under-reported carbs
-        confidence_penalty?: number; // e.g., 0.5 for noisy sensor
-    };
-    is_system: boolean;       // System-defined vs user-defined
-    is_active: boolean;
-    created_at: Date;
+    tag_id: string;
+    display_name: string;
+    category: string;
 }
 
 const SituationTagSchema = new Schema({
     tag_id: { type: String, required: true, unique: true, index: true },
     display_name: { type: String, required: true },
-    description: { type: String },
-    category: { type: String, enum: ["activity", "nutrition", "sensor", "physiological", "other"], required: true },
-    color: { type: String, default: "#666666" },
-    typical_duration_min: { type: Number, default: 30 },
-    delayed_impact_hours: { type: Number, default: 0 },
-    prediction_adjustments: {
-        isf_multiplier: { type: Number },
-        cob_adjustment: { type: Number },
-        confidence_penalty: { type: Number }
-    },
-    is_system: { type: Boolean, default: false },
-    is_active: { type: Boolean, default: true },
-    created_at: { type: Date, default: Date.now }
+    category: { type: String, required: true }
 }, { collection: 'situation_tags' });
 
-export const SituationTag = mongoose.models.SituationTag || mongoose.model<ISituationTag>('SituationTag', SituationTagSchema);
+export const SituationTag = getModel<ISituationTag>('SituationTag', SituationTagSchema, getFreddyConn, 'situation_tags');
 
 export interface ISituationSegment extends Document {
     userId: string;
-    tagId: string;           // Ref to SituationTag.tag_id
+    tagId: string;
     startTime: Date;
     endTime: Date;
-    source: 'manual' | 'model_confirmed' | 'auto_rule';
-    confidence: number;
-    metadata?: {
-        intensity?: number;    // e.g. 1-10 for activity
-        notes?: string;
-    };
-    created_at: Date;
 }
 
 const SituationSegmentSchema = new Schema({
     userId: { type: String, required: true, index: true },
     tagId: { type: String, required: true, index: true },
     startTime: { type: Date, required: true, index: true },
-    endTime: { type: Date, required: true, index: true },
-    source: { type: String, enum: ['manual', 'model_confirmed', 'auto_rule'], required: true },
-    confidence: { type: Number, default: 1.0 },
-    metadata: { type: Schema.Types.Mixed },
-    created_at: { type: Date, default: Date.now }
+    endTime: { type: Date, required: true, index: true }
 }, { collection: 'situation_segments' });
 
-export const SituationSegment = mongoose.models.SituationSegment || mongoose.model<ISituationSegment>('SituationSegment', SituationSegmentSchema);
+export const SituationSegment = getModel<ISituationSegment>('SituationSegment', SituationSegmentSchema, getFreddyConn, 'situation_segments');
 
 export interface ISituationWindow extends Document {
-    window_id: string;        // UUID
+    window_id: string;
     window_start: Date;
     window_end: Date;
-    duration_minutes: number;
     features: Record<string, number>;
-    tags: Array<{
-        tag_id: string;
-        confidence: number;       // 0-1
-        source: "manual" | "system_validated" | "system_unvalidated";
-        validated_at?: Date;
-    }>;
-    predicted_tags?: Array<{  // ML model suggestions (before user validation)
-        tag_id: string;
-        confidence: number;       // 0-1
-        source: "model_suggestion";
-    }>;
-    anomaly_score?: number;
-    selection_reason: "anomaly" | "random" | "user_initiated";
-    status: "pending" | "labeled" | "skipped";
-    created_at: Date;
-    labeled_at?: Date;
-    labeled_by?: string;
 }
 
 const SituationWindowSchema = new Schema({
     window_id: { type: String, required: true, unique: true, index: true },
     window_start: { type: Date, required: true, index: true },
     window_end: { type: Date, required: true, index: true },
-    duration_minutes: { type: Number, required: true },
-    features: { type: Map, of: Number },
-    tags: [{
-        tag_id: { type: String, required: true },
-        confidence: { type: Number, required: true },
-        source: { type: String, enum: ["manual", "system_validated", "system_unvalidated"], required: true },
-        validated_at: { type: Date }
-    }],
-    predicted_tags: [{
-        tag_id: { type: String, required: true },
-        confidence: { type: Number, required: true },
-        source: { type: String, enum: ["model_suggestion"], required: true }
-    }],
-    anomaly_score: { type: Number },
-    selection_reason: { type: String, enum: ["anomaly", "random", "user_initiated"], required: true },
-    status: { type: String, enum: ["pending", "labeled", "skipped"], default: "pending", index: true },
-    created_at: { type: Date, default: Date.now },
-    labeled_at: { type: Date },
-    labeled_by: { type: String }
+    features: { type: Map, of: Number }
 }, { collection: 'situation_windows' });
 
-export const SituationWindow = mongoose.models.SituationWindow || mongoose.model<ISituationWindow>('SituationWindow', SituationWindowSchema);
+export const SituationWindow = getModel<ISituationWindow>('SituationWindow', SituationWindowSchema, getFreddyConn, 'situation_windows');
 
 // ---------------------------------------------------------------------------
-// CONFIGURATION MODELS
+// CONFIGURATION MODELS (Freddy Owned)
 // ---------------------------------------------------------------------------
-
 export interface ISystemConfig extends Document {
     key: string;
     value: any;
@@ -476,20 +303,18 @@ const SystemConfigSchema = new Schema({
     updated_at: { type: Date, default: Date.now }
 }, { collection: 'system_config' });
 
-export const SystemConfig = mongoose.models.SystemConfig || mongoose.model<ISystemConfig>('SystemConfig', SystemConfigSchema);
+export const SystemConfig = getModel<ISystemConfig>('SystemConfig', SystemConfigSchema, getFreddyConn, 'system_config');
 
 export interface IUserPreference extends Document {
     userId: string;
     key: string;
     value: any;
-    updated_at: Date;
 }
 
 const UserPreferenceSchema = new Schema({
     userId: { type: String, required: true, index: true },
     key: { type: String, required: true, index: true },
-    value: { type: Schema.Types.Mixed, required: true },
-    updated_at: { type: Date, default: Date.now }
+    value: { type: Schema.Types.Mixed, required: true }
 }, { collection: 'user_preferences' });
 
-export const UserPreference = mongoose.models.UserPreference || mongoose.model<IUserPreference>('UserPreference', UserPreferenceSchema);
+export const UserPreference = getModel<IUserPreference>('UserPreference', UserPreferenceSchema, getFreddyConn, 'user_preferences');

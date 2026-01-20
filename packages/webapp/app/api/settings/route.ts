@@ -16,7 +16,7 @@ export async function GET() {
         const system_config: Record<string, any> = {};
         sysConfigs.forEach((c: any) => {
             // Mask secrets
-            if (['nightscout_api_key', 'gemini_api_key'].includes(c.key)) {
+            if (['nightscout_api_key', 'gemini_api_key', 'nightscout_mongo_uri'].includes(c.key)) {
                 system_config[c.key] = '********';
             } else {
                 system_config[c.key] = c.value;
@@ -27,7 +27,7 @@ export async function GET() {
         if (sysConfigs.length === 0) {
             const defaults = configManager.getSystemConfig();
             Object.entries(defaults).forEach(([key, value]) => {
-                if (['nightscout_api_key', 'gemini_api_key'].includes(key)) {
+                if (['nightscout_api_key', 'gemini_api_key', 'nightscout_mongo_uri'].includes(key)) {
                     system_config[key] = '********';
                 } else {
                     system_config[key] = value;

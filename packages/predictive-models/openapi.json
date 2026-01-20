@@ -1,0 +1,2236 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Predictive Models Service",
+    "description": "A microservice for training and serving predictive models",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/train": {
+      "post": {
+        "tags": [
+          "training"
+        ],
+        "summary": "Train Model",
+        "description": "Train a new predictive model.\n\nArgs:\n    request: Training request containing model configuration and data\n    \nReturns:\n    TrainResponse with training results and metrics\n    \nRaises:\n    HTTPException: If training fails",
+        "operationId": "train_model_api_v1_train_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models": {
+      "get": {
+        "tags": [
+          "training"
+        ],
+        "summary": "List Models",
+        "description": "List all available trained models.\n\nReturns:\n    List of available model names and metadata",
+        "operationId": "list_models_api_v1_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {},
+                  "type": "array",
+                  "title": "Response List Models Api V1 Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/predict": {
+      "post": {
+        "tags": [
+          "prediction"
+        ],
+        "summary": "Make Prediction",
+        "description": "Make predictions using a trained model.\n\nArgs:\n    request: Prediction request containing model name and input data\n    \nReturns:\n    PredictResponse with predictions\n    \nRaises:\n    HTTPException: If prediction fails or model not found",
+        "operationId": "make_prediction_api_v1_predict_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PredictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/train/glucose": {
+      "post": {
+        "tags": [
+          "glucose-prediction"
+        ],
+        "summary": "Train Glucose Model",
+        "description": "Train a glucose prediction model.\n\nTrains an XGBoost model to predict blood glucose 60 minutes ahead\nbased on status_history input (glucose trends, IOB, COB, basal, etc.).\n\nArgs:\n    request: Training request with samples and hyperparameters\n    \nReturns:\n    GlucoseTrainResponse with training metrics and feature importance\n    \nRaises:\n    HTTPException: If training fails",
+        "operationId": "train_glucose_model_api_v1_train_glucose_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GlucoseTrainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlucoseTrainResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/train/glucose/models": {
+      "get": {
+        "tags": [
+          "glucose-prediction"
+        ],
+        "summary": "List Glucose Models",
+        "description": "List all trained glucose prediction models.\n\nReturns:\n    List of model metadata including ID, creation time, and metrics.",
+        "operationId": "list_glucose_models_api_v1_train_glucose_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/predict/glucose": {
+      "post": {
+        "tags": [
+          "glucose-prediction"
+        ],
+        "summary": "Predict Glucose",
+        "description": "Predict blood glucose 60 minutes ahead.\n\nUses a trained glucose prediction model to forecast blood glucose\nbased on current status_history (typically 60 minutes of historical data).\n\nPrediction assumes no additional carb or insulin input.\n\nArgs:\n    request: Prediction request with model name and status_history\n    \nReturns:\n    GlucosePredictResponse with predicted glucose and analysis\n    \nRaises:\n    HTTPException: If prediction fails or model not found",
+        "operationId": "predict_glucose_api_v1_predict_glucose_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GlucosePredictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GlucosePredictResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/train/profile": {
+      "post": {
+        "tags": [
+          "profile-tuning"
+        ],
+        "summary": "Train Profile Model",
+        "description": "Train a profile tuning model.\n\nTrains an XGBoost multi-output model to recommend optimal ISF, ICR,\nand 24 hourly basal rates based on status_history and outcome metrics.\n\nArgs:\n    request: Training request with samples and hyperparameters\n    \nReturns:\n    ProfileTuneResponse with training metrics and feature importance\n    \nRaises:\n    HTTPException: If training fails",
+        "operationId": "train_profile_model_api_v1_train_profile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileTuneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileTuneResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/train/profile/models": {
+      "get": {
+        "tags": [
+          "profile-tuning"
+        ],
+        "summary": "List Profile Models",
+        "description": "List all trained profile tuning models.\n\nReturns:\n    List of model metadata including ID, creation time, and metrics.",
+        "operationId": "list_profile_models_api_v1_train_profile_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recommend/profile": {
+      "post": {
+        "tags": [
+          "profile-tuning"
+        ],
+        "summary": "Recommend Profile",
+        "description": "Get profile parameter recommendations.\n\nUses a trained profile tuning model to recommend optimal ISF, ICR,\nand basal rates based on current status_history and settings.\n\nArgs:\n    request: Recommendation request with model name, status_history, and current settings\n    \nReturns:\n    ProfileRecommendResponse with recommended ISF, ICR, and basal rates\n    \nRaises:\n    HTTPException: If recommendation fails or model not found",
+        "operationId": "recommend_profile_api_v1_recommend_profile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileRecommendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileRecommendResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/estimate/isf": {
+      "post": {
+        "tags": [
+          "profile-estimation"
+        ],
+        "summary": "Estimate Isf",
+        "description": "Estimate ISF from insulin correction events.\n\nUses physiologically-based approach: calculates median glucose change\nper unit of total active insulin from historical correction events.\n\nArgs:\n    request: List of correction events with IOB tracking\n    \nReturns:\n    ISF estimation with confidence intervals\n    \nRaises:\n    HTTPException: If estimation fails or insufficient data",
+        "operationId": "estimate_isf_api_v1_estimate_isf_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ISFEstimateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ISFEstimateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyze/profile": {
+      "post": {
+        "tags": [
+          "profile-analysis"
+        ],
+        "summary": "Analyze Profile",
+        "description": "Analyze profile parameters using holistic optimization.",
+        "operationId": "analyze_profile_api_v1_analyze_profile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAnalysisResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/train/situation": {
+      "post": {
+        "tags": [
+          "situation",
+          "situation"
+        ],
+        "summary": "Train Situation Model",
+        "description": "Train a situation classification model.",
+        "operationId": "train_situation_model_api_v1_train_situation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SituationTrainRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SituationTrainResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/classify/situation": {
+      "post": {
+        "tags": [
+          "situation",
+          "situation"
+        ],
+        "summary": "Classify Situation",
+        "description": "Classify a time window into situations.",
+        "operationId": "classify_situation_api_v1_classify_situation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SituationClassifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SituationClassifyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/situation/{model_name}": {
+      "get": {
+        "tags": [
+          "situation",
+          "situation"
+        ],
+        "summary": "Get Situation Metrics",
+        "description": "Get metrics and metadata for a specific situation model.",
+        "operationId": "get_situation_metrics_api_v1_metrics_situation__model_name__get",
+        "parameters": [
+          {
+            "name": "model_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Model Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tune/insulin-response": {
+      "post": {
+        "tags": [
+          "insulin-response-tuning"
+        ],
+        "summary": "Tune Insulin Response",
+        "description": "Optimize insulin response parameters (DIA, Peak Time, ISF).\n\nThis endpoint performs advanced optimization to find the best-fit\ninsulin response parameters based on historical glucose and treatment data.",
+        "operationId": "tune_insulin_response_api_v1_tune_insulin_response_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsulinResponseTuningRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsulinResponseTuningResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "description": "Root endpoint.",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Health check endpoint.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BasalTimeBlock": {
+        "properties": {
+          "hour": {
+            "type": "integer",
+            "maximum": 23.0,
+            "minimum": 0.0,
+            "title": "Hour",
+            "description": "Hour of day (0-23)"
+          },
+          "rate": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Rate",
+            "description": "Basal rate in units per hour"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hour",
+          "rate"
+        ],
+        "title": "BasalTimeBlock",
+        "description": "Single hourly basal rate."
+      },
+      "GlucosePredictRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Name of the trained model to use",
+            "default": "glucose_predictor"
+          },
+          "status_history": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Status History",
+            "description": "Array of IStatusResult objects from get_status_history"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status_history"
+        ],
+        "title": "GlucosePredictRequest",
+        "description": "Request to predict glucose 60 minutes ahead.",
+        "example": {
+          "model_name": "glucose_predictor",
+          "status_history": []
+        }
+      },
+      "GlucosePredictResponse": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "predicted_glucose_60min": {
+            "type": "number",
+            "title": "Predicted Glucose 60Min",
+            "description": "Predicted glucose value in 60 minutes"
+          },
+          "current_glucose": {
+            "type": "number",
+            "title": "Current Glucose",
+            "description": "Current glucose from status_history"
+          },
+          "predicted_change": {
+            "type": "number",
+            "title": "Predicted Change",
+            "description": "Predicted change from current (positive = rising)"
+          },
+          "features_used": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Features Used",
+            "description": "Extracted features used for prediction"
+          },
+          "predicted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Predicted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "predicted_glucose_60min",
+          "current_glucose",
+          "predicted_change",
+          "features_used"
+        ],
+        "title": "GlucosePredictResponse",
+        "description": "Response from glucose prediction.",
+        "example": {
+          "current_glucose": 120.0,
+          "features_used": {
+            "cob": 25.0,
+            "current_glucose": 120.0,
+            "iob": 1.5
+          },
+          "model_name": "glucose_predictor",
+          "predicted_at": "2024-01-01T12:00:00",
+          "predicted_change": 15.5,
+          "predicted_glucose_60min": 135.5
+        }
+      },
+      "GlucoseTrainRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Name for the trained model",
+            "default": "glucose_predictor"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/GlucoseTrainingSample"
+            },
+            "type": "array",
+            "title": "Samples",
+            "description": "Training samples with status_history and outcomes"
+          },
+          "test_size": {
+            "type": "number",
+            "title": "Test Size",
+            "description": "Fraction of data to use for validation (0.0-0.5)",
+            "default": 0.2
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameters",
+            "description": "XGBoost hyperparameters (optional)",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "samples"
+        ],
+        "title": "GlucoseTrainRequest",
+        "description": "Request to train glucose prediction model.",
+        "example": {
+          "model_name": "glucose_predictor",
+          "parameters": {
+            "learning_rate": 0.1,
+            "max_depth": 6,
+            "n_estimators": 100
+          },
+          "samples": [
+            {
+              "actual_glucose_60min": 125.0,
+              "status_history": []
+            }
+          ],
+          "test_size": 0.2
+        }
+      },
+      "GlucoseTrainResponse": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Metrics",
+            "description": "Model performance metrics (MAE, RMSE, R2, etc.)"
+          },
+          "feature_importance": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Importance",
+            "description": "Feature importance scores from the model"
+          },
+          "samples_trained": {
+            "type": "integer",
+            "title": "Samples Trained"
+          },
+          "samples_validated": {
+            "type": "integer",
+            "title": "Samples Validated"
+          },
+          "trained_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Trained At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "status",
+          "message",
+          "metrics",
+          "samples_trained",
+          "samples_validated"
+        ],
+        "title": "GlucoseTrainResponse",
+        "description": "Response from glucose model training.",
+        "example": {
+          "feature_importance": {
+            "current_glucose": 0.35,
+            "glucose_trend_slope": 0.2,
+            "iob": 0.15
+          },
+          "message": "Model trained successfully",
+          "metrics": {
+            "test_mae": 10.2,
+            "test_r2": 0.75,
+            "test_rmse": 14.1,
+            "train_mae": 8.5,
+            "train_rmse": 12.3
+          },
+          "model_name": "glucose_predictor",
+          "samples_trained": 800,
+          "samples_validated": 200,
+          "status": "success",
+          "trained_at": "2024-01-01T12:00:00"
+        }
+      },
+      "GlucoseTrainingSample": {
+        "properties": {
+          "status_history": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Status History",
+            "description": "Array of IStatusResult objects from get_status_history"
+          },
+          "actual_glucose_60min": {
+            "type": "number",
+            "title": "Actual Glucose 60Min",
+            "description": "Actual glucose value 60 minutes after the last status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status_history",
+          "actual_glucose_60min"
+        ],
+        "title": "GlucoseTrainingSample",
+        "description": "Single training sample for glucose prediction."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ISFEstimateRequest": {
+        "properties": {
+          "events": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "events"
+        ],
+        "title": "ISFEstimateRequest",
+        "description": "Request to estimate ISF from correction events"
+      },
+      "ISFEstimateResponse": {
+        "properties": {
+          "estimated_isf": {
+            "type": "number",
+            "title": "Estimated Isf"
+          },
+          "confidence_interval_lower": {
+            "type": "number",
+            "title": "Confidence Interval Lower"
+          },
+          "confidence_interval_upper": {
+            "type": "number",
+            "title": "Confidence Interval Upper"
+          },
+          "sample_count": {
+            "type": "integer",
+            "title": "Sample Count"
+          },
+          "high_quality_count": {
+            "type": "integer",
+            "title": "High Quality Count"
+          },
+          "quality": {
+            "type": "string",
+            "title": "Quality"
+          },
+          "recommendation": {
+            "type": "string",
+            "title": "Recommendation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "estimated_isf",
+          "confidence_interval_lower",
+          "confidence_interval_upper",
+          "sample_count",
+          "high_quality_count",
+          "quality",
+          "recommendation"
+        ],
+        "title": "ISFEstimateResponse",
+        "description": "ISF estimation response"
+      },
+      "InsulinResponseTuningRequest": {
+        "properties": {
+          "windows": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Windows"
+          },
+          "current_dia": {
+            "type": "number",
+            "title": "Current Dia",
+            "default": 5.0
+          },
+          "current_peak": {
+            "type": "number",
+            "title": "Current Peak",
+            "default": 45.0
+          },
+          "current_isf": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Isf"
+          },
+          "optimize_dia": {
+            "type": "boolean",
+            "title": "Optimize Dia",
+            "default": true
+          },
+          "optimize_peak": {
+            "type": "boolean",
+            "title": "Optimize Peak",
+            "default": true
+          },
+          "optimize_isf": {
+            "type": "boolean",
+            "title": "Optimize Isf",
+            "default": true
+          },
+          "lambda_l2": {
+            "type": "number",
+            "title": "Lambda L2",
+            "default": 0.1
+          },
+          "lambda_smooth": {
+            "type": "number",
+            "title": "Lambda Smooth",
+            "default": 0.05
+          }
+        },
+        "type": "object",
+        "required": [
+          "windows"
+        ],
+        "title": "InsulinResponseTuningRequest",
+        "description": "Request for insulin response tuning"
+      },
+      "InsulinResponseTuningResponse": {
+        "properties": {
+          "dia": {
+            "type": "number",
+            "title": "Dia"
+          },
+          "peak": {
+            "type": "number",
+            "title": "Peak"
+          },
+          "isf": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Isf"
+          },
+          "dia_confidence": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Dia Confidence"
+          },
+          "peak_confidence": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Peak Confidence"
+          },
+          "isf_confidence": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Isf Confidence"
+          },
+          "r_squared": {
+            "type": "number",
+            "title": "R Squared"
+          },
+          "rmse": {
+            "type": "number",
+            "title": "Rmse"
+          },
+          "mae": {
+            "type": "number",
+            "title": "Mae"
+          },
+          "windows_analyzed": {
+            "type": "integer",
+            "title": "Windows Analyzed"
+          },
+          "total_windows": {
+            "type": "integer",
+            "title": "Total Windows"
+          },
+          "stable_windows": {
+            "type": "integer",
+            "title": "Stable Windows"
+          },
+          "meal_windows": {
+            "type": "integer",
+            "title": "Meal Windows"
+          },
+          "activity_windows": {
+            "type": "integer",
+            "title": "Activity Windows"
+          },
+          "data_quality_score": {
+            "type": "number",
+            "title": "Data Quality Score"
+          },
+          "recommendation": {
+            "type": "string",
+            "title": "Recommendation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dia",
+          "peak",
+          "isf",
+          "dia_confidence",
+          "peak_confidence",
+          "isf_confidence",
+          "r_squared",
+          "rmse",
+          "mae",
+          "windows_analyzed",
+          "total_windows",
+          "stable_windows",
+          "meal_windows",
+          "activity_windows",
+          "data_quality_score",
+          "recommendation"
+        ],
+        "title": "InsulinResponseTuningResponse",
+        "description": "Response from insulin response tuning"
+      },
+      "PredictRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Name of the trained model to use"
+          },
+          "data": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "Input data for prediction"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "data"
+        ],
+        "title": "PredictRequest",
+        "description": "Request model for making predictions.",
+        "example": {
+          "data": [
+            {
+              "feature1": 1.2,
+              "feature2": 2.3
+            },
+            {
+              "feature1": 1.8,
+              "feature2": 2.8
+            }
+          ],
+          "model_name": "sales_predictor"
+        }
+      },
+      "PredictResponse": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "predictions": {
+            "items": {},
+            "type": "array",
+            "title": "Predictions"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "predicted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Predicted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "predictions"
+        ],
+        "title": "PredictResponse",
+        "description": "Response model for predictions.",
+        "example": {
+          "confidence": [
+            0.92,
+            0.88
+          ],
+          "model_name": "sales_predictor",
+          "predicted_at": "2024-01-01T12:00:00",
+          "predictions": [
+            125.5,
+            175.8
+          ]
+        }
+      },
+      "ProfileAnalysisRequest": {
+        "properties": {
+          "windows": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Windows"
+          },
+          "current_profile": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Profile"
+          },
+          "estimate_activity": {
+            "type": "boolean",
+            "title": "Estimate Activity",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "windows"
+        ],
+        "title": "ProfileAnalysisRequest",
+        "description": "Request to analyze profile parameters"
+      },
+      "ProfileAnalysisResponse": {
+        "properties": {
+          "current_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProfileStore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recommended_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProfileStore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimated_isf": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Estimated Isf"
+          },
+          "estimated_icr": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Estimated Icr"
+          },
+          "estimated_basal_rates": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Estimated Basal Rates"
+          },
+          "isf_confidence": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Isf Confidence"
+          },
+          "icr_confidence": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Icr Confidence"
+          },
+          "basal_confidence": {
+            "items": {
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Basal Confidence"
+          },
+          "r_squared": {
+            "type": "number",
+            "title": "R Squared"
+          },
+          "rmse": {
+            "type": "number",
+            "title": "Rmse"
+          },
+          "mae": {
+            "type": "number",
+            "title": "Mae"
+          },
+          "windows_analyzed": {
+            "type": "integer",
+            "title": "Windows Analyzed"
+          },
+          "windows_filtered_out": {
+            "type": "integer",
+            "title": "Windows Filtered Out"
+          },
+          "stable_windows": {
+            "type": "integer",
+            "title": "Stable Windows"
+          },
+          "meal_windows": {
+            "type": "integer",
+            "title": "Meal Windows"
+          },
+          "recommendation": {
+            "type": "string",
+            "title": "Recommendation"
+          },
+          "estimated_activity_coefficients": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Activity Coefficients"
+          },
+          "activity_confidence": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity Confidence"
+          },
+          "logs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Logs",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "estimated_isf",
+          "estimated_icr",
+          "estimated_basal_rates",
+          "isf_confidence",
+          "icr_confidence",
+          "basal_confidence",
+          "r_squared",
+          "rmse",
+          "mae",
+          "windows_analyzed",
+          "windows_filtered_out",
+          "stable_windows",
+          "meal_windows",
+          "recommendation"
+        ],
+        "title": "ProfileAnalysisResponse",
+        "description": "Profile analysis response"
+      },
+      "ProfileRecommendRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Name of the trained model to use",
+            "default": "profile_tuner"
+          },
+          "status_history": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Status History",
+            "description": "Array of IStatusResult objects from get_status_history"
+          },
+          "current_isf": {
+            "type": "number",
+            "title": "Current Isf",
+            "description": "Current insulin sensitivity factor (ISF) in mmol/L per unit"
+          },
+          "current_icr": {
+            "type": "number",
+            "title": "Current Icr",
+            "description": "Current insulin-to-carb ratio (ICR) in grams per unit"
+          },
+          "current_basal": {
+            "items": {
+              "$ref": "#/components/schemas/BasalTimeBlock"
+            },
+            "type": "array",
+            "title": "Current Basal",
+            "description": "Current basal rates (24 hourly values)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status_history",
+          "current_isf",
+          "current_icr",
+          "current_basal"
+        ],
+        "title": "ProfileRecommendRequest",
+        "description": "Request to get profile parameter recommendations.",
+        "example": {
+          "current_basal": [
+            {
+              "hour": 0,
+              "rate": 0.8
+            },
+            {
+              "hour": 1,
+              "rate": 0.8
+            }
+          ],
+          "current_icr": 10.0,
+          "current_isf": 3.0,
+          "model_name": "profile_tuner",
+          "status_history": []
+        }
+      },
+      "ProfileRecommendResponse": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "recommended_isf": {
+            "type": "number",
+            "title": "Recommended Isf",
+            "description": "Recommended insulin sensitivity factor in mmol/L per unit"
+          },
+          "recommended_icr": {
+            "type": "number",
+            "title": "Recommended Icr",
+            "description": "Recommended insulin-to-carb ratio in grams per unit"
+          },
+          "recommended_basal": {
+            "items": {
+              "$ref": "#/components/schemas/BasalTimeBlock"
+            },
+            "type": "array",
+            "title": "Recommended Basal",
+            "description": "Recommended basal rates (24 hourly values)"
+          },
+          "current_isf": {
+            "type": "number",
+            "title": "Current Isf"
+          },
+          "current_icr": {
+            "type": "number",
+            "title": "Current Icr"
+          },
+          "isf_change_percent": {
+            "type": "number",
+            "title": "Isf Change Percent",
+            "description": "Percent change in ISF (positive = more sensitive)"
+          },
+          "icr_change_percent": {
+            "type": "number",
+            "title": "Icr Change Percent",
+            "description": "Percent change in ICR (positive = more carbs per unit)"
+          },
+          "features_used": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Features Used",
+            "description": "Extracted features used for recommendation"
+          },
+          "predicted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Predicted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "recommended_isf",
+          "recommended_icr",
+          "recommended_basal",
+          "current_isf",
+          "current_icr",
+          "isf_change_percent",
+          "icr_change_percent",
+          "features_used"
+        ],
+        "title": "ProfileRecommendResponse",
+        "description": "Response from profile tuning recommendation.",
+        "example": {
+          "current_icr": 10.0,
+          "current_isf": 3.0,
+          "features_used": {
+            "glucose_std": 2.5,
+            "time_in_range": 70.0
+          },
+          "icr_change_percent": 5.0,
+          "isf_change_percent": 6.7,
+          "model_name": "profile_tuner",
+          "predicted_at": "2024-01-01T12:00:00",
+          "recommended_basal": [
+            {
+              "hour": 0,
+              "rate": 0.85
+            }
+          ],
+          "recommended_icr": 10.5,
+          "recommended_isf": 3.2
+        }
+      },
+      "ProfileStore": {
+        "properties": {
+          "dia": {
+            "type": "number",
+            "title": "Dia"
+          },
+          "carbratio": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Carbratio"
+          },
+          "sens": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sens"
+          },
+          "basal": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Basal"
+          },
+          "target_low": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Target Low"
+          },
+          "target_high": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Target High"
+          },
+          "units": {
+            "type": "string",
+            "title": "Units"
+          },
+          "activity_coefficients": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activity Coefficients"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dia",
+          "carbratio",
+          "sens",
+          "basal",
+          "target_low",
+          "target_high",
+          "units"
+        ],
+        "title": "ProfileStore",
+        "description": "Profile store structure matching NightScout format"
+      },
+      "ProfileTuneRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Name for the trained model",
+            "default": "profile_tuner"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileTuningSample"
+            },
+            "type": "array",
+            "title": "Samples",
+            "description": "Training samples with status_history and outcome metrics"
+          },
+          "test_size": {
+            "type": "number",
+            "maximum": 0.5,
+            "minimum": 0.0,
+            "title": "Test Size",
+            "description": "Fraction of data to use for validation (0.0-0.5)",
+            "default": 0.2
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameters",
+            "description": "XGBoost hyperparameters (optional)",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "samples"
+        ],
+        "title": "ProfileTuneRequest",
+        "description": "Request to train profile tuning model.",
+        "example": {
+          "model_name": "profile_tuner",
+          "parameters": {
+            "learning_rate": 0.1,
+            "max_depth": 6,
+            "n_estimators": 100
+          },
+          "samples": [
+            {
+              "current_basal": [
+                {
+                  "hour": 0,
+                  "rate": 0.8
+                }
+              ],
+              "current_icr": 10.0,
+              "current_isf": 3.0,
+              "outcome_glucose_cv": 28.0,
+              "outcome_glucose_std": 2.1,
+              "outcome_time_above_range": 20.0,
+              "outcome_time_below_range": 5.0,
+              "outcome_time_in_range": 75.0,
+              "status_history": []
+            }
+          ],
+          "test_size": 0.2
+        }
+      },
+      "ProfileTuneResponse": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Metrics",
+            "description": "Model performance metrics for each output"
+          },
+          "feature_importance": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Importance",
+            "description": "Feature importance scores from the model"
+          },
+          "samples_trained": {
+            "type": "integer",
+            "title": "Samples Trained"
+          },
+          "samples_validated": {
+            "type": "integer",
+            "title": "Samples Validated"
+          },
+          "trained_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Trained At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "status",
+          "message",
+          "metrics",
+          "samples_trained",
+          "samples_validated"
+        ],
+        "title": "ProfileTuneResponse",
+        "description": "Response from profile model training.",
+        "example": {
+          "feature_importance": {
+            "glucose_std": 0.25,
+            "time_below_range": 0.2,
+            "time_in_range": 0.35
+          },
+          "message": "Model trained successfully",
+          "metrics": {
+            "basal_mae": 0.05,
+            "icr_mae": 0.8,
+            "isf_mae": 0.25,
+            "overall_r2": 0.72
+          },
+          "model_name": "profile_tuner",
+          "samples_trained": 800,
+          "samples_validated": 200,
+          "status": "success",
+          "trained_at": "2024-01-01T12:00:00"
+        }
+      },
+      "ProfileTuningSample": {
+        "properties": {
+          "status_history": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Status History",
+            "description": "Array of IStatusResult objects from get_status_history"
+          },
+          "current_isf": {
+            "type": "number",
+            "title": "Current Isf",
+            "description": "Current insulin sensitivity factor (ISF) in mmol/L per unit"
+          },
+          "current_icr": {
+            "type": "number",
+            "title": "Current Icr",
+            "description": "Current insulin-to-carb ratio (ICR) in grams per unit"
+          },
+          "current_basal": {
+            "items": {
+              "$ref": "#/components/schemas/BasalTimeBlock"
+            },
+            "type": "array",
+            "title": "Current Basal",
+            "description": "Current basal rates (24 hourly values)"
+          },
+          "outcome_time_in_range": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Outcome Time In Range",
+            "description": "Percentage of time in target range (4-9 mmol/L) during outcome window"
+          },
+          "outcome_time_below_range": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Outcome Time Below Range",
+            "description": "Percentage of time below range (<4 mmol/L) during outcome window"
+          },
+          "outcome_time_above_range": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Outcome Time Above Range",
+            "description": "Percentage of time above range (>9 mmol/L) during outcome window"
+          },
+          "outcome_glucose_std": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Outcome Glucose Std",
+            "description": "Glucose standard deviation in mmol/L during outcome window"
+          },
+          "outcome_glucose_cv": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Outcome Glucose Cv",
+            "description": "Glucose coefficient of variation (%) during outcome window"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status_history",
+          "current_isf",
+          "current_icr",
+          "current_basal",
+          "outcome_time_in_range",
+          "outcome_time_below_range",
+          "outcome_time_above_range",
+          "outcome_glucose_std",
+          "outcome_glucose_cv"
+        ],
+        "title": "ProfileTuningSample",
+        "description": "Single training sample for profile tuning."
+      },
+      "SituationClassifyRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "default": "situation_classifier"
+          },
+          "features": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Features"
+          },
+          "threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Threshold",
+            "default": 0.5
+          }
+        },
+        "type": "object",
+        "required": [
+          "features"
+        ],
+        "title": "SituationClassifyRequest",
+        "description": "Request to classify a window."
+      },
+      "SituationClassifyResponse": {
+        "properties": {
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/TagPrediction"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "classified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Classified At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tags"
+        ],
+        "title": "SituationClassifyResponse",
+        "description": "Response from classification."
+      },
+      "SituationTrainRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "default": "situation_classifier"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/SituationTrainingSample"
+            },
+            "type": "array",
+            "title": "Samples"
+          },
+          "test_size": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Test Size",
+            "default": 0.2
+          }
+        },
+        "type": "object",
+        "required": [
+          "samples"
+        ],
+        "title": "SituationTrainRequest",
+        "description": "Request to train a situation classifier."
+      },
+      "SituationTrainResponse": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "samples_count": {
+            "type": "integer",
+            "title": "Samples Count"
+          },
+          "tag_metrics": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Tag Metrics"
+          },
+          "feature_importance": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Feature Importance"
+          },
+          "trained_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Trained At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "samples_count",
+          "tag_metrics",
+          "feature_importance"
+        ],
+        "title": "SituationTrainResponse",
+        "description": "Response from training."
+      },
+      "SituationTrainingSample": {
+        "properties": {
+          "features": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Features",
+            "description": "Feature vector for the window"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Labels",
+            "description": "List of active tag IDs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "features",
+          "labels"
+        ],
+        "title": "SituationTrainingSample",
+        "description": "A single training sample with features and labels."
+      },
+      "TagPrediction": {
+        "properties": {
+          "tag_id": {
+            "type": "string",
+            "title": "Tag Id"
+          },
+          "probability": {
+            "type": "number",
+            "title": "Probability"
+          },
+          "above_threshold": {
+            "type": "boolean",
+            "title": "Above Threshold"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tag_id",
+          "probability",
+          "above_threshold"
+        ],
+        "title": "TagPrediction",
+        "description": "Probability for a single tag."
+      },
+      "TrainRequest": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Unique name for the model"
+          },
+          "model_type": {
+            "type": "string",
+            "title": "Model Type",
+            "description": "Type of model (e.g., 'regression', 'classification')"
+          },
+          "data": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Data",
+            "description": "Training data as list of records"
+          },
+          "target_column": {
+            "type": "string",
+            "title": "Target Column",
+            "description": "Name of the target/label column"
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameters",
+            "description": "Model-specific parameters",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "model_type",
+          "data",
+          "target_column"
+        ],
+        "title": "TrainRequest",
+        "description": "Request model for training a model.",
+        "example": {
+          "data": [
+            {
+              "feature1": 1.0,
+              "feature2": 2.0,
+              "target": 100
+            },
+            {
+              "feature1": 1.5,
+              "feature2": 2.5,
+              "target": 150
+            }
+          ],
+          "model_name": "sales_predictor",
+          "model_type": "regression",
+          "parameters": {
+            "learning_rate": 0.01,
+            "max_depth": 10
+          },
+          "target_column": "target"
+        }
+      },
+      "TrainResponse": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "model_type": {
+            "type": "string",
+            "title": "Model Type"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metrics"
+          },
+          "trained_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Trained At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "model_type",
+          "status",
+          "message"
+        ],
+        "title": "TrainResponse",
+        "description": "Response model for training completion.",
+        "example": {
+          "message": "Model trained successfully",
+          "metrics": {
+            "mse": 120.5,
+            "r2_score": 0.85
+          },
+          "model_name": "sales_predictor",
+          "model_type": "regression",
+          "status": "success",
+          "trained_at": "2024-01-01T12:00:00"
+        }
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

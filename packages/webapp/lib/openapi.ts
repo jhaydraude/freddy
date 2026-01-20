@@ -224,6 +224,83 @@ const StatusResponseSchema = z.object({
     })
 }).meta({ description: 'Complete system status including pump, IOB, COB, and glucose' });
 
+// --- Insulin Response Tuning Schemas ---
+
+const InsulinResponseTuningConfigSchema = z.object({
+    analysis_period_days: z.number().int().positive().optional().default(30).meta({ description: 'Days of historical data to analyze' }),
+    window_hours: z.number().positive().optional().default(2).meta({ description: 'Time window size in hours' }),
+    include_activity: z.boolean().optional().default(true).meta({ description: 'Include activity data in analysis' })
+}).meta({ description: 'Configuration for insulin response tuning' });
+
+const InsulinResponseValuesSchema = z.object({
+    dia: z.number().min(3).max(8).meta({ description: 'Duration of Insulin Action in hours' }),
+    peak: z.number().min(30).max(75).meta({ description: 'Peak insulin activity time in minutes' }),
+    isf: z.array(z.number().min(10).max(200)).length(6).meta({ description: 'Insulin Sensitivity Factor for 6 time blocks (mg/dL per unit)' }),
+    source: z.enum(['profile', 'previous_tuning']).meta({ description: 'Source of current values' })
+}).meta({ description: 'Insulin response parameter values' });
+
+const InsulinResponseOptimizedValuesSchema = z.object({
+    dia: z.number(),
+    peak: z.number(),
+    isf: z.array(z.number()).length(6),
+    dia_confidence: z.tuple([z.number(), z.number()]).meta({ description: '95% confidence interval for DIA' }),
+    peak_confidence: z.tuple([z.number(), z.number()]).meta({ description: '95% confidence interval for peak' }),
+    isf_confidence: z.array(z.tuple([z.number(), z.number()])).length(6).meta({ description: '95% confidence intervals for ISF' }),
+    r_squared: z.number().meta({ description: 'Model fit quality (R²)' }),
+    rmse: z.number().meta({ description: 'Root mean squared error' }),
+    mae: z.number().meta({ description: 'Mean absolute error' }),
+    windows_analyzed: z.number().int().meta({ description: 'Number of time windows analyzed' })
+}).meta({ description: 'Optimized insulin response parameters with quality metrics' });
+
+const InsulinResponseAnalysisSummarySchema = z.object({
+    total_windows: z.number().int(),
+    stable_windows: z.number().int(),
+    meal_windows: z.number().int(),
+    activity_windows: z.number().int(),
+    data_quality_score: z.number().min(0).max(1).meta({ description: 'Overall data quality score (0-1)' })
+}).meta({ description: 'Summary of analysis data' });
+
+const InsulinResponseTuningResponseSchema = z.object({
+    tuning_id: z.string().uuid().meta({ description: 'Unique identifier for this tuning run' }),
+    user_id: z.string(),
+    created_at: z.string().datetime(),
+    status: z.enum(['running', 'completed', 'failed', 'applied']),
+    config: InsulinResponseTuningConfigSchema,
+    current_values: InsulinResponseValuesSchema,
+    optimized_values: InsulinResponseOptimizedValuesSchema.optional(),
+    analysis_summary: InsulinResponseAnalysisSummarySchema.optional(),
+    applied_at: z.string().datetime().optional(),
+    logs: z.array(z.string()).optional(),
+    error_message: z.string().optional()
+}).meta({ description: 'Insulin response tuning run result' });
+
+const TuningStartResponseSchema = z.object({
+    tuning_id: z.string().uuid(),
+    status: z.literal('running'),
+    estimated_duration_seconds: z.number().int()
+}).meta({ description: 'Response when starting a new tuning run' });
+
+const TuningApplyRequestSchema = z.object({
+    apply_to_profile: z.boolean().meta({ description: 'Update Nightscout profile with optimized values' }),
+    apply_to_system: z.boolean().meta({ description: 'Use optimized values in calculations immediately' })
+}).meta({ description: 'Options for applying tuning results' });
+
+const TuningApplyResponseSchema = z.object({
+    success: z.boolean(),
+    applied_at: z.string().datetime(),
+    message: z.string()
+}).meta({ description: 'Response after applying tuning results' });
+
+const TuningHistoryResponseSchema = z.object({
+    tunings: z.array(z.object({
+        tuning_id: z.string().uuid(),
+        created_at: z.string().datetime(),
+        status: z.enum(['running', 'completed', 'failed', 'applied']),
+        optimized_values: InsulinResponseOptimizedValuesSchema.optional(),
+        applied_at: z.string().datetime().optional()
+    }))
+}).meta({ description: 'List of historical tuning runs' });
+
 
 export const openApiDocument = createDocument({
     openapi: '3.1.0',
@@ -329,6 +406,106 @@ export const openApiDocument = createDocument({
                                 schema: RecalculateResponseSchema
                             }
                         }
+                    }
+                }
+            }
+        },
+        '/profile/tune-insulin-response': {
+            post: {
+                summary: 'Start insulin response tuning',
+                description: 'Initiates a new tuning run to optimize DIA, Peak Time, and ISF parameters using historical data',
+                tags: ['Profile Tuning'],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: InsulinResponseTuningConfigSchema
+                        }
+                    }
+                },
+                responses: {
+                    '200': {
+                        description: 'Tuning started successfully',
+                        content: {
+                            'application/json': {
+                                schema: TuningStartResponseSchema
+                            }
+                        }
+                    }
+                }
+            },
+            get: {
+                summary: 'Get tuning history',
+                description: 'Retrieves list of past tuning runs',
+                tags: ['Profile Tuning'],
+                parameters: [
+                    { name: 'limit', in: 'query', schema: { type: 'integer', default: 10 }, description: 'Maximum number of results' }
+                ],
+                responses: {
+                    '200': {
+                        description: 'Tuning history retrieved',
+                        content: {
+                            'application/json': {
+                                schema: TuningHistoryResponseSchema
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        '/profile/tune-insulin-response/{tuning_id}': {
+            get: {
+                summary: 'Get tuning run status',
+                description: 'Retrieves status and results of a specific tuning run',
+                tags: ['Profile Tuning'],
+                parameters: [
+                    { name: 'tuning_id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }
+                ],
+                responses: {
+                    '200': {
+                        description: 'Tuning status retrieved',
+                        content: {
+                            'application/json': {
+                                schema: InsulinResponseTuningResponseSchema
+                            }
+                        }
+                    },
+                    '404': {
+                        description: 'Tuning run not found'
+                    }
+                }
+            }
+        },
+        '/profile/tune-insulin-response/{tuning_id}/apply': {
+            post: {
+                summary: 'Apply tuning results',
+                description: 'Applies optimized parameters to the system and/or Nightscout profile',
+                tags: ['Profile Tuning'],
+                parameters: [
+                    { name: 'tuning_id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }
+                ],
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: TuningApplyRequestSchema
+                        }
+                    }
+                },
+                responses: {
+                    '200': {
+                        description: 'Tuning applied successfully',
+                        content: {
+                            'application/json': {
+                                schema: TuningApplyResponseSchema
+                            }
+                        }
+                    },
+                    '404': {
+                        description: 'Tuning run not found'
+                    },
+                    '400': {
+                        description: 'Cannot apply tuning (not completed or invalid)'
                     }
                 }
             }

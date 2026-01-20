@@ -139,6 +139,36 @@ export class NightscoutClient {
         return data.result || data; // Fallback to raw data if result is missing
     }
 
+    /**
+     * Post data via REST API V3.
+     */
+    public async postRest(collection: string, body: any): Promise<any> {
+        const jwt = await this.getJWT();
+
+        const baseUrl = this.options.baseUrl.replace(/\/api\/v3\/?$/, '').replace(/\/$/, '');
+        const url = `${baseUrl}/api/v3/${collection}`;
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${jwt}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': this.clientId,
+                'X-Freddy-Client': this.clientId
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ message: response.statusText }));
+            throw new Error(`NS API Error (${response.status}): ${error.message || response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.result || data;
+    }
+
 }
 
 // Global instance helper
