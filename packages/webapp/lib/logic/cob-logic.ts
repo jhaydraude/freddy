@@ -31,8 +31,8 @@ export function calculateMinAbsorptionRate(isf: number, cr: number, minCarbImpac
     const sensitivity = isfMgdl / cr;
     if (sensitivity <= 0) return (DEFAULT_ABSORPTION_RATE_G_PER_HOUR / 60) * INTERVAL_MINUTES;
 
-    // Ensure we don't fall below a realistic floor (e.g. 5g/hour for very sensitive users)
-    const rate = Math.max(minCarbImpact / sensitivity, (5 / 60) * INTERVAL_MINUTES);
+    // Ensure we don't fall below a realistic floor (e.g. 10g/hour)
+    const rate = Math.max(minCarbImpact / sensitivity, (10 / 60) * INTERVAL_MINUTES);
     return rate;
 }
 
@@ -244,12 +244,12 @@ export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: n
         : 0;
 
     return {
-        cob: Math.round(totalCOB * 10) / 10,
-        pendingCOB: Math.round(pendingCOB * 10) / 10,
-        activeCOB: Math.round(activeCOB * 10) / 10,
-        glucoseImpact: Math.round(glucoseImpact * 100) / 100,
+        cob: totalCOB,
+        pendingCOB: pendingCOB,
+        activeCOB: activeCOB,
+        glucoseImpact: glucoseImpact,
         eventCount,
-        avgEventSize: Math.round(avgEventSize * 10) / 10,
+        avgEventSize: avgEventSize,
         observedDeviation: 0, // Filled by caller via dynamic
         estimatedAbsorption: 0 // Filled by caller
     };
@@ -259,11 +259,11 @@ export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: n
 /**
  * Main Service: Get COB + Timeseries
  */
-export async function getCOB(timestamp: string | Date, includeTimeseries: boolean = true): Promise<ICOBResult> {
+export async function getCOB(timestamp: string | Date, includeTimeseries: boolean = true, bypassCache: boolean = false): Promise<ICOBResult> {
     const date = new Date(timestamp);
     const lookbackMs = MAX_LOOKBACK_HOURS * 60 * 60 * 1000;
 
-    const profileInfo = await resolveActiveProfile(date);
+    const profileInfo = await resolveActiveProfile(date, bypassCache);
     let isf = 50;
     let cr = 10;
     let units = 'mg/dL';
@@ -295,7 +295,7 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
     // We fetch a wide window to account for long durations
     // Start lookback = MAX_LOOKBACK (12h)
     const treatments = await Treatment.find({
-        eventType: { $in: ['Meal Bolus', 'Carb Correction'] },
+        eventType: { $in: ['Meal Bolus', 'Carb Correction', 'Bolus Wizard', 'Bolus', 'meal bolus', 'carb correction', 'bolus'] },
         carbs: { $exists: true, $gt: 0 },
         created_at: {
             $lte: date.toISOString(),
@@ -391,11 +391,11 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
 
             data.push({
                 timestamp: timeDate.toISOString(),
-                cob: Math.round(totalCOB * 10) / 10,
-                pendingCOB: Math.round(pendingCOB * 10) / 10,
-                activeCOB: Math.round(activeCOB * 10) / 10,
-                absorption: Math.round(totalAbs * 100) / 100,
-                glucoseImpact: Math.round((totalAbs * (isf / cr)) * 100) / 100
+                cob: totalCOB,
+                pendingCOB: pendingCOB,
+                activeCOB: activeCOB,
+                absorption: totalAbs,
+                glucoseImpact: totalAbs * (isf / cr)
             });
         }
 

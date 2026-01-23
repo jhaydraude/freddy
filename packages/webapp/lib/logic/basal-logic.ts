@@ -41,12 +41,12 @@ export interface IBasalResult {
 /**
  * Service to get the current basal rate, accounting for active Temp Basals.
  */
-export async function getBasalRate(timestamp: string | Date): Promise<IBasalResult> {
+export async function getBasalRate(timestamp: string | Date, bypassCache: boolean = false): Promise<IBasalResult> {
     const date = new Date(timestamp);
     const isoTimestamp = date.toISOString();
 
     // 1. Resolve profile and scheduled rate FIRST (as requested: always lookup profile)
-    const profileInfo = await resolveActiveProfile(date);
+    const profileInfo = await resolveActiveProfile(date, bypassCache);
     let scheduledRate = 0;
 
     if (profileInfo) {

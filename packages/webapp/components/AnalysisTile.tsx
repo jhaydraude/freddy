@@ -46,87 +46,79 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
     const chartData = useMemo(() => {
         if (!data) return [];
 
-        const combined: any[] = [];
-        const units = data.statusAt?.glucose?.units || 'mg/dL';
-        const isMmol = units.toLowerCase().includes('mmol');
+        // Use a Map keyed by floor(timestamp/5min) to merge points robustly
+        const map = new Map<number, any>();
 
-        // 1. History Before (1h)
+        const mergePoint = (timestamp: string | Date, values: any, type: 'history' | 'prediction') => {
+            const date = new Date(timestamp);
+            const epoch = Math.floor(date.getTime() / (5 * 60 * 1000)) * (5 * 60 * 1000);
+
+            const existing = map.get(epoch) || {
+                timestamp: new Date(epoch).toISOString(),
+                type
+            };
+
+            // Merge values
+            if (values.actual !== undefined) existing.actual = values.actual;
+            if (values.projection !== undefined) existing.projection = values.projection;
+            if (values.iob !== undefined) existing.iob = values.iob;
+            if (values.cob !== undefined) existing.cob = values.cob;
+            if (values.pendingCOB !== undefined) existing.pendingCOB = values.pendingCOB;
+            if (values.activeCOB !== undefined) existing.activeCOB = values.activeCOB;
+            if (values.activity !== undefined) existing.activity = values.activity;
+
+            map.set(epoch, existing);
+        };
+
+        // 1. History Before
         if (data.historyBefore) {
             data.historyBefore.forEach((item: any) => {
-                combined.push({
-                    timestamp: item.meta?.status_date || item.glucose?.timestamp,
+                mergePoint(item.meta?.status_date || item.glucose?.timestamp, {
                     actual: item.glucose?.current?.sgv,
                     iob: item.iob?.calculated?.totalIOB,
                     cob: item.cob?.calculated?.cob,
-                    pendingCOB: item.cob?.calculated?.pendingCOB ?? 0,
-                    activeCOB: item.cob?.calculated?.activeCOB ?? 0,
-                    type: 'history'
-                });
+                    pendingCOB: item.cob?.calculated?.pendingCOB,
+                    activeCOB: item.cob?.calculated?.activeCOB
+                }, 'history');
             });
         }
 
-        // 2. Prediction (4h)
+        // 2. Prediction
         if (data.prediction) {
             data.prediction.forEach((item: any) => {
-                // Find if a historical point already exists (the statusAt point usually overlaps)
-                const existing = combined.find(c => c.timestamp === item.timestamp);
-                if (existing) {
-                    existing.projection = item.sgv;
-                    // Keep existing actual/type if they exist, but update projection values
-                    existing.iob = item.iob;
-                    existing.cob = item.cob;
-                    existing.pendingCOB = item.pendingCOB ?? 0;
-                    existing.activeCOB = item.activeCOB ?? 0;
-                } else {
-                    combined.push({
-                        timestamp: item.timestamp,
-                        projection: item.sgv,
-                        iob: item.iob,
-                        cob: item.cob,
-                        pendingCOB: item.pendingCOB ?? 0,
-                        activeCOB: item.activeCOB ?? 0,
-                        type: 'prediction'
-                    });
-                }
+                mergePoint(item.timestamp, {
+                    projection: item.sgv,
+                    iob: item.iob,
+                    cob: item.cob,
+                    pendingCOB: item.pendingCOB,
+                    activeCOB: item.activeCOB
+                }, 'prediction');
             });
         }
 
-        // 3. History After (4h)
+        // 3. History After
         if (data.historyAfter) {
             data.historyAfter.forEach((item: any) => {
-                // Find if it already exists or add new
-                const existing = combined.find(c => c.timestamp === (item.meta?.status_date || item.glucose?.timestamp));
-                if (existing) {
-                    existing.actual = item.glucose?.current?.sgv;
-                    existing.iob = item.iob?.calculated?.totalIOB;
-                    existing.cob = item.cob?.calculated?.cob;
-                    existing.pendingCOB = item.cob?.calculated?.pendingCOB ?? 0;
-                    existing.activeCOB = item.cob?.calculated?.activeCOB ?? 0;
-                } else {
-                    combined.push({
-                        timestamp: item.meta?.status_date || item.glucose?.timestamp,
-                        actual: item.glucose?.current?.sgv,
-                        iob: item.iob?.calculated?.totalIOB,
-                        cob: item.cob?.calculated?.cob,
-                        pendingCOB: item.cob?.calculated?.pendingCOB ?? 0,
-                        activeCOB: item.cob?.calculated?.activeCOB ?? 0,
-                        type: 'history'
-                    });
-                }
+                mergePoint(item.meta?.status_date || item.glucose?.timestamp, {
+                    actual: item.glucose?.current?.sgv,
+                    iob: item.iob?.calculated?.totalIOB,
+                    cob: item.cob?.calculated?.cob,
+                    pendingCOB: item.cob?.calculated?.pendingCOB,
+                    activeCOB: item.cob?.calculated?.activeCOB
+                }, 'history');
             });
         }
 
-        // 4. Attribution History (if available) - Merges into existing points
+        // 4. Attribution History
         if (data.statusAt?.attribution?.history) {
             data.statusAt.attribution.history.forEach((attrPoint: any) => {
-                const existing = combined.find(c => c.timestamp === attrPoint.timestamp);
-                if (existing) {
-                    existing.activity = attrPoint.components?.activity;
-                }
+                mergePoint(attrPoint.timestamp, {
+                    activity: attrPoint.components?.activity
+                }, 'history');
             });
         }
 
-        return combined.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        return Array.from(map.values()).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     }, [data]);
 
     const attribution = data?.statusAt?.attribution?.timeframes?.find((tf: any) => tf.minutes === selectedTimeframe) ||
@@ -243,16 +235,10 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                                                             <span className="text-white font-mono">{pointData.projection.toFixed(0)}</span>
                                                         </div>
                                                     )}
-                                                    {pointData.iob != null && (
-                                                        <div className="flex justify-between gap-4">
-                                                            <span className="text-blue-400 font-medium">IOB</span>
-                                                            <span className="text-white font-mono">{pointData.iob.toFixed(1)}u</span>
-                                                        </div>
-                                                    )}
                                                     {pointData.cob != null && (
                                                         <div className="space-y-0.5 pt-1 border-t border-zinc-800">
                                                             <div className="flex justify-between gap-4">
-                                                                <span className="text-amber-400 font-medium">COB</span>
+                                                                <span className="text-orange-400 font-medium">COB</span>
                                                                 <span className="text-white font-mono">{pointData.cob.toFixed(1)}g</span>
                                                             </div>
                                                             {pointData.pendingCOB > 0 && (
@@ -261,6 +247,12 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                                                                     <span>Pending: {pointData.pendingCOB.toFixed(1)}g</span>
                                                                 </div>
                                                             )}
+                                                        </div>
+                                                    )}
+                                                    {pointData.iob != null && (
+                                                        <div className="flex justify-between gap-4 pt-1 border-t border-zinc-800">
+                                                            <span className="text-blue-500 font-medium">IOB</span>
+                                                            <span className="text-white font-mono">{pointData.iob.toFixed(1)}u</span>
                                                         </div>
                                                     )}
                                                     {pointData.activity != null && pointData.activity !== 0 && (
@@ -307,7 +299,7 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                                     yAxisId="right"
                                     type="monotone"
                                     dataKey="iob"
-                                    stroke="#3b82f6"
+                                    stroke="#2563eb"
                                     strokeWidth={2}
                                     dot={false}
                                     connectNulls
@@ -318,7 +310,7 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                                     yAxisId="right"
                                     type="monotone"
                                     dataKey="cob"
-                                    stroke="#f59e0b"
+                                    stroke="#f97316"
                                     strokeWidth={2}
                                     dot={false}
                                     connectNulls
@@ -336,11 +328,11 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
                             <span className="text-zinc-400">4h Projection</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-0.5 bg-blue-500"></div>
+                            <div className="w-4 h-0.5 bg-blue-600"></div>
                             <span className="text-zinc-400">IOB</span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-4 h-0.5 bg-amber-500"></div>
+                            <div className="w-4 h-0.5 bg-orange-500"></div>
                             <span className="text-zinc-400">COB</span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -394,24 +386,24 @@ export default function AnalysisTile({ data, isLoading, onClose }: AnalysisTileP
 
                         <div className="p-3 bg-zinc-800/40 rounded-xl border border-zinc-800 flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="p-1.5 bg-amber-500/10 rounded-lg">
-                                    <Beef size={16} className="text-amber-400" />
+                                <div className="p-1.5 bg-orange-500/10 rounded-lg">
+                                    <Beef size={16} className="text-orange-400" />
                                 </div>
                                 <span className="text-zinc-300 text-sm">Carb Impact</span>
                             </div>
-                            <span className="text-amber-400 font-mono font-bold">
+                            <span className="text-orange-400 font-mono font-bold">
                                 +{attribution?.components?.carbs?.value?.toFixed(1) || '0.0'}
                             </span>
                         </div>
 
                         <div className="p-3 bg-zinc-800/40 rounded-xl border border-zinc-800 flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="p-1.5 bg-cyan-500/10 rounded-lg">
-                                    <RefreshCcw size={16} className="text-cyan-400" />
+                                <div className="p-1.5 bg-sky-500/10 rounded-lg">
+                                    <RefreshCcw size={16} className="text-sky-400" />
                                 </div>
                                 <span className="text-zinc-300 text-sm">Basal Deviation</span>
                             </div>
-                            <span className="text-cyan-400 font-mono font-bold">
+                            <span className="text-sky-400 font-mono font-bold">
                                 {attribution?.components?.basal?.value >= 0 ? '+' : ''}{attribution?.components?.basal?.value?.toFixed(1) || '0.0'}
                             </span>
                         </div>

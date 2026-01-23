@@ -1,20 +1,19 @@
 'use client';
 
-import { useMemo } from 'react';
 import {
-    LineChart,
+    ComposedChart,
     Line,
+    Area,
     XAxis,
     YAxis,
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
-    ReferenceArea,
-    ReferenceLine,
-    Label,
-    Scatter
+    Legend,
+    ReferenceArea
 } from 'recharts';
 import { format } from 'date-fns';
+import { CHART_LAYOUT } from '@/lib/chartUtils';
 
 export interface VisibleLines {
     glucose: boolean;
@@ -34,113 +33,71 @@ export interface HighlightRange {
 interface GlucoseChartProps {
     data: any[];
     isLoading?: boolean;
+    loadingType?: 'fetch' | 'recalculate';
     visibleLines: VisibleLines;
     onClick?: (data: any) => void;
     highlightRange?: HighlightRange;
+    timeDomain?: [number, number];
+    targetLow?: number;
+    targetHigh?: number;
+    units?: string;
 }
 
-export default function GlucoseChart({ data, isLoading, visibleLines, onClick, highlightRange }: GlucoseChartProps) {
-    // Optimized: Single-pass transformation - filter, map, and sort in one operation
-    const chartData = useMemo(() => {
-        return data
-            .filter(item => item.meta?.status_date || item.glucose?.timestamp)
-            .map(item => ({
-                timestamp: new Date(item.meta?.status_date || item.glucose?.timestamp).getTime(),
-                sgv: item.glucose?.current?.sgv || null,
-                iob: item.iob?.calculated?.totalIOB ?? null,
-                cob: item.cob?.calculated?.cob ?? null,
-                pendingCOB: item.cob?.calculated?.pendingCOB ?? 0,
-                activeCOB: item.cob?.calculated?.activeCOB ?? 0,
-                insulinImpact: item.iob?.calculated?.glucoseImpact ?? null,
-                carbImpact: item.cob?.calculated?.glucoseImpact ?? null,
-                basal: item.pump?.basal?.scheduledRate ?? null,
-                raw: item
-            }))
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    }, [data]);
+export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain, targetLow = 70, targetHigh = 180, units = 'mg/dL' }: GlucoseChartProps) {
 
-    // Extract bolus and carb events for markers
-    const { bolusEvents, carbEvents } = useMemo(() => {
-        const boluses: Array<{ timestamp: number; insulin: number }> = [];
-        const carbs: Array<{ timestamp: number; carbs: number }> = [];
+    // Helper to detect if data is in mg/dL based on values
+    // If values are generally > 30, it is likely mg/dL
+    const isDataMgDl = data.length > 0 && data.some(d => d.sgv > 30);
+    const shouldConvert = units === 'mmol/L' && isDataMgDl;
 
-        for (const item of data) {
-            const treatment = item.treatments;
-            if (!treatment || treatment.length === 0) continue;
+    // Transform data if unit conversion is needed
+    const chartData = shouldConvert
+        ? data.map(d => ({ ...d, sgv: d.sgv ? d.sgv / 18 : null }))
+        : data;
 
-            for (const t of treatment) {
-                const timestamp = new Date(t.created_at).getTime();
+    // Filter data to match the visible time domain for accurate gradient calculation
+    // The SVG gradient is applied to the rendered path's bounding box, which corresponds
+    // to the visible data range, not the full dataset.
+    const visibleData = timeDomain
+        ? chartData.filter(d => d.timestamp >= timeDomain[0] && d.timestamp <= timeDomain[1])
+        : chartData;
 
-                // Bolus events (filter out SMBs < 0.6U)
-                if (t.insulin && t.insulin >= 0.6) {
-                    boluses.push({ timestamp, insulin: t.insulin });
-                }
+    // Calculate gradient offsets based on VISIBLE data
+    const glucoseValues = visibleData.map(d => d.sgv).filter(v => v != null);
 
-                // Carb events
-                if (t.carbs && t.carbs > 0) {
-                    carbs.push({ timestamp, carbs: t.carbs });
-                }
-            }
-        }
+    // For gradient usage, we need the min/max of the ACTUAL DATA visible on the chart
+    // because the linearGradient with objectBoundingBox is applied to the path's bounding box.
+    const dataMax = Math.max(...glucoseValues);
+    const dataMin = Math.min(...glucoseValues);
 
-        return { bolusEvents: boluses, carbEvents: carbs };
-    }, [data]);
+    const calculateOffset = (target: number) => {
+        if (dataMax === dataMin) return 0;
+        const offset = (dataMax - target) / (dataMax - dataMin);
+        return Math.max(0, Math.min(1, offset));
+    };
 
-    const CustomTooltip = ({ active, payload, label, units }: any) => {
+    const offsetHigh = calculateOffset(targetHigh);
+    const offsetLow = calculateOffset(targetLow);
+
+    // For axis scaling (headroom), we still use the previous logic
+    const axisMax = Math.max(dataMax, targetHigh);
+    const yMax = axisMax > 0 ? axisMax * 1.1 : (units === 'mmol/L' ? 22 : 400);
+
+    // Simple, standard Recharts tooltip
+    const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
-            const point = payload[0].payload.raw;
+            const dateStr = label ? format(new Date(label), 'HH:mm') : '--:--';
             return (
-                <div className="bg-zinc-900 border border-zinc-700 p-3 rounded-lg shadow-xl text-sm min-w-[200px]">
-                    <p className="text-zinc-400 mb-2 border-b border-zinc-800 pb-1">{format(new Date(point.meta?.status_date || new Date().toISOString()), 'HH:mm')}</p>
-
+                <div className="bg-zinc-900 border border-zinc-700 p-2 rounded shadow-lg text-xs text-zinc-300">
+                    <p className="font-bold mb-1 border-b border-zinc-800 pb-1">{dateStr}</p>
                     <div className="space-y-1">
-                        {visibleLines.glucose && (
-                            <div className="flex items-center justify-between gap-4">
-                                <span className="text-emerald-400 font-medium">Glucose</span>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="font-bold text-white">{point.glucose?.current?.sgv}</span>
-                                    <span className="text-xs text-zinc-500">{units}</span>
-                                </div>
+                        {payload.map((p: any) => (
+                            <div key={p.name} className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
+                                <span className="font-medium">{p.name}:</span>
+                                <span className="text-white">{Number(p.value).toFixed(1)}</span>
                             </div>
-                        )}
-                        {visibleLines.iob && (
-                            <div className="flex items-center justify-between gap-4">
-                                <span className="text-blue-400 font-medium">IOB</span>
-                                <span className="font-mono text-zinc-200">{(point.iob?.calculated?.totalIOB ?? 0).toFixed(1)} u</span>
-                            </div>
-                        )}
-                        {visibleLines.cob && (
-                            <div className="space-y-0.5 border-t border-zinc-800 pt-1 mt-1">
-                                <div className="flex items-center justify-between gap-4">
-                                    <span className="text-amber-400 font-medium">COB</span>
-                                    <span className="font-mono text-zinc-200">{(point.cob?.calculated?.cob ?? 0).toFixed(1)} g</span>
-                                </div>
-                                {(point.cob?.calculated?.pendingCOB ?? 0) > 0 && (
-                                    <div className="text-[10px] text-zinc-500 flex justify-between px-1">
-                                        <span>Active: {(point.cob?.calculated?.activeCOB ?? 0).toFixed(1)}g</span>
-                                        <span>Pending: {(point.cob?.calculated?.pendingCOB ?? 0).toFixed(1)}g</span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        {visibleLines.basal && (
-                            <div className="flex items-center justify-between gap-4">
-                                <span className="text-cyan-400 font-medium">Basal</span>
-                                <span className="font-mono text-zinc-200">{(point.pump?.basal?.scheduledRate ?? 0).toFixed(2)} u/hr</span>
-                            </div>
-                        )}
-                        {visibleLines.insulinImpact && (
-                            <div className="flex items-center justify-between gap-4">
-                                <span className="text-indigo-400 font-medium">Ins. Impact</span>
-                                <span className="font-mono text-zinc-200">{(point.iob?.calculated?.glucoseImpact ?? 0).toFixed(1)}</span>
-                            </div>
-                        )}
-                        {visibleLines.carbImpact && (
-                            <div className="flex items-center justify-between gap-4">
-                                <span className="text-rose-400 font-medium">Carb Impact</span>
-                                <span className="font-mono text-zinc-200">{(point.cob?.calculated?.glucoseImpact ?? 0).toFixed(1)}</span>
-                            </div>
-                        )}
+                        ))}
                     </div>
                 </div>
             );
@@ -148,252 +105,150 @@ export default function GlucoseChart({ data, isLoading, visibleLines, onClick, h
         return null;
     };
 
-    // Determine units from data
-    const units = data.length > 0 ? data[0].glucose?.units || 'mg/dL' : 'mg/dL';
-    const isMmol = units.toLowerCase().includes('mmol');
-    const yDomain: [number, number] = isMmol ? [0, 15] : [0, 270]; // Fixed ranges
-
-    if (isLoading) {
+    if (isLoading && data.length === 0) {
         return (
-            <div className="w-full h-[350px] flex items-center justify-center bg-zinc-950/50 rounded-xl border border-zinc-800 animate-pulse">
-                <span className="text-zinc-500">Loading glucose data...</span>
-            </div>
-        );
-    }
-
-    if (chartData.length === 0) {
-        return (
-            <div className="w-full h-[350px] flex items-center justify-center bg-zinc-950/50 rounded-xl border border-zinc-800">
-                <span className="text-zinc-500">No data available for this period</span>
+            <div className="w-full h-[350px] flex items-center justify-center bg-zinc-900/40 rounded-xl border border-zinc-800/50">
+                <span className="text-zinc-500">Loading...</span>
             </div>
         );
     }
 
     return (
-        <div className="w-full h-[400px] bg-zinc-900/40 rounded-xl border border-zinc-800/50 p-4 shadow-sm backdrop-blur-sm">
+        <div className="w-full h-[350px] bg-zinc-900/40 rounded-xl border border-zinc-800/50 p-4">
             <ResponsiveContainer width="100%" height="100%">
-                <LineChart
+                <ComposedChart
                     data={chartData}
-                    margin={{ top: 20, right: 10, left: 10, bottom: 0 }}
-                    onClick={(e) => {
-                        if (e && e.activePayload && e.activePayload.length > 0) {
-                            onClick?.(e.activePayload[0].payload.raw);
-                        }
-                    }}
+                    // Using standard chart layout margins for consistency, but keeping it simple
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 >
                     <defs>
-                        <linearGradient id="colorSgv" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        <linearGradient id="splitColor" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset={0} stopColor="#eab308" stopOpacity={1} />
+                            <stop offset={offsetHigh} stopColor="#eab308" stopOpacity={1} />
+                            <stop offset={offsetHigh} stopColor="#10b981" stopOpacity={1} />
+                            <stop offset={offsetLow} stopColor="#10b981" stopOpacity={1} />
+                            <stop offset={offsetLow} stopColor="#f43f5e" stopOpacity={1} />
+                            <stop offset={1} stopColor="#f43f5e" stopOpacity={1} />
                         </linearGradient>
                     </defs>
-
-                    {/* Target Range Background (Sweet Spot: 4-10 mmol/L or 70-180 mg/dL) */}
-                    {isMmol ? (
-                        <ReferenceArea yAxisId="left-glucose" y1={4} y2={10} fill="#10b981" fillOpacity={0.08} />
-                    ) : (
-                        <ReferenceArea yAxisId="left-glucose" y1={70} y2={180} fill="#10b981" fillOpacity={0.08} />
-                    )}
-
                     <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
 
                     <XAxis
                         dataKey="timestamp"
                         type="number"
-                        domain={['dataMin', 'dataMax']}
-                        tickFormatter={(val) => format(new Date(val), 'HH:mm')}
-                        stroke="#52525b"
-                        tick={{ fontSize: 12 }}
-                        tickMargin={10}
-                        axisLine={false}
-                        tickLine={false}
-                        minTickGap={30}
+                        domain={timeDomain || ['auto', 'auto']}
+                        tickFormatter={(t) => format(new Date(t), 'HH:mm')}
+                        stroke="#71717a"
+                        tick={{ fontSize: 11 }}
+                        scale="time"
+                        allowDataOverflow
                     />
 
-                    {/* Left Axis 1: Glucose (Emerald) */}
+                    {/* Left Axis: Glucose */}
                     <YAxis
-                        yAxisId="left-glucose"
-                        domain={yDomain}
-                        stroke="#10b981"
-                        tick={{ fontSize: 10, fill: '#10b981' }}
-                        axisLine={false}
-                        tickLine={false}
-                        width={35}
-                    >
-                        <Label value={units} angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#10b981', fontSize: 10, fontWeight: 'bold' }} />
-                    </YAxis>
-
-                    {/* Left Axis 2: Impacts (Indigo/Rose) */}
-                    <YAxis
-                        yAxisId="left-impact"
+                        yAxisId="glucose"
                         orientation="left"
-                        stroke="#818cf8"
-                        tick={{ fontSize: 10, fill: '#818cf8' }}
-                        axisLine={false}
-                        tickLine={false}
-                        width={30}
-                        hide={!visibleLines.insulinImpact && !visibleLines.carbImpact}
-                        domain={['auto', 'auto']}
-                    >
-                        <Label value="Δ" angle={-90} position="insideLeft" style={{ textAnchor: 'middle', fill: '#818cf8', fontSize: 10, fontWeight: 'bold' }} />
-                    </YAxis>
-
-                    {/* Right Axis 1: Insulin (Cyan) */}
-                    <YAxis
-                        yAxisId="right-insulin"
-                        orientation="right"
-                        stroke="#06b6d4"
-                        tick={{ fontSize: 10, fill: '#06b6d4' }}
-                        axisLine={false}
-                        tickLine={false}
-                        width={35}
-                        hide={!visibleLines.iob && !visibleLines.basal}
-                        domain={[0, 'auto']}
-                    >
-                        <Label value="U" angle={90} position="insideRight" style={{ textAnchor: 'middle', fill: '#06b6d4', fontSize: 10, fontWeight: 'bold' }} />
-                    </YAxis>
-
-                    {/* Right Axis 2: Carbs (Amber) */}
-                    <YAxis
-                        yAxisId="right-carbs"
-                        orientation="right"
-                        stroke="#f59e0b"
-                        tick={{ fontSize: 10, fill: '#f59e0b' }}
-                        axisLine={false}
-                        tickLine={false}
-                        width={30}
-                        hide={!visibleLines.cob}
-                        domain={[0, 'auto']}
-                    >
-                        <Label value="g" angle={90} position="insideRight" style={{ textAnchor: 'middle', fill: '#f59e0b', fontSize: 10, fontWeight: 'bold' }} />
-                    </YAxis>
-
-                    <Tooltip
-                        content={<CustomTooltip units={units} />}
-                        cursor={{ stroke: '#52525b', strokeWidth: 1, strokeDasharray: '4 4' }}
+                        stroke="#10b981"
+                        domain={[0, yMax]}
+                        tick={{ fontSize: 11 }}
+                        label={{ value: `Glucose (${units})`, angle: -90, position: 'insideLeft', fill: '#10b981', fontSize: 10 }}
                     />
 
-                    {visibleLines.glucose && (
-                        <Line
-                            yAxisId="left-glucose"
-                            type="monotone"
-                            dataKey="sgv"
-                            stroke="#10b981"
-                            strokeWidth={3}
-                            dot={false}
-                            activeDot={{ r: 6, strokeWidth: 0, fill: '#fff' }}
-                            animationDuration={1000}
-                            connectNulls
-                        />
-                    )}
+                    {/* Right Axis: IOB/COB */}
+                    <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        stroke="#3b82f6"
+                        tick={{ fontSize: 11 }}
+                        label={{ value: 'Units / g', angle: 90, position: 'insideRight', fill: '#3b82f6', fontSize: 10 }}
+                    />
 
-                    {visibleLines.iob && (
-                        <Line
-                            yAxisId="right-insulin"
-                            type="monotone"
-                            dataKey="iob"
-                            stroke="#3b82f6"
-                            strokeWidth={2}
-                            dot={false}
-                            activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}
-                            animationDuration={1000}
-                            connectNulls
-                        />
-                    )}
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend verticalAlign="top" height={36} iconType="circle" />
 
-                    {visibleLines.cob && (
-                        <Line
-                            yAxisId="right-carbs"
-                            type="monotone"
-                            dataKey="cob"
-                            stroke="#f59e0b"
+                    {/* Target Range Band */}
+                    <ReferenceArea
+                        yAxisId="glucose"
+                        y1={targetLow}
+                        y2={targetHigh}
+                        fill="#10b981"
+                        fillOpacity={0.05}
+                    />
+
+                    {/* Active Basal (Deep Layer) */}
+                    {visibleLines.basal && (
+                        <Area
+                            yAxisId="right"
+                            type="stepAfter"
+                            dataKey="activeBasal"
+                            name="Actual Basal"
+                            stroke="#0ea5e9"
                             strokeWidth={2}
+                            fill="#0ea5e9"
+                            fillOpacity={0.2}
                             dot={false}
-                            activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}
-                            animationDuration={1000}
                             connectNulls
+                            isAnimationActive={false}
                         />
                     )}
 
                     {visibleLines.basal && (
                         <Line
-                            yAxisId="right-insulin"
+                            yAxisId="right"
                             type="stepAfter"
                             dataKey="basal"
-                            stroke="#06b6d4"
+                            name="Scheduled Basal"
+                            stroke="#ffffff"
                             strokeWidth={2}
+                            strokeOpacity={0.6}
                             dot={false}
-                            activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}
-                            animationDuration={1000}
                             connectNulls
+                            isAnimationActive={false}
                         />
                     )}
 
-                    {visibleLines.insulinImpact && (
+                    {visibleLines.glucose && (
                         <Line
-                            yAxisId="left-impact"
+                            yAxisId="glucose"
                             type="monotone"
-                            dataKey="insulinImpact"
-                            stroke="#6366f1"
+                            dataKey="sgv"
+                            name="Glucose"
+                            stroke="url(#splitColor)"
                             strokeWidth={2}
-                            strokeDasharray="4 4"
                             dot={false}
-                            activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}
-                            animationDuration={1000}
                             connectNulls
+                            isAnimationActive={false}
                         />
                     )}
 
-                    {visibleLines.carbImpact && (
+                    {visibleLines.iob && (
                         <Line
-                            yAxisId="left-impact"
+                            yAxisId="right"
                             type="monotone"
-                            dataKey="carbImpact"
-                            stroke="#f43f5e"
-                            strokeWidth={2}
-                            strokeDasharray="4 4"
-                            dot={false}
-                            activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}
-                            animationDuration={1000}
-                            connectNulls
-                        />
-                    )}
-
-                    {/* Bolus Event Markers (Insulin >= 0.6U) */}
-                    {visibleLines.iob && bolusEvents.length > 0 && (
-                        <Scatter
-                            yAxisId="right-insulin"
-                            data={bolusEvents}
-                            fill="#06b6d4"
-                            shape="circle"
-                            r={4}
-                        />
-                    )}
-
-                    {/* Carb Event Markers */}
-                    {visibleLines.cob && carbEvents.length > 0 && (
-                        <Scatter
-                            yAxisId="right-carbs"
-                            data={carbEvents}
-                            fill="#f59e0b"
-                            shape="circle"
-                            r={4}
-                        />
-                    )}
-
-                    {highlightRange && (
-                        <ReferenceArea
-                            yAxisId="left-glucose"
-                            x1={new Date(highlightRange.start).getTime()}
-                            x2={new Date(highlightRange.end).getTime()}
-                            fill="#3b82f6"
-                            fillOpacity={0.15}
+                            dataKey="iob"
+                            name="IOB"
                             stroke="#3b82f6"
-                            strokeDasharray="3 3"
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            isAnimationActive={false}
                         />
                     )}
 
-                </LineChart>
+                    {visibleLines.cob && (
+                        <Line
+                            yAxisId="right"
+                            type="monotone"
+                            dataKey="cob"
+                            name="COB"
+                            stroke="#f97316"
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            isAnimationActive={false}
+                        />
+                    )}
+                </ComposedChart>
             </ResponsiveContainer>
         </div>
     );

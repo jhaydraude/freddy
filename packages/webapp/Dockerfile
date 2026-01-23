@@ -20,6 +20,7 @@ COPY . .
 
 # Build Next.js app
 WORKDIR /app/packages/webapp
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 # Production image

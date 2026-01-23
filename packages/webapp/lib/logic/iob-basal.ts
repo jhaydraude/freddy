@@ -1,7 +1,7 @@
 import { Treatment } from '../db/models';
 import { resolveActiveProfile, getProfileStore } from './profile-logic';
 import { getBasalFromSchedule } from './basal-logic';
-import { decayIOB } from './insulin-math';
+import { decayIOB, activityInsulin } from './insulin-math';
 import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve } from './iob-curves';
 
 /**
@@ -13,20 +13,21 @@ export async function getBasalIOB(
     endTime: Date,
     profileDia?: number,
     peak: number = 45,
-): Promise<{ scheduledIOB: number, deliveredIOB: number, deliveredRate: number }> {
+    bypassCache: boolean = false
+): Promise<{ scheduledIOB: number, deliveredIOB: number, deliveredRate: number, scheduledActivity: number, deliveredActivity: number }> {
     const startMs = startTime.getTime();
     const endMs = endTime.getTime();
 
     // 1. Initial Resolution for DIA
-    const initialRes = await resolveActiveProfile(startTime);
-    if (!initialRes) return { scheduledIOB: 0, deliveredIOB: 0, deliveredRate: 0 };
+    const initialRes = await resolveActiveProfile(startTime, bypassCache);
+    if (!initialRes) return { scheduledIOB: 0, deliveredIOB: 0, deliveredRate: 0, scheduledActivity: 0, deliveredActivity: 0 };
 
     const initialStore = getProfileStore(
         initialRes.doc || undefined,
         initialRes.activeProfileName,
         initialRes.profileData || undefined
     );
-    if (!initialStore) return { scheduledIOB: 0, deliveredIOB: 0, deliveredRate: 0 };
+    if (!initialStore) return { scheduledIOB: 0, deliveredIOB: 0, deliveredRate: 0, scheduledActivity: 0, deliveredActivity: 0 };
 
     const dia = profileDia ?? initialStore.dia;
     const diaMs = dia * 60 * 60 * 1000;
@@ -79,6 +80,8 @@ export async function getBasalIOB(
     // 3. Process Segments and build IOB curves for each bucket
     let scheduledIOB = 0;
     let deliveredIOB = 0;
+    let scheduledActivity = 0;
+    let deliveredActivity = 0;
     let currentDeliveredRate = 0;
     const stepMin = INTERVAL_MINUTES;
     const stepMs = stepMin * 60 * 1000;
@@ -89,7 +92,7 @@ export async function getBasalIOB(
         const midPoint = new Date(segStart + (segEnd - segStart) / 2);
 
         // a. Resolve Profile State for this segment
-        const res = await resolveActiveProfile(midPoint);
+        const res = await resolveActiveProfile(midPoint, bypassCache);
         if (!res) continue;
         const store = getProfileStore(res.doc || undefined, res.activeProfileName, res.profileData || undefined);
         if (!store) continue;
@@ -117,26 +120,39 @@ export async function getBasalIOB(
             currentDeliveredRate = deliveredRate;
         }
 
-        // c. Iterate sub-windows and calculate IOB for each bucket
-        for (let tMs = segStart; tMs < segEnd; tMs += stepMs) {
-            const bucketMidpoint = tMs + stepMs / 2;
-            const ageMin = (endMs - bucketMidpoint) / 60000;
-            const decayFactor = decayIOB(ageMin, currentDia);
+        // c. Calculate contribution to IOB and Activity
+        // Using the precise integral: activity = rate * (decay(ageEnd) - decay(ageStart))
+        const ageStartMin = (endMs - segStart) / 60000;
+        const ageEndMin = (endMs - segEnd) / 60000;
 
-            // Insulin delivered in this 5-min bucket
-            const scheduledInsulin = scheduledRate * (stepMin / 60);
-            const deliveredInsulin = deliveredRate * (stepMin / 60);
+        if (ageStartMin > 0) {
+            const decayStart = decayIOB(Math.min(ageStartMin, currentDia * 60), currentDia, peak);
+            const decayEnd = decayIOB(Math.max(ageEndMin, 0), currentDia, peak);
+            const absorbedFraction = decayEnd - decayStart;
 
-            // IOB contribution from this bucket
-            scheduledIOB += scheduledInsulin * decayFactor;
-            deliveredIOB += deliveredInsulin * decayFactor;
+            // IOB contribution (average for the segment duration)
+            const midAge = (ageStartMin + ageEndMin) / 2;
+            const avgDecay = decayIOB(Math.min(midAge, currentDia * 60), currentDia, peak);
+            const segDurationHr = (segEnd - segStart) / (60 * 60000);
+
+            scheduledIOB += scheduledRate * segDurationHr * avgDecay;
+            deliveredIOB += deliveredRate * segDurationHr * avgDecay;
+
+            // Activity rate at "now" (endMs) in Units/hr
+            // Contribution of a past segment to the instantaneous activity rate now:
+            // Rate * (Decay(ageEnd) - Decay(ageStart))
+            // Note: This matches the integral of activity(t) over the segment.
+            scheduledActivity += scheduledRate * absorbedFraction;
+            deliveredActivity += deliveredRate * absorbedFraction;
         }
     }
 
     return {
-        scheduledIOB: Math.round(scheduledIOB * 1000) / 1000,
-        deliveredIOB: Math.round(deliveredIOB * 1000) / 1000,
-        deliveredRate: currentDeliveredRate
+        scheduledIOB,
+        deliveredIOB,
+        deliveredRate: currentDeliveredRate,
+        scheduledActivity,
+        deliveredActivity
     };
 }
 
@@ -236,8 +252,11 @@ export async function createBasalCurvesForTimeseries(
         // Create 5-min buckets for this segment
         for (let tMs = segStart; tMs < segEnd; tMs += INTERVAL_MS) {
             const bucketTime = new Date(tMs);
-            const scheduledInsulin = scheduledRate * (5 / 60);
-            const deliveredInsulin = deliveredRate * (5 / 60);
+            const bucketEnd = Math.min(tMs + INTERVAL_MS, segEnd);
+            const bucketDurationMin = (bucketEnd - tMs) / 60000;
+
+            const scheduledInsulin = scheduledRate * (bucketDurationMin / 60);
+            const deliveredInsulin = deliveredRate * (bucketDurationMin / 60);
 
             if (scheduledInsulin > 0) {
                 scheduledCurves.push(calculateInsulinEventCurve(scheduledInsulin, bucketTime, endWindow, dia, peak, 'Basal', includeFuture));

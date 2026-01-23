@@ -8,6 +8,7 @@ export interface IStatusHistoryOptions {
     startTime?: string | Date | undefined;
     windowSize?: number | undefined;
     bucketSize?: number | undefined;
+    bypassCache?: boolean | undefined;
 }
 
 /**
@@ -18,7 +19,8 @@ export async function getStatusHistory(options: IStatusHistoryOptions = {}): Pro
     const {
         startTime = new Date().toISOString(),
         windowSize = 60,
-        bucketSize = 5
+        bucketSize = 5,
+        bypassCache = false
     } = options;
 
     const endTs = new Date(startTime).getTime();
@@ -33,5 +35,5 @@ export async function getStatusHistory(options: IStatusHistoryOptions = {}): Pro
     // Process buckets in parallel for maximum speed
     // Keep timeseries enabled as it's needed by the dashboard and doesn't add significant overhead
     // Disable attribution as it's computationally expensive and not used by dashboard
-    return Promise.all(timestamps.map(ts => getStatus(new Date(ts), true, false)));
+    return Promise.all(timestamps.map(ts => getStatus(new Date(ts), true, false, bypassCache)));
 }

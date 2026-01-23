@@ -13,25 +13,16 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 import { format } from 'date-fns';
+import { CHART_LAYOUT } from '@/lib/chartUtils';
 
 interface ActivityChartProps {
-    data: any[];
+    data: any[]; // Pre-transformed and filtered
     isLoading?: boolean;
+    timeDomain?: [number, number];
 }
 
-export default function ActivityChart({ data, isLoading }: ActivityChartProps) {
-    const chartData = useMemo(() => {
-        return data.map(item => ({
-            timestamp: item.timestamp,
-            steps: item.steps?.count || 0,
-            hrAvg: item.heartRate?.bpm_avg || null,
-            hrMin: item.heartRate?.bpm_min || null,
-            hrMax: item.heartRate?.bpm_max || null,
-            // HrRange is for the Area chart to create a band
-            hrRange: item.heartRate ? [item.heartRate.bpm_min, item.heartRate.bpm_max] : null,
-            raw: item
-        }));
-    }, [data]);
+export default function ActivityChart({ data, isLoading, timeDomain }: ActivityChartProps) {
+    const chartData = data;
 
     const CustomTooltip = ({ active, payload }: any) => {
         if (active && payload && payload.length) {
@@ -82,6 +73,8 @@ export default function ActivityChart({ data, isLoading }: ActivityChartProps) {
 
     const hasData = chartData.some(d => d.steps > 0 || d.hrAvg !== null);
 
+
+
     if (!hasData) {
         return (
             <div className="w-full h-[150px] flex items-center justify-center bg-zinc-950/30 rounded-xl border border-zinc-800/50">
@@ -91,22 +84,16 @@ export default function ActivityChart({ data, isLoading }: ActivityChartProps) {
     }
 
     return (
-        <div className="w-full h-[250px] bg-zinc-900/40 rounded-xl border border-zinc-800/50 p-4 shadow-sm backdrop-blur-sm">
+        <div className="w-full h-[180px] bg-zinc-900/40 rounded-xl border border-zinc-800/50 p-4 shadow-sm backdrop-blur-sm">
             <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4 px-2">Activity</h3>
             <ResponsiveContainer width="100%" height="80%">
                 <ComposedChart
                     data={chartData}
-                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                    margin={{ ...CHART_LAYOUT.MARGIN, right: CHART_LAYOUT.Y_AXIS_WIDTH_MINIMAL + 80 }}
                 >
                     <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
                     <XAxis
-                        dataKey="timestamp"
-                        tickFormatter={(str) => format(new Date(str), 'HH:mm')}
-                        stroke="#52525b"
-                        tick={{ fontSize: 10 }}
-                        axisLine={false}
-                        tickLine={false}
-                        minTickGap={40}
+                        {...CHART_LAYOUT.getXAxisProps(timeDomain)}
                     />
 
                     {/* Left Axis: Steps */}
@@ -116,19 +103,19 @@ export default function ActivityChart({ data, isLoading }: ActivityChartProps) {
                         tick={{ fontSize: 10 }}
                         axisLine={false}
                         tickLine={false}
-                        width={40}
+                        width={CHART_LAYOUT.Y_AXIS_WIDTH_GLUCOSE}
                         orientation="left"
                     />
 
                     {/* Right Axis: Heart Rate */}
                     <YAxis
                         yAxisId="hr"
-                        domain={['dataMin - 5', 'dataMax + 5']}
+                        domain={['auto', 'auto']}
                         stroke="#f43f5e"
                         tick={{ fontSize: 10 }}
                         axisLine={false}
                         tickLine={false}
-                        width={40}
+                        width={CHART_LAYOUT.Y_AXIS_WIDTH_SECONDARY}
                         orientation="right"
                     />
 

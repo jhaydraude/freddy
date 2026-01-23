@@ -23,6 +23,7 @@ export interface IActivitySummary {
         bpm: number;
         timestamp: string;
     } | null;
+    latestActivityTimestamp: string | null;
     heartRateStats?: {
         avg: number;
         min: number;
@@ -104,6 +105,13 @@ export async function getActivitySummary(): Promise<IActivitySummary> {
 
     const stepsToday = stepRecords.reduce((sum, r) => sum + (r.steps || 0), 0);
 
+    // Latest activity record
+    const latestRecord = await Entry.findOne({
+        type: 'activity'
+    }).sort({ date: -1 }).lean();
+
+    const latestActivityTimestamp = latestRecord ? new Date(latestRecord.date).toISOString() : null;
+
     // Latest heart rate
     const latestHR = await Entry.findOne({
         type: 'activity',
@@ -138,6 +146,7 @@ export async function getActivitySummary(): Promise<IActivitySummary> {
     return {
         stepsToday,
         latestHeartRate,
+        latestActivityTimestamp,
         heartRateStats
     };
 }

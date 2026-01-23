@@ -3,6 +3,8 @@ import { resolveActiveProfile, getProfileStore } from './profile-logic';
 import { getBasalRate } from './basal-logic';
 import { getIOB } from './iob-logic';
 import { getCOB } from './cob-logic';
+import { getActivityHistory } from './activity-logic';
+import { calculateActivityImpact } from './activity-impact';
 import { attributeGlucoseChange } from './attribution-logic';
 import { IGlucoseResult, IStatusResult, IIOBResult, ICOBResult, IAttributionResult } from './types';
 
@@ -14,8 +16,8 @@ import { IGlucoseResult, IStatusResult, IIOBResult, ICOBResult, IAttributionResu
  * If timestamp is given, finds the most recent entry at or before that time.
  * If count is given, returns multiple recent entries.
  */
-export async function getGlucose(options: { timestamp?: string | Date, count?: number } = {}): Promise<IGlucoseResult[]> {
-    const { timestamp, count = 1 } = options;
+export async function getGlucose(options: { timestamp?: string | Date, count?: number, bypassCache?: boolean } = {}): Promise<IGlucoseResult[]> {
+    const { timestamp, count = 1, bypassCache = false } = options;
     const dateObj = timestamp ? new Date(timestamp) : new Date();
     const tsNumber = dateObj.getTime();
 
@@ -24,7 +26,7 @@ export async function getGlucose(options: { timestamp?: string | Date, count?: n
     const fetchCount = Math.max(count + 9, 12);
     const [entries, profileInfo, lastSensorChange, lastCalibration] = await Promise.all([
         Entry.find({ date: { $lte: tsNumber }, type: 'sgv' }).sort({ date: -1 }).limit(fetchCount).lean(),
-        resolveActiveProfile(dateObj),
+        resolveActiveProfile(dateObj, bypassCache),
         Treatment.findOne({ eventType: "Sensor Change" }).sort({ created_at: -1 }).lean(),
         Treatment.findOne({ eventType: "BG Check", mbg: { $exists: true }, created_at: { $lte: dateObj.toISOString() } }).sort({ created_at: -1 }).lean()
     ]);
@@ -248,13 +250,14 @@ export async function getStatus(
     const lookbackMinutes = 240; // 4 hours of treatment data for chart markers
     const treatmentStart = new Date(dateObj.getTime() - (lookbackMinutes * 60 * 1000)).toISOString();
 
-    const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange, recentTreatments] = await Promise.all([
-        resolveActiveProfile(ts),
-        getCOB(ts, includeTimeseries),
+    const activityStart = new Date(dateObj.getTime() - (5 * 60 * 1000));
+    const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange, recentTreatments, activityPoints] = await Promise.all([
+        resolveActiveProfile(ts, bypassCache),
+        getCOB(ts, includeTimeseries, bypassCache),
         DeviceStatus.findOne({ created_at: { $lte: ts } }).sort({ created_at: -1 }),
-        getGlucose({ timestamp: ts, count: 1 }),
-        getIOB(ts, includeTimeseries),
-        getBasalRate(ts),
+        getGlucose({ timestamp: ts, count: 1, bypassCache }),
+        getIOB(ts, includeTimeseries, bypassCache),
+        getBasalRate(ts, bypassCache),
         Treatment.findOne({ eventType: "Site Change", created_at: { $lte: ts } }).sort({ created_at: -1 }),
         Treatment.find({
             created_at: { $gte: treatmentStart, $lte: ts },
@@ -262,8 +265,12 @@ export async function getStatus(
                 { insulin: { $exists: true, $gte: 0.1 } },
                 { carbs: { $exists: true, $gt: 0 } }
             ]
-        }).sort({ created_at: 1 }).lean()
+        }).sort({ created_at: 1 }).lean(),
+        getActivityHistory(activityStart, dateObj, 5)
     ]);
+
+    // Calculate activity impact
+    const activityImpact = calculateActivityImpact(activityPoints, 5, undefined);
 
     if (!profileInfo) {
         console.warn("SyncWorker: No profile found during status calculation. Returning partial status.");
@@ -324,6 +331,7 @@ export async function getStatus(
         cob,
         glucose: glucoseEntries[0] || null,
         profile: cleanProfile,
+        activity: activityImpact,
         uploader: {
             battery: latestDeviceStatus?.uploaderBattery,
             device: "phone"
@@ -357,7 +365,7 @@ export async function getStatus(
                     $set: {
                         status: statusResult,
                         updated_at: new Date(),
-                        version: "1.0"
+                        version: "1.1"
                     },
                     $setOnInsert: {
                         created_at: new Date()

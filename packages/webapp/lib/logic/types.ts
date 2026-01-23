@@ -174,6 +174,7 @@ export interface IStatusResult {
     cob: ICOBResult;
     glucose: IGlucoseResult;
     profile: any;
+    activity?: any;
     attribution?: IAttributionResult;
     uploader: {
         battery: number | undefined;

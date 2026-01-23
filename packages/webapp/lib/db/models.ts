@@ -318,3 +318,39 @@ const UserPreferenceSchema = new Schema({
 }, { collection: 'user_preferences' });
 
 export const UserPreference = getModel<IUserPreference>('UserPreference', UserPreferenceSchema, getFreddyConn, 'user_preferences');
+
+// ---------------------------------------------------------------------------
+// ACTIVITY DATA (Freddy Owned)
+// ---------------------------------------------------------------------------
+export interface IActivityRecord extends Document {
+    id: string;
+    type: string;
+    timestamp?: number;
+    startTime?: number;
+    endTime?: number;
+    data: any;
+    metadata: {
+        device_id: string;
+        source_app: string;
+        sync_timestamp?: string;
+    };
+    created_at: Date;
+}
+
+const ActivityRecordSchema = new Schema({
+    id: { type: String, required: true, unique: true, index: true },
+    type: { type: String, required: true, index: true },
+    timestamp: { type: Number },
+    startTime: { type: Number, index: true },
+    endTime: { type: Number, index: true },
+    data: { type: Schema.Types.Mixed, required: true },
+    metadata: {
+        device_id: { type: String, required: true },
+        source_app: { type: String, required: true },
+        sync_timestamp: { type: String }
+    },
+    created_at: { type: Date, default: Date.now, index: true }
+}, { collection: 'activity_records' });
+
+export const ActivityRecord = getModel<IActivityRecord>('ActivityRecord', ActivityRecordSchema, getFreddyConn, 'activity_records');
+

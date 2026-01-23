@@ -7,12 +7,14 @@ export async function GET(request: Request) {
     const startTime = searchParams.get('startTime') || new Date().toISOString();
     const windowSize = parseInt(searchParams.get('windowSize') || '60', 10);
     const bucketSize = parseInt(searchParams.get('bucketSize') || '5', 10);
+    const bypassCache = searchParams.get('refresh') === 'true';
 
     try {
         const data = await getMcpHistory({
             startTime,
             windowSize,
-            bucketSize
+            bucketSize,
+            bypassCache
         });
 
         return NextResponse.json(data);
