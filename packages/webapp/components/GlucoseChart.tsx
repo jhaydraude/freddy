@@ -70,6 +70,54 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
     const dataMax = Math.max(...glucoseValues);
     const dataMin = Math.min(...glucoseValues);
 
+    // Calculate Insulin and COB domains for Y=0 alignment
+    const insulinValues = visibleData.flatMap(d => [d.iob, d.basal, d.activeBasal].filter(v => v != null));
+    const cobValues = visibleData.map(d => d.cob).filter(v => v != null);
+
+    const insulinMax = Math.max(...insulinValues, 0);
+    const insulinMin = Math.min(...insulinValues, 0); // Allow negative IOB if present
+    const cobMaxData = Math.max(...cobValues, 0);
+
+    // Standard headroom
+    const cobMax = cobMaxData > 0 ? cobMaxData * 1.1 : 100;
+
+    // Align Zero Lines:
+    // We want the ratio (0 - min) / (max - min) to be identical for both axes.
+    // insulinRatio = -insulinMin / (insulinMax - insulinMin)
+    // cobRatio = -cobMin / (cobMax - cobMin)
+    // Solve for cobMin: cobMin = - (cobMax * insulinRatio) / (1 - insulinRatio)
+    // Simpler: cobMin = (insulinMin / insulinMax) * cobMax  (if purely proportional)
+    // Actually: 0 position percent P = 1 - (0 - min)/(max - min) = 1 + min/(max-min).
+    // Let's just equate the ratios of "negative range" to "positive range".
+    // |min| / max  should be same?
+    // Let's calculate the required cobMin to match insulin's zero placement.
+
+    let cobDomain = [0, 'auto'];
+    let insulinDomain = [insulinMin, insulinMax * 1.1]; // Add headroom
+
+    if (insulinMin < 0 && insulinMax > 0) {
+        // Insulin spans zero.
+        const insulinRange = insulinMax - insulinMin;
+        const zeroRatio = -insulinMin / insulinRange; // % height from bottom for 0 line
+
+        // We want COB 0 to be at zeroRatio too.
+        // COB Max is fixed (with headroom). We need to find cobMin.
+        // -cobMin / (cobMax - cobMin) = zeroRatio
+        // -cobMin = zeroRatio * cobMax - zeroRatio * cobMin
+        // cobMin * (zeroRatio - 1) = zeroRatio * cobMax
+        // cobMin = (zeroRatio * cobMax) / (zeroRatio - 1)
+
+        const calculatedCobMin = (zeroRatio * cobMax) / (zeroRatio - 1);
+        cobDomain = [calculatedCobMin, cobMax];
+    } else if (insulinMin >= 0) {
+        // Insulin is all positive. Base is 0.
+        // COB is usually all positive. Base is 0.
+        // Natural alignment at bottom.
+        cobDomain = [0, cobMax];
+        insulinDomain = [0, insulinMax * 1.1];
+    }
+
+
     const calculateOffset = (target: number) => {
         if (dataMax === dataMin) return 0;
         const offset = (dataMax - target) / (dataMax - dataMin);
@@ -104,6 +152,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
         }
         return null;
     };
+
 
     if (isLoading && data.length === 0) {
         return (
@@ -150,21 +199,36 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
                         orientation="left"
                         stroke="#10b981"
                         domain={[0, yMax]}
-                        tick={{ fontSize: 11 }}
-                        label={{ value: `Glucose (${units})`, angle: -90, position: 'insideLeft', fill: '#10b981', fontSize: 10 }}
+                        tick={{ fontSize: 10 }}
+                        width={40}
+                        axisLine={false}
+                        tickLine={false}
                     />
 
-                    {/* Right Axis: IOB/COB */}
+                    {/* Right Axes */}
                     <YAxis
-                        yAxisId="right"
+                        yAxisId="insulin"
                         orientation="right"
                         stroke="#3b82f6"
-                        tick={{ fontSize: 11 }}
-                        label={{ value: 'Units / g', angle: 90, position: 'insideRight', fill: '#3b82f6', fontSize: 10 }}
+                        domain={insulinDomain}
+                        tick={{ fontSize: 10 }}
+                        width={30}
+                        axisLine={false}
+                        tickLine={false}
+                    />
+                    <YAxis
+                        yAxisId="cob"
+                        orientation="right"
+                        stroke="#f97316"
+                        domain={cobDomain}
+                        tick={{ fontSize: 10 }}
+                        width={30}
+                        axisLine={false}
+                        tickLine={false}
                     />
 
                     <Tooltip content={<CustomTooltip />} />
-                    <Legend verticalAlign="top" height={36} iconType="circle" />
+                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
 
                     {/* Target Range Band */}
                     <ReferenceArea
@@ -178,7 +242,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
                     {/* Active Basal (Deep Layer) */}
                     {visibleLines.basal && (
                         <Area
-                            yAxisId="right"
+                            yAxisId="insulin"
                             type="stepAfter"
                             dataKey="activeBasal"
                             name="Actual Basal"
@@ -194,7 +258,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
 
                     {visibleLines.basal && (
                         <Line
-                            yAxisId="right"
+                            yAxisId="insulin"
                             type="stepAfter"
                             dataKey="basal"
                             name="Scheduled Basal"
@@ -214,7 +278,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
                             dataKey="sgv"
                             name="Glucose"
                             stroke="url(#splitColor)"
-                            strokeWidth={2}
+                            strokeWidth={4}
                             dot={false}
                             connectNulls
                             isAnimationActive={false}
@@ -223,7 +287,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
 
                     {visibleLines.iob && (
                         <Line
-                            yAxisId="right"
+                            yAxisId="insulin"
                             type="monotone"
                             dataKey="iob"
                             name="IOB"
@@ -237,7 +301,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
 
                     {visibleLines.cob && (
                         <Line
-                            yAxisId="right"
+                            yAxisId="cob"
                             type="monotone"
                             dataKey="cob"
                             name="COB"

@@ -47,7 +47,7 @@ export function transformGlucoseData(data: any[], timeDomain?: [number, number])
             cob: item.cob?.calculated?.cob ?? null,
             basal: item.pump?.basal?.scheduledRate ?? null,
             activeBasal: item.pump?.basal?.activeRate ?? null,
-            bolus: item.treatments?.reduce((acc: number, t: any) => acc + (t.insulin && t.insulin >= 0.6 ? t.insulin : 0), 0) || null,
+            bolus: item.treatments?.reduce((acc: number, t: any) => acc + (t.insulin && t.insulin > 0.6 ? t.insulin : 0), 0) || null,
             carbs: item.treatments?.reduce((acc: number, t: any) => acc + (t.carbs && t.carbs > 0 ? t.carbs : 0), 0) || null,
             raw: item
         }))
