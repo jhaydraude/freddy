@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Moon, Settings, LayoutDashboard, BookOpen, Tags, Activity, RefreshCw } from 'lucide-react';
+import { Moon, Settings, LayoutDashboard, BookOpen, Tags, Activity, RefreshCw, BarChart } from 'lucide-react';
 
 export default function Header({
     title = "Freddy",
@@ -58,6 +58,16 @@ export default function Header({
                         >
                             <RefreshCw size={14} />
                             <span className="hidden sm:inline">Tuning</span>
+                        </Link>
+                        <Link
+                            href="/statistics"
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/statistics')
+                                ? 'bg-zinc-800 text-white shadow-sm'
+                                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                                }`}
+                        >
+                            <BarChart size={14} />
+                            <span className="hidden sm:inline">Statistics</span>
                         </Link>
                         <Link
                             href="/profile"
