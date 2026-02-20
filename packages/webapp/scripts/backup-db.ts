@@ -47,7 +47,7 @@ async function backupDatabase() {
             writeStream.write('[\n');
 
             let count = 0;
-            let hasError = false;
+            const hasError = false;
 
             for await (const doc of cursor) {
                 if (count > 0) {

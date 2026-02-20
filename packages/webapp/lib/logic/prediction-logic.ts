@@ -149,7 +149,7 @@ export async function getGlucosePrediction(timestamp: string | Date, durationMin
 
     // Calculate phantom carb impact per interval (if any)
     // We treat the adjustment as a lump sum COB that decays over 3 hours
-    let phantomCOB = adjustments.cob_adjustment;
+    const phantomCOB = adjustments.cob_adjustment;
     const phantomImpactPerInterval = Math.max(0, (phantomCOB * (situationAdjustedISF / status.cob.settings.cr)) / (180 / INTERVAL_MINUTES));
 
 
@@ -385,7 +385,7 @@ export async function calculateProjectedGlucose(minutesAhead: number = 30): Prom
     const cr = store.carbratio?.[0]?.value || 10;
 
     const isMmol = glucoseEntries[0]!.units.toLowerCase().includes("mmol");
-    let activeISF = isf;
+    const activeISF = isf;
     const activeCR = cr;
 
     // Calculate Actives

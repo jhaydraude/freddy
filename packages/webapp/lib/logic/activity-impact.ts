@@ -109,8 +109,9 @@ function calculateStepsImpact(
     if (baseline?.avgStepsPerMin) {
         intensity = (stepsPerMinute - baseline.avgStepsPerMin) / baseline.avgStepsPerMin;
     } else {
-        // Fallback: relative to moderate activity (100 steps/min)
-        intensity = (stepsPerMinute - 100) / 100;
+        // Fallback: relative to light movement (20 steps/min)
+        // This ensures light activity is captured instead of requiring >100 steps/min
+        intensity = (stepsPerMinute - 20) / 20;
     }
 
     // Only apply impact if above baseline

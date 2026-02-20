@@ -28,6 +28,7 @@ export interface CarbTuningResult {
     };
     optimized_values?: {
         icr: number[];
+        ci_per_block: number[];            // Primary fitted value per block
         default_absorption_rate: number;
         min_carb_impact: number;
         s_curve_params: {
@@ -42,6 +43,7 @@ export interface CarbTuningResult {
         rmse: number;
         mae: number;
         meal_windows_analyzed: number;
+        windows_per_block: number[];       // Data density per block
     };
     analysis_summary?: {
         total_meal_events: number;
@@ -172,6 +174,18 @@ export class CarbAbsorptionTuningService {
                 throw new Error(`Insufficient meal data: found ${mealWindows.length} windows, need ${tuning.config.min_meal_events}`);
             }
 
+            // Extract ISF schedule (6 four-hour blocks) from the active profile
+            // so Python uses real ISF instead of the hardcoded 50.0 fallback
+            const profileDoc = await getProfileAtTime(new Date());
+            const profileStore = getProfileStore(profileDoc || undefined);
+            const currentIsf: number[] = [];
+            for (let block = 0; block < 6; block++) {
+                const hour = block * 4;
+                const blockDate = new Date();
+                blockDate.setHours(hour, 0, 0, 0);
+                currentIsf.push(getValueAtTime(profileStore?.sens, blockDate) || 50);
+            }
+
             const pythonApiUrl = process.env.PREDICTIVE_MODELS_URL || 'http://localhost:8000';
             const response = await fetch(`${pythonApiUrl}/api/v1/tune/carb-absorption`, {
                 method: 'POST',
@@ -179,6 +193,7 @@ export class CarbAbsorptionTuningService {
                 body: JSON.stringify({
                     windows: mealWindows,
                     current_icr: tuning.current_values.icr,
+                    current_isf: currentIsf,
                     current_absorption_rate: tuning.current_values.default_absorption_rate,
                     current_min_carb_impact: tuning.current_values.min_carb_impact
                 })
@@ -190,6 +205,7 @@ export class CarbAbsorptionTuningService {
 
             tuning.optimized_values = {
                 icr: result.icr,
+                ci_per_block: result.ci_per_block,
                 default_absorption_rate: result.absorption_rate,
                 min_carb_impact: result.min_carb_impact,
                 s_curve_params: result.s_curve_params || tuning.current_values.s_curve_params,
@@ -199,7 +215,8 @@ export class CarbAbsorptionTuningService {
                 r_squared: result.r_squared,
                 rmse: result.rmse,
                 mae: result.mae,
-                meal_windows_analyzed: mealWindows.length
+                meal_windows_analyzed: mealWindows.length,
+                windows_per_block: result.windows_per_block
             };
 
             tuning.status = 'completed';

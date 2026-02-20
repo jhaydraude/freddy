@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { carbAbsorptionTuningService } from '../../../../../lib/services/carb-absorption-tuning';
+import { basalRateTuningService } from '../../../../../lib/services/basal-rate-tuning';
 import { connectToDatabase } from '../../../../../lib/db/connection';
-import { CarbAbsorptionTuning } from '../../../../../lib/db/models/carb-absorption-tuning';
+import { BasalRateTuning } from '../../../../../lib/db/models/basal-rate-tuning';
 
 /**
- * GET /api/profile/tune-carb-absorption/[tuning_id]
- * Gets the status and results of a carb absorption tuning run
+ * GET /api/profile/tune-basal-rate/[tuning_id]
+ * Gets the status and results of a basal rate tuning run
  */
 export async function GET(
     req: NextRequest,
@@ -19,10 +19,10 @@ export async function GET(
             return NextResponse.json({ error: 'Tuning ID is required' }, { status: 400 });
         }
 
-        const status = await carbAbsorptionTuningService.getTuningStatus(tuning_id);
+        const status = await basalRateTuningService.getTuningStatus(tuning_id);
         return NextResponse.json(status);
     } catch (error: any) {
-        console.error(`Error fetching carb tuning status for ${tuning_id}:`, error);
+        console.error(`Error fetching basal tuning status for ${tuning_id}:`, error);
         return NextResponse.json(
             { error: error.message },
             { status: 404 }
@@ -31,8 +31,8 @@ export async function GET(
 }
 
 /**
- * DELETE /api/profile/tune-carb-absorption/[tuning_id]
- * Deletes a single carb absorption tuning run
+ * DELETE /api/profile/tune-basal-rate/[tuning_id]
+ * Deletes a single basal rate tuning run
  */
 export async function DELETE(
     req: NextRequest,
@@ -41,13 +41,13 @@ export async function DELETE(
     const { tuning_id } = await params;
     try {
         await connectToDatabase();
-        const result = await CarbAbsorptionTuning.deleteOne({ tuning_id });
+        const result = await BasalRateTuning.deleteOne({ tuning_id });
         if (result.deletedCount === 0) {
             return NextResponse.json({ error: 'Run not found' }, { status: 404 });
         }
         return NextResponse.json({ deleted: result.deletedCount });
     } catch (error: any) {
-        console.error(`Error deleting carb tuning run ${tuning_id}:`, error);
+        console.error(`Error deleting basal tuning run ${tuning_id}:`, error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

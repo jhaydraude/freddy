@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { insulinResponseTuningService } from '@/lib/services/insulin-response-tuning';
+import { activityImpactTuningService } from '@/lib/services/activity-impact-tuning';
 import { connectToDatabase } from '@/lib/db/connection';
-import { InsulinResponseTuning } from '@/lib/db/models/insulin-response-tuning';
+import { ActivityImpactTuning } from '@/lib/db/models/activity-impact-tuning';
 
 /**
- * GET /api/profile/tune-insulin-response/[tuning_id]
- * Get status and results of a specific tuning run
+ * GET /api/profile/tune-activity-impact/[tuning_id]
+ * Poll the status and results of a specific tuning run
  */
 export async function GET(
     request: NextRequest,
@@ -14,23 +14,19 @@ export async function GET(
     try {
         await connectToDatabase();
         const { tuning_id } = await params;
-
-        const result = await insulinResponseTuningService.getTuningStatus(tuning_id);
-
+        const result = await activityImpactTuningService.getTuningStatus(tuning_id);
         return NextResponse.json(result);
-
     } catch (error: any) {
-        console.error('Error fetching tuning status:', error);
         return NextResponse.json(
-            { error: error.message || 'Failed to fetch tuning status' },
+            { error: error.message || 'Tuning run not found' },
             { status: 404 }
         );
     }
 }
 
 /**
- * DELETE /api/profile/tune-insulin-response/[tuning_id]
- * Deletes a single insulin response tuning run
+ * DELETE /api/profile/tune-activity-impact/[tuning_id]
+ * Deletes a single activity impact tuning run
  */
 export async function DELETE(
     request: NextRequest,
@@ -39,13 +35,13 @@ export async function DELETE(
     try {
         await connectToDatabase();
         const { tuning_id } = await params;
-        const result = await InsulinResponseTuning.deleteOne({ tuning_id });
+        const result = await ActivityImpactTuning.deleteOne({ tuning_id });
         if (result.deletedCount === 0) {
             return NextResponse.json({ error: 'Run not found' }, { status: 404 });
         }
         return NextResponse.json({ deleted: result.deletedCount });
     } catch (error: any) {
-        console.error('Error deleting insulin response tuning run:', error);
+        console.error(`Error deleting activity tuning run:`, error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

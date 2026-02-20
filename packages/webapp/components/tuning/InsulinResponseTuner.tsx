@@ -8,13 +8,13 @@ import {
     AlertCircle,
     ArrowLeft,
     ChevronRight,
-    TrendingUp,
     Target,
     Clock,
     Save,
-    Loader2
+    Loader2,
+    Trash2,
+    X
 } from 'lucide-react';
-import Link from 'next/link';
 import {
     LineChart,
     Line,
@@ -22,20 +22,20 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip,
-    ResponsiveContainer,
-    ReferenceArea
+    ResponsiveContainer
 } from 'recharts';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface Props {
     onBack: () => void;
+    initialTuningId?: string;
 }
 
-export const InsulinResponseTuner: React.FC<Props> = ({ onBack }) => {
+export const InsulinResponseTuner: React.FC<Props> = ({ onBack, initialTuningId }) => {
     const [status, setStatus] = useState<'idle' | 'syncing' | 'running' | 'completed' | 'failed'>('idle');
-    const [tuningId, setTuningId] = useState<string | null>(null);
+    const [tuningId, setTuningId] = useState<string | null>(initialTuningId ?? null);
     const [result, setResult] = useState<any>(null);
     const [isApplying, setIsApplying] = useState(false);
-    const [progress, setProgress] = useState(0);
     const [syncProgress, setSyncProgress] = useState(0);
     const [analysisPeriod, setAnalysisPeriod] = useState(14);
     const [selection, setSelection] = useState({
@@ -43,6 +43,24 @@ export const InsulinResponseTuner: React.FC<Props> = ({ onBack }) => {
         peak: true,
         isf: [true, true, true, true, true, true]
     });
+    const [confirmDeleteRun, setConfirmDeleteRun] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    // If opened from history, immediately load the result
+    useEffect(() => {
+        if (initialTuningId) {
+            fetch(`/api/profile/tune-insulin-response/${initialTuningId}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(data => {
+                    if (data) {
+                        setResult(data);
+                        setStatus(data.status === 'completed' || data.status === 'applied' ? 'completed' : data.status);
+                    }
+                })
+                .catch(console.error);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         let interval: any;
@@ -77,7 +95,6 @@ export const InsulinResponseTuner: React.FC<Props> = ({ onBack }) => {
     const startTuning = async () => {
         try {
             setStatus('running');
-            setProgress(10);
             const res = await fetch('/api/profile/tune-insulin-response', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -124,6 +141,20 @@ export const InsulinResponseTuner: React.FC<Props> = ({ onBack }) => {
         }
     };
 
+    const deleteRun = async () => {
+        if (!tuningId) return;
+        setIsDeleting(true);
+        try {
+            await fetch(`/api/profile/tune-insulin-response/${tuningId}`, { method: 'DELETE' });
+            onBack();
+        } catch (err) {
+            console.error('Delete failed:', err);
+        } finally {
+            setIsDeleting(false);
+            setConfirmDeleteRun(false);
+        }
+    };
+
     const getReliability = (confidence: [number, number], value: number) => {
         const range = confidence[1] - confidence[0];
         const percent = (range / value) * 100;
@@ -151,10 +182,7 @@ export const InsulinResponseTuner: React.FC<Props> = ({ onBack }) => {
                         Fetching historical data from Nightscout. This is required for your requested {analysisPeriod} day analysis.
                     </p>
                     <div className="w-full max-w-xs bg-zinc-800 h-2 rounded-full overflow-hidden mb-2">
-                        <div
-                            className="bg-blue-500 h-full transition-all duration-500"
-                            style={{ width: `${syncProgress}%` }}
-                        />
+                        <div className="bg-blue-500 h-full transition-all duration-500" style={{ width: `${syncProgress}%` }} />
                     </div>
                     <div className="text-blue-500 font-bold text-sm tracking-widest uppercase">
                         {syncProgress}% Complete
@@ -202,7 +230,6 @@ export const InsulinResponseTuner: React.FC<Props> = ({ onBack }) => {
                         </div>
                     </div>
 
-                    {/* Results Selection Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* DIA CARD */}
                         <div
@@ -265,7 +292,7 @@ export const InsulinResponseTuner: React.FC<Props> = ({ onBack }) => {
                         </div>
                     </div>
 
-                    {/* ISF Schedule Details */}
+                    {/* ISF Schedule */}
                     <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
                         <div className="flex items-center justify-between mb-8">
                             <div>
@@ -273,14 +300,8 @@ export const InsulinResponseTuner: React.FC<Props> = ({ onBack }) => {
                                 <p className="text-zinc-500 text-sm mt-1">Select specific blocks to update your schedule</p>
                             </div>
                             <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-amber-500" />
-                                    Optimized
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-zinc-700" />
-                                    Current
-                                </div>
+                                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-amber-500" /> Optimized</div>
+                                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-zinc-700" /> Current</div>
                             </div>
                         </div>
 
@@ -318,20 +339,28 @@ export const InsulinResponseTuner: React.FC<Props> = ({ onBack }) => {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4 pt-4">
+                    <div className="flex items-center gap-3 pt-4">
                         <button
                             onClick={applyResults}
                             disabled={isApplying}
-                            className="flex-grow flex items-center justify-center gap-3 px-8 py-5 bg-white text-zinc-950 font-black rounded-2xl hover:bg-emerald-400 transition-all duration-300 shadow-xl shadow-white/5 active:scale-[0.98] disabled:opacity-50"
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-4 bg-white text-zinc-950 font-bold rounded-2xl hover:bg-emerald-400 transition-all duration-200 active:scale-[0.98] disabled:opacity-50 text-sm"
                         >
-                            {isApplying ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                            {isApplying ? 'Applying Optimization...' : 'Apply & Sync to Nightscout'}
+                            {isApplying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            Save
                         </button>
                         <button
-                            onClick={startTuning}
-                            className="px-8 py-5 bg-zinc-900 text-zinc-400 font-bold rounded-2xl border border-zinc-800 hover:text-white hover:border-zinc-700 transition-all"
+                            onClick={onBack}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-4 bg-zinc-900 text-zinc-400 font-bold rounded-2xl border border-zinc-800 hover:text-white hover:border-zinc-700 transition-all duration-200 active:scale-[0.98] text-sm"
                         >
-                            Discard & Rerun
+                            <X className="w-4 h-4" />
+                            Discard
+                        </button>
+                        <button
+                            onClick={() => setConfirmDeleteRun(true)}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-4 bg-zinc-900 text-red-400 font-bold rounded-2xl border border-red-500/20 hover:bg-red-500/10 hover:border-red-500/40 transition-all duration-200 active:scale-[0.98] text-sm"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            Delete
                         </button>
                     </div>
                 </div>
@@ -419,6 +448,15 @@ export const InsulinResponseTuner: React.FC<Props> = ({ onBack }) => {
                     </div>
                 </div>
             )}
+
+            <ConfirmDialog
+                open={confirmDeleteRun}
+                title="Delete This Run"
+                message="This will permanently delete this optimization run. This cannot be undone."
+                confirmLabel={isDeleting ? 'Deleting…' : 'Delete'}
+                onConfirm={deleteRun}
+                onCancel={() => setConfirmDeleteRun(false)}
+            />
         </div>
     );
 };

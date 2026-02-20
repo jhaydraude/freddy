@@ -7,6 +7,7 @@ interface TuningCategoryCardProps {
     status: 'optimized' | 'needs_update' | 'locked';
     lastOptimized?: string;
     improvement?: string;
+    parameters?: string[];
     onClick: () => void;
     colorClass: string;
 }
@@ -18,31 +19,20 @@ export const TuningCategoryCard: React.FC<TuningCategoryCardProps> = ({
     status,
     lastOptimized,
     improvement,
+    parameters,
     onClick,
     colorClass
 }) => {
     const getStatusDisplay = () => {
         switch (status) {
             case 'optimized':
-                return {
-                    label: 'Fully Optimized',
-                    class: 'bg-green-500/10 text-green-400 border-green-500/20'
-                };
+                return { label: 'Fully Optimized', class: 'bg-green-500/10 text-green-400 border-green-500/20' };
             case 'needs_update':
-                return {
-                    label: 'Update Available',
-                    class: 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                };
+                return { label: 'Update Available', class: 'bg-amber-500/10 text-amber-400 border-amber-500/20' };
             case 'locked':
-                return {
-                    label: 'Available Soon',
-                    class: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
-                };
+                return { label: 'Available Soon', class: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' };
             default:
-                return {
-                    label: 'Unknown',
-                    class: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
-                };
+                return { label: 'Unknown', class: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' };
         }
     };
 
@@ -57,7 +47,7 @@ export const TuningCategoryCard: React.FC<TuningCategoryCardProps> = ({
             <div className={`absolute -right-8 -top-8 h-32 w-32 rounded-full ${colorClass} blur-[80px] opacity-20 group-hover:opacity-30 transition-opacity`} />
 
             <div className="flex items-start justify-between mb-4">
-                <div className={`p-3 rounded-xl bg-zinc-800/80 border border-zinc-700 text-2xl group-hover:scale-110 transition-transform duration-300`}>
+                <div className="p-3 rounded-xl bg-zinc-800/80 border border-zinc-700 text-2xl group-hover:scale-110 transition-transform duration-300">
                     {icon}
                 </div>
                 <div className={`px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-wider ${statusInfo.class}`}>
@@ -69,9 +59,19 @@ export const TuningCategoryCard: React.FC<TuningCategoryCardProps> = ({
                 {title}
             </h3>
 
-            <p className="text-zinc-400 text-sm leading-relaxed mb-6 flex-grow">
+            <p className="text-zinc-400 text-sm leading-relaxed mb-4 flex-grow">
                 {description}
             </p>
+
+            {parameters && parameters.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                    {parameters.map(p => (
+                        <span key={p} className="px-2 py-0.5 rounded-md bg-zinc-800 border border-zinc-700 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                            {p}
+                        </span>
+                    ))}
+                </div>
+            )}
 
             <div className="flex flex-col gap-3">
                 {improvement && (
@@ -80,8 +80,7 @@ export const TuningCategoryCard: React.FC<TuningCategoryCardProps> = ({
                         {improvement}
                     </div>
                 )}
-
-                <div className="flex items-center justify-between text-[11px] text-zinc-500 mt-2 border-t border-zinc-800 pt-3">
+                <div className="flex items-center justify-between text-[11px] text-zinc-500 border-t border-zinc-800 pt-3">
                     <span>{lastOptimized ? `Last: ${lastOptimized}` : 'Never optimized'}</span>
                     {status !== 'locked' && (
                         <span className="text-white font-bold opacity-0 group-hover:opacity-100 transition-opacity">

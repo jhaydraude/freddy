@@ -1,4 +1,4 @@
-import { Entry, Treatment } from '../db/models';
+import { Entry, Treatment, SystemConfig, DeviceStatus } from '../db/models';
 import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic';
 import { getBolusAbsorption } from './cob-logic';
 import { getActivityHistory } from './activity-logic';
@@ -36,6 +36,13 @@ export interface ITimeWindow {
     activity_heart_rate: number;     // Average HR
     activity_hr_elevation: number;   // Raw HR elevation percentage (0-1+)
     activity_impact: number;         // Calculated glucose impact (mg/dL) in window
+    activity_impact_components: {
+        steps: number;
+        calories: number;
+        stairs: number;
+        heartRate: number;
+        stressHeartRate: number;
+    };
     activity_intensity: string;
 
     // Context
@@ -49,6 +56,11 @@ export interface ITimeWindow {
         has_activity_data: boolean;
         readings_count: number;
     };
+
+    // Basal specific
+    autosens_ratio?: number;
+    basal_drift?: number;
+    isolation_confidence?: number;
 }
 
 
@@ -93,7 +105,7 @@ export async function generateTimeWindows(
     const lookbackHours = 24; // Margin for carbs/basal
     const treatmentsStartDate = new Date(startDate.getTime() - Math.max(diaHours, lookbackHours) * 60 * 60 * 1000);
 
-    const [glucoseEntries, treatments, activityData] = await Promise.all([
+    const [glucoseEntries, treatments, activityData, sysConfig, statusDocs] = await Promise.all([
         Entry.find({
             type: 'sgv',
             date: {
@@ -109,7 +121,17 @@ export async function generateTimeWindows(
             }
         }).sort({ created_at: 1 }).lean(),
 
-        getActivityHistory(startDate, endDate)
+        getActivityHistory(startDate, endDate),
+
+        SystemConfig.findOne({ key: 'smb_threshold' }).lean(),
+
+        DeviceStatus.find({
+            "openaps.suggested.sensitivityRatio": { $exists: true },
+            created_at: {
+                $gte: startDate.toISOString(),
+                $lte: endDate.toISOString()
+            }
+        }).sort({ created_at: 1 }).lean()
     ]);
 
     console.log(`  Loaded ${glucoseEntries.length} glucose readings`);
@@ -142,6 +164,8 @@ export async function generateTimeWindows(
             };
         }
     }
+
+    const smbThreshold = sysConfig?.value !== undefined ? Number(sysConfig.value) : 0.7;
 
     // === GENERATE WINDOWS ===
     let currentTime = startDate.getTime();
@@ -187,8 +211,11 @@ export async function generateTimeWindows(
             for (const t of treatmentsInWindow) {
                 if (t.insulin && t.insulin > 0 && (t.eventType === 'Meal Bolus' || t.eventType === 'Correction Bolus')) {
                     bolusInsulin += t.insulin;
-                    if (t.carbs && t.carbs > 0) hasMeals = true;
-                    else hasCorrections = true;
+                    if (t.carbs && t.carbs > 0) {
+                        hasMeals = true;
+                    } else if (t.insulin > smbThreshold) {
+                        hasCorrections = true; // small boluses act as basal, large act as corrections
+                    }
                 }
 
                 if (t.carbs && t.carbs > 0) {
@@ -260,6 +287,45 @@ export async function generateTimeWindows(
 
             const readingCount = glucoseEntries.filter(e => e.date >= windowStart.getTime() && e.date <= windowEnd.getTime()).length;
 
+            // Resolve autosens ratio for this window (find closest devicestatus point prior to start, or default to 1.0)
+            let autosensRatio = 1.0;
+            const statusMatch = statusDocs.slice().reverse().find(s => new Date(s.created_at).getTime() <= windowStart.getTime());
+            if (statusMatch && statusMatch.openaps?.suggested?.sensitivityRatio) {
+                autosensRatio = statusMatch.openaps.suggested.sensitivityRatio;
+            }
+
+            // Calculate basal drift and isolation confidence
+            let basal_drift: number | undefined;
+            let isolation_confidence: number | undefined;
+
+            if (readingCount >= 6) {
+                const isf = profileData?.sens ? getValueAtTime(profileData.sens, windowStart) : 50;
+                // BG Change = Pure Drift - (Insulin * ISF) + Activity Impact
+                // Therefore: Pure Drift = BG Change + (Insulin * ISF) - Activity Impact
+                basal_drift = glucoseChange + (insulinActivity * isf * autosensRatio) - activityImpact.totalImpact;
+
+                if (hasMeals || hasCorrections || carbAbsorption > 0) {
+                    isolation_confidence = 0.0;
+                } else if (bolusInsulin > 0) {
+                    // A bolus was delivered inside this exact window - highly unstable
+                    isolation_confidence = 0.0;
+                } else {
+                    // No bolus happened *inside* this window, check for decaying IOB from a previous window
+                    const extraActivity = Math.max(0, insulinActivity - basalDeilveredRaw);
+
+                    if (extraActivity > 0) {
+                        // A penalty based on how much "extra" insulin activity there is compared to pure basal
+                        // e.g. if extraActivity is 1.0U, and ISF is 50, that's 50mg/dL of "math".
+                        const maxTolerableExtraActivity = 2.0; // U/window
+                        const penalty = Math.min(0.8, extraActivity / maxTolerableExtraActivity);
+                        isolation_confidence = 1.0 - penalty;
+                    } else {
+                        // Pure basal window
+                        isolation_confidence = 1.0;
+                    }
+                }
+            }
+
             windows.push({
                 start: windowStart,
                 end: windowEnd,
@@ -285,6 +351,7 @@ export async function generateTimeWindows(
                 activity_heart_rate: avgHR,
                 activity_hr_elevation: Math.round(hrElevation * 1000) / 1000,
                 activity_impact: activityImpact.totalImpact,
+                activity_impact_components: activityImpact.components,
                 activity_intensity: activityImpact.intensity,
 
                 hour_of_day: windowStart.getHours(),
@@ -295,7 +362,11 @@ export async function generateTimeWindows(
                 data_quality: {
                     has_activity_data: activityImpact.dataAvailable,
                     readings_count: readingCount
-                }
+                },
+
+                autosens_ratio: autosensRatio,
+                basal_drift: basal_drift,
+                isolation_confidence: isolation_confidence
             });
 
         } catch (error) {

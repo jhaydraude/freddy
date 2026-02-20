@@ -5,29 +5,74 @@ import {
     Zap,
     Flame,
     GitBranch,
+    Activity,
     ChevronRight,
     History,
     Timer,
-    CheckCircle2
+    Filter,
+    Trash2
 } from 'lucide-react';
 import { TuningCategoryCard } from './TuningCategoryCard';
 import { DeprecationBanner } from './DeprecationBanner';
 import { InsulinResponseTuner } from './InsulinResponseTuner';
 import { CarbAbsorptionTuner } from './CarbAbsorptionTuner';
+import { BasalRateTuner } from './BasalRateTuner';
+import { ActivityImpactTuner } from './ActivityImpactTuner';
+import { ConfirmDialog } from './ConfirmDialog';
+
+type ViewType = 'categories' | 'insulin-response' | 'carb-absorption' | 'basal-tuning' | 'activity-impact';
+type CategoryId = 'insulin-response' | 'carb-absorption' | 'basal-tuning' | 'activity-impact';
 
 interface TuningRun {
     tuning_id: string;
-    category: string;
+    category: CategoryId;
+    categoryLabel: string;
     status: string;
     created_at: string;
-    optimized_values?: any;
+    optimized_values?: Record<string, unknown>;
+}
+
+const CATEGORY_META: Record<CategoryId, { label: string; icon: React.ReactElement; color: string; view: ViewType; filterColor: string }> = {
+    'insulin-response': { label: 'Insulin Response', icon: <Zap size={16} className="text-amber-400" />, color: 'text-amber-400', view: 'insulin-response', filterColor: 'border-amber-500/40 bg-amber-500/10 text-amber-400' },
+    'carb-absorption': { label: 'Carb Absorption', icon: <Flame size={16} className="text-orange-400" />, color: 'text-orange-400', view: 'carb-absorption', filterColor: 'border-orange-500/40 bg-orange-500/10 text-orange-400' },
+    'basal-tuning': { label: 'Basal Rates', icon: <GitBranch size={16} className="text-blue-400" />, color: 'text-blue-400', view: 'basal-tuning', filterColor: 'border-blue-500/40 bg-blue-500/10 text-blue-400' },
+    'activity-impact': { label: 'Activity Impact', icon: <Activity size={16} className="text-emerald-400" />, color: 'text-emerald-400', view: 'activity-impact', filterColor: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400' },
+};
+
+/** Returns a human-friendly relative time string, e.g. "3 hours ago", "Yesterday", "Feb 18" */
+function formatRelativeDate(isoStr: string): { relative: string; absolute: string } {
+    const date = new Date(isoStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60_000);
+    const diffHours = Math.floor(diffMs / 3_600_000);
+    const diffDays = Math.floor(diffMs / 86_400_000);
+
+    let relative: string;
+    if (diffMins < 2) relative = 'Just now';
+    else if (diffMins < 60) relative = `${diffMins}m ago`;
+    else if (diffHours < 24) relative = `${diffHours}h ago`;
+    else if (diffDays === 1) relative = 'Yesterday';
+    else if (diffDays < 7) relative = `${diffDays} days ago`;
+    else relative = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+    const absolute = date.toLocaleString(undefined, {
+        weekday: 'short', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
+
+    return { relative, absolute };
 }
 
 export const TuningDashboard: React.FC = () => {
-    const [view, setView] = useState<'categories' | 'insulin-response' | 'carb-absorption'>('categories');
+    const [view, setView] = useState<ViewType>('categories');
     const [history, setHistory] = useState<TuningRun[]>([]);
     const [loading, setLoading] = useState(true);
-    const [mismatchDetected, setMismatchDetected] = useState(false);
+    const [mismatchDetected] = useState(false);
+    const [selectedTuningId, setSelectedTuningId] = useState<string | undefined>(undefined);
+    const [historyFilter, setHistoryFilter] = useState<CategoryId | 'all'>('all');
+    const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; target: CategoryId | 'all' }>({ open: false, target: 'all' });
+    const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
         fetchHistory();
@@ -36,11 +81,37 @@ export const TuningDashboard: React.FC = () => {
     const fetchHistory = async () => {
         try {
             setLoading(true);
-            const res = await fetch('/api/profile/tune-insulin-response');
-            if (res.ok) {
-                const data = await res.json();
-                setHistory(data.history || []);
-            }
+            const endpoints: Array<{ url: string; category: CategoryId; label: string }> = [
+                { url: '/api/profile/tune-insulin-response', category: 'insulin-response', label: 'Insulin Response' },
+                { url: '/api/profile/tune-carb-absorption', category: 'carb-absorption', label: 'Carb Absorption' },
+                { url: '/api/profile/tune-basal-rate', category: 'basal-tuning', label: 'Basal Rates' },
+                { url: '/api/profile/tune-activity-impact', category: 'activity-impact', label: 'Activity Impact' },
+            ];
+
+            const results = await Promise.allSettled(
+                endpoints.map(e => fetch(e.url).then(r => r.ok ? r.json() : { history: [] }))
+            );
+
+            const combined: TuningRun[] = [];
+            results.forEach((result, i) => {
+                if (result.status === 'fulfilled') {
+                    const runs = (result.value.history || []) as Record<string, unknown>[];
+                    runs.forEach(run => {
+                        combined.push({
+                            tuning_id: run.tuning_id as string,
+                            category: endpoints[i].category,
+                            categoryLabel: endpoints[i].label,
+                            status: run.status as string,
+                            created_at: run.created_at as string,
+                            optimized_values: run.optimized_values as Record<string, unknown> | undefined,
+                        });
+                    });
+                }
+            });
+
+            // Sort descending by date (newest first)
+            combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+            setHistory(combined);
         } catch (err) {
             console.error('Failed to fetch tuning history:', err);
         } finally {
@@ -48,14 +119,63 @@ export const TuningDashboard: React.FC = () => {
         }
     };
 
+    const CATEGORY_ENDPOINTS: Record<CategoryId, string> = {
+        'insulin-response': '/api/profile/tune-insulin-response',
+        'carb-absorption': '/api/profile/tune-carb-absorption',
+        'basal-tuning': '/api/profile/tune-basal-rate',
+        'activity-impact': '/api/profile/tune-activity-impact',
+    };
+
+    const handleDeleteAll = async () => {
+        setIsDeleting(true);
+        try {
+            const target = confirmDelete.target;
+            if (target === 'all') {
+                await Promise.allSettled(
+                    Object.values(CATEGORY_ENDPOINTS).map(url => fetch(url, { method: 'DELETE' }))
+                );
+            } else {
+                await fetch(CATEGORY_ENDPOINTS[target], { method: 'DELETE' });
+            }
+            await fetchHistory();
+            if (target !== 'all') setHistoryFilter('all');
+        } catch (err) {
+            console.error('Delete failed:', err);
+        } finally {
+            setIsDeleting(false);
+            setConfirmDelete({ open: false, target: 'all' });
+        }
+    };
+
+    const handleBack = () => {
+        setView('categories');
+        setSelectedTuningId(undefined);
+        fetchHistory();
+    };
+
+    const handleHistoryClick = (run: TuningRun) => {
+        setSelectedTuningId(run.tuning_id);
+        setView(run.category);
+    };
+
+    // Per-category last-optimized dates derived from combined history
+    const lastOptimizedOf = (cat: CategoryId) => {
+        const run = history.find(h => h.category === cat && (h.status === 'completed' || h.status === 'applied'));
+        return run ? new Date(run.created_at).toLocaleDateString() : undefined;
+    };
+
+    const filteredHistory = historyFilter === 'all'
+        ? history
+        : history.filter(r => r.category === historyFilter);
+
     const categories: ({
-        id: string;
+        id: CategoryId;
         title: string;
         description: string;
         icon: React.ReactElement;
         status: 'optimized' | 'needs_update' | 'locked';
         colorClass: string;
-        improvement?: string;
+        parameters: string[];
         lastOptimized?: string;
     })[] = [
             {
@@ -63,70 +183,45 @@ export const TuningDashboard: React.FC = () => {
                 title: 'Insulin Response',
                 description: 'Optimize DIA, Peak Time, and ISF based on your actual glucose response to insulin.',
                 icon: <Zap className="text-amber-400" />,
-                status: (history.length > 0 ? 'optimized' : 'needs_update') as 'optimized' | 'needs_update',
+                status: lastOptimizedOf('insulin-response') ? 'optimized' : 'needs_update',
                 colorClass: 'bg-amber-500',
-                improvement: history.length > 0 ? '12% precision increase' : undefined,
-                lastOptimized: history.length > 0 ? new Date(history[0].created_at).toLocaleDateString() : undefined
+                parameters: ['DIA', 'Peak Time', 'ISF ×6'],
+                lastOptimized: lastOptimizedOf('insulin-response'),
             },
             {
                 id: 'carb-absorption',
                 title: 'Carb Absorption',
                 description: 'Tune your Carb Ratios (ICR) and absorption profiles for different times of day.',
                 icon: <Flame className="text-orange-500" />,
-                status: (history.some(h => h.category === 'carb-absorption') ? 'optimized' : 'needs_update') as 'optimized' | 'needs_update',
-                colorClass: 'bg-orange-500'
+                status: lastOptimizedOf('carb-absorption') ? 'optimized' : 'needs_update',
+                colorClass: 'bg-orange-500',
+                parameters: ['ICR ×6', 'Absorption Rate'],
+                lastOptimized: lastOptimizedOf('carb-absorption'),
             },
             {
                 id: 'basal-tuning',
                 title: 'Basal Rates',
                 description: 'Analyze fasting periods to find the perfect basal rates for a flat glucose profile.',
                 icon: <GitBranch className="text-blue-500" />,
-                status: 'locked' as const,
-                colorClass: 'bg-blue-500'
+                status: lastOptimizedOf('basal-tuning') ? 'optimized' : 'needs_update',
+                colorClass: 'bg-blue-500',
+                parameters: ['Basal Rate ×12'],
+                lastOptimized: lastOptimizedOf('basal-tuning'),
             },
             {
                 id: 'activity-impact',
                 title: 'Activity Impact',
                 description: 'Calibrate how exercise and steps affect your insulin sensitivity in real-time.',
                 icon: <Timer className="text-emerald-500" />,
-                status: 'locked' as const,
-                colorClass: 'bg-emerald-500'
-            }
+                status: lastOptimizedOf('activity-impact') ? 'optimized' : 'needs_update',
+                colorClass: 'bg-emerald-500',
+                parameters: ['Step Pace', 'HR Spike', 'Stress HR', 'Calories', 'Stairs'],
+                lastOptimized: lastOptimizedOf('activity-impact'),
+            },
         ];
 
     const renderCategories = () => (
         <>
-            {/* Hero Section */}
-            <div className="relative overflow-hidden rounded-3xl bg-zinc-900 border border-zinc-800 p-8 md:p-12 mb-12">
-                <div className="absolute right-0 top-0 h-full w-1/3 bg-gradient-to-l from-emerald-500/10 to-transparent blur-3xl pointer-events-none" />
-
-                <div className="relative z-10 max-w-2xl">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest mb-6">
-                        <CheckCircle2 size={12} />
-                        AI-Powered Optimization
-                    </div>
-
-                    <h1 className="text-4xl md:text-5xl font-black text-white mb-6 leading-tight">
-                        Perfecting your <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200">Diabetes Profile</span>
-                    </h1>
-
-                    <p className="text-zinc-400 text-lg leading-relaxed mb-8">
-                        Freddy analyzes thousands of data points from your continuous glucose monitor and insulin pump to find the optimal settings for your body.
-                    </p>
-
-                    <div className="flex flex-wrap gap-4">
-                        <div className="flex items-center gap-3 bg-zinc-800/50 backdrop-blur px-4 py-3 rounded-2xl border border-zinc-700">
-                            <span className="text-2xl font-bold text-white">1.2k</span>
-                            <span className="text-xs text-zinc-500 uppercase font-bold tracking-tighter leading-none">Windows<br />Analyzed</span>
-                        </div>
-                        <div className="flex items-center gap-3 bg-zinc-800/50 backdrop-blur px-4 py-3 rounded-2xl border border-zinc-700">
-                            <span className="text-2xl font-bold text-emerald-400">94%</span>
-                            <span className="text-xs text-zinc-500 uppercase font-bold tracking-tighter leading-none">Model<br />Accuracy</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             {mismatchDetected && (
                 <DeprecationBanner
                     type="mismatch"
@@ -149,74 +244,159 @@ export const TuningDashboard: React.FC = () => {
                         <TuningCategoryCard
                             key={cat.id}
                             {...cat}
-                            onClick={() => {
-                                if (cat.id === 'insulin-response') {
-                                    setView('insulin-response');
-                                } else if (cat.id === 'carb-absorption') {
-                                    setView('carb-absorption');
-                                }
-                            }}
+                            onClick={() => setView(cat.id)}
                         />
                     ))}
                 </div>
             </section>
 
-            {/* Recent History */}
-            {history.length > 0 && (
-                <section className="pt-8">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                            <History className="text-zinc-500" size={24} />
-                            Optimization History
-                        </h2>
+            {/* Optimization History */}
+            <section className="pt-8">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                        <History className="text-zinc-500" size={22} />
+                        Optimization History
+                        {history.length > 0 && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">
+                                {filteredHistory.length}{historyFilter !== 'all' ? ` of ${history.length}` : ''}
+                            </span>
+                        )}
+                    </h2>
+                    <div className="flex items-center gap-3">
+                        {history.length > 0 && (
+                            <button
+                                onClick={() => setConfirmDelete({ open: true, target: historyFilter })}
+                                disabled={isDeleting}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/5 border border-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/15 hover:border-red-500/40 transition-all disabled:opacity-40"
+                            >
+                                <Trash2 size={13} />
+                                {historyFilter === 'all' ? 'Delete All' : `Delete ${CATEGORY_META[historyFilter]?.label}`}
+                            </button>
+                        )}
+                        {loading && (
+                            <span className="text-xs text-zinc-600 animate-pulse uppercase tracking-widest font-bold">Loading...</span>
+                        )}
                     </div>
+                </div>
 
+                {/* Filter chips */}
+                {history.length > 0 && (
+                    <div className="flex items-center gap-2 mb-4 flex-wrap">
+                        <div className="flex items-center gap-1.5 text-zinc-500 mr-1">
+                            <Filter size={13} />
+                            <span className="text-[10px] font-bold uppercase tracking-widest">Filter</span>
+                        </div>
+                        <button
+                            onClick={() => setHistoryFilter('all')}
+                            className={`px-3 py-1 rounded-full border text-[11px] font-bold uppercase tracking-wider transition-all ${historyFilter === 'all'
+                                ? 'bg-white/10 border-white/20 text-white'
+                                : 'border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-400'
+                                }`}
+                        >
+                            All
+                        </button>
+                        {(Object.entries(CATEGORY_META) as [CategoryId, typeof CATEGORY_META[CategoryId]][]).map(([id, meta]) => {
+                            const count = history.filter(h => h.category === id).length;
+                            if (count === 0) return null;
+                            return (
+                                <button
+                                    key={id}
+                                    onClick={() => setHistoryFilter(historyFilter === id ? 'all' : id)}
+                                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-bold uppercase tracking-wider transition-all ${historyFilter === id
+                                        ? meta.filterColor
+                                        : 'border-zinc-700 text-zinc-500 hover:border-zinc-600 hover:text-zinc-400'
+                                        }`}
+                                >
+                                    {meta.icon}
+                                    {meta.label}
+                                    <span className="ml-0.5 text-[10px] opacity-60">{count}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {filteredHistory.length > 0 ? (
                     <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden divide-y divide-zinc-800">
-                        {history.slice(0, 5).map((run) => (
-                            <div key={run.tuning_id} className="p-4 hover:bg-zinc-800/30 transition-colors flex items-center justify-between group">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500">
-                                        <Zap size={18} />
+                        {filteredHistory.map((run) => {
+                            const meta = CATEGORY_META[run.category];
+                            const rSquared = (run.optimized_values as any)?.r_squared;
+                            const { relative, absolute } = formatRelativeDate(run.created_at);
+                            return (
+                                <div
+                                    key={run.tuning_id}
+                                    onClick={() => handleHistoryClick(run)}
+                                    className="p-4 hover:bg-zinc-800/50 transition-colors flex items-center justify-between group cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
+                                            {meta?.icon}
+                                        </div>
+                                        <div>
+                                            <div className="text-sm font-bold text-white">{meta?.label ?? run.categoryLabel} Optimization</div>
+                                            <div className="text-xs text-zinc-500" title={absolute}>{relative}</div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div className="text-sm font-bold text-white">{run.category} Optimization</div>
-                                        <div className="text-xs text-zinc-500">{new Date(run.created_at).toLocaleString()}</div>
-                                    </div>
-                                </div>
 
-                                <div className="flex items-center gap-6">
-                                    <div className="hidden sm:block text-right">
-                                        <div className="text-xs font-bold text-zinc-400">R² = {run.optimized_values?.r_squared?.toFixed(3) || '0.000'}</div>
-                                        <div className="text-[10px] text-zinc-600 uppercase tracking-tighter">Model Fit</div>
+                                    <div className="flex items-center gap-4">
+                                        {rSquared != null && (
+                                            <div className="hidden sm:block text-right">
+                                                <div className="text-xs font-bold text-zinc-400">R² = {(rSquared as number).toFixed(3)}</div>
+                                                <div className="text-[10px] text-zinc-600 uppercase tracking-tighter">Model Fit</div>
+                                            </div>
+                                        )}
+                                        <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${run.status === 'completed' ? 'bg-emerald-500/10 text-emerald-500'
+                                            : run.status === 'applied' ? 'bg-blue-500/10 text-blue-400'
+                                                : 'bg-red-500/10 text-red-500'
+                                            }`}>
+                                            {run.status}
+                                        </div>
+                                        <ChevronRight className="text-zinc-700 group-hover:text-white group-hover:translate-x-0.5 transition-all" size={18} />
                                     </div>
-                                    <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${run.status === 'completed' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
-                                        }`}>
-                                        {run.status}
-                                    </div>
-                                    <ChevronRight className="text-zinc-700 group-hover:text-white transition-colors" size={20} />
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
-                </section>
-            )}
+                ) : !loading ? (
+                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-10 text-center text-zinc-600 text-sm">
+                        {historyFilter === 'all'
+                            ? 'No optimization runs yet. Start with any category above.'
+                            : `No ${CATEGORY_META[historyFilter]?.label} runs yet.`
+                        }
+                    </div>
+                ) : null}
+            </section>
         </>
     );
 
+
     return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {view === 'categories' ? renderCategories() :
-                view === 'insulin-response' ? (
-                    <InsulinResponseTuner onBack={() => {
-                        setView('categories');
-                        fetchHistory();
-                    }} />
-                ) : (
-                    <CarbAbsorptionTuner onBack={() => {
-                        setView('categories');
-                        fetchHistory();
-                    }} />
-                )}
-        </div>
+        <>
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                {view === 'categories' ? renderCategories() :
+                    view === 'insulin-response' ? (
+                        <InsulinResponseTuner onBack={handleBack} initialTuningId={selectedTuningId} />
+                    ) : view === 'carb-absorption' ? (
+                        <CarbAbsorptionTuner onBack={handleBack} initialTuningId={selectedTuningId} />
+                    ) : view === 'basal-tuning' ? (
+                        <BasalRateTuner onBack={handleBack} initialTuningId={selectedTuningId} />
+                    ) : (
+                        <ActivityImpactTuner onBack={handleBack} initialTuningId={selectedTuningId} />
+                    )}
+            </div>
+
+            <ConfirmDialog
+                open={confirmDelete.open}
+                title="Delete Optimization History"
+                message={
+                    confirmDelete.target === 'all'
+                        ? `This will permanently delete all ${history.length} optimization runs across every category. This cannot be undone.`
+                        : `This will permanently delete all ${CATEGORY_META[confirmDelete.target as CategoryId]?.label ?? ''} optimization runs. This cannot be undone.`
+                }
+                confirmLabel={isDeleting ? 'Deleting…' : 'Delete'}
+                onConfirm={handleDeleteAll}
+                onCancel={() => setConfirmDelete({ open: false, target: 'all' })}
+            />
+        </>
     );
 };

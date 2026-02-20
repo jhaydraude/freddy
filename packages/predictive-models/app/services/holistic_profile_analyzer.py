@@ -6,11 +6,13 @@ Estimates ISF, ICR, and Basal rates simultaneously.
 import numpy as np
 from scipy.optimize import minimize, Bounds
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class TimeWindow(BaseModel):
     """Single time window for analysis"""
+    model_config = ConfigDict(extra='allow')  # Allow activity_impact_components and other TS extras
+    
     start: str
     end: str
     duration_hours: float
@@ -43,6 +45,7 @@ class TimeWindow(BaseModel):
     has_corrections: bool
     
     data_quality: Dict[str, Any]
+    isolation_confidence: float = 1.0
 
 
 class ProfileAnalysisResult(BaseModel):

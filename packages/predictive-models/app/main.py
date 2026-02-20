@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import train, predict, glucose, profile, profile_estimation, profile_analysis, situation, insulin_response_tuning, carb_absorption_tuning
+from app.routers import train, predict, glucose, profile, profile_estimation, profile_analysis, situation, insulin_response_tuning, carb_absorption_tuning, activity_tuning, basal_tuning
 from app.utils.logging import setup_logging
 
 # Setup logging
@@ -39,7 +39,8 @@ app.include_router(profile_analysis.router, prefix="/api/v1", tags=["profile-ana
 app.include_router(situation.router, prefix="/api/v1", tags=["situation"])
 app.include_router(insulin_response_tuning.router, prefix="/api/v1", tags=["insulin-response-tuning"])
 app.include_router(carb_absorption_tuning.router, prefix="/api/v1", tags=["carb-absorption-tuning"])
-
+app.include_router(activity_tuning.router, prefix="/api/v1", tags=["activity-impact-tuning"])
+app.include_router(basal_tuning.router, prefix="/api/v1", tags=["basal-rate-tuning"])
 
 @app.get("/")
 async def root():

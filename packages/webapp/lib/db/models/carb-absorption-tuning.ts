@@ -35,6 +35,7 @@ export interface ICarbAbsorptionTuning extends Document {
     // Optimized Results
     optimized_values?: {
         icr: number[];
+        ci_per_block: number[];            // Primary fitted value: mg/dL per gram, per block
         default_absorption_rate: number;
         min_carb_impact: number;
         s_curve_params: {
@@ -53,6 +54,7 @@ export interface ICarbAbsorptionTuning extends Document {
         rmse: number;
         mae: number;
         meal_windows_analyzed: number;
+        windows_per_block: number[];       // Data density per block
     };
 
     // Analysis Details
@@ -115,6 +117,7 @@ const CarbAbsorptionTuningSchema = new Schema<ICarbAbsorptionTuning>({
     },
     optimized_values: {
         icr: [Number],
+        ci_per_block: [Number],
         default_absorption_rate: Number,
         min_carb_impact: Number,
         s_curve_params: {
@@ -128,7 +131,8 @@ const CarbAbsorptionTuningSchema = new Schema<ICarbAbsorptionTuning>({
         r_squared: Number,
         rmse: Number,
         mae: Number,
-        meal_windows_analyzed: Number
+        meal_windows_analyzed: Number,
+        windows_per_block: [Number]
     },
     analysis_summary: {
         total_meal_events: Number,

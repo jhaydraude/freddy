@@ -9,6 +9,7 @@ router = APIRouter()
 class CarbTuningRequest(BaseModel):
     windows: List[TimeWindow]
     current_icr: Optional[List[float]] = None
+    current_isf: Optional[List[float]] = None  # 6 four-hour block ISF values from profile
     current_absorption_rate: float = 30.0
     current_min_carb_impact: float = 8.0
     optimize_icr: bool = True
@@ -18,6 +19,7 @@ class CarbTuningRequest(BaseModel):
 class CarbTuningResponse(BaseModel):
     # Optimized parameters
     icr: List[float]
+    ci_per_block: List[float]           # Primary fitted value: Carb Impact per gram per block
     absorption_rate: float
     min_carb_impact: float
     s_curve_params: Dict[str, float]
@@ -32,6 +34,7 @@ class CarbTuningResponse(BaseModel):
     rmse: float
     mae: float
     meal_windows_analyzed: int
+    windows_per_block: List[int]        # Data density per ICR block
     
     # Analysis summary
     total_meal_events: int
@@ -50,6 +53,7 @@ async def tune_carb_absorption(request: CarbTuningRequest):
         result = optimizer.analyze_carb_absorption(
             windows=request.windows,
             current_icr=request.current_icr,
+            current_isf=request.current_isf,
             current_absorption_rate=request.current_absorption_rate,
             current_min_carb_impact=request.current_min_carb_impact,
             optimize_icr=request.optimize_icr,

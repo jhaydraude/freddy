@@ -1,4 +1,4 @@
-import { Treatment, DeviceStatus } from '../db/models';
+import { Treatment, DeviceStatus, SystemConfig } from '../db/models';
 import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic';
 import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve } from './iob-curves';
 import { getBasalIOB, createBasalCurvesForTimeseries } from './iob-basal';
@@ -25,6 +25,8 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
     let autosensRatio = 1.0;
 
     // 1. Get Autosens Ratio from latest DeviceStatus (relative to requested time)
+    // Note: Future versions will calculate this locally to exclude activity impact, 
+    // rather than relying on AAPS's devicestatus.
     const statusDoc = await DeviceStatus.findOne({
         "openaps.suggested.sensitivityRatio": { $exists: true },
         "created_at": { $lte: endWindow.toISOString() }
@@ -33,6 +35,10 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
     if (statusDoc?.openaps?.suggested?.sensitivityRatio) {
         autosensRatio = statusDoc.openaps.suggested.sensitivityRatio;
     }
+
+    // Get SMB testing threshold from System Config (defaults to 0.7)
+    const sysConfigDoc = await SystemConfig.findOne({ key: 'smb_threshold' }).lean();
+    const smbThreshold = sysConfigDoc?.value !== undefined ? Number(sysConfigDoc.value) : 0.7;
 
     if (!profileInfo) {
         return {
@@ -93,8 +99,8 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
         if (iobNow > 0) {
             bolusCount++;
 
-            // Check for SMB (heuristic: < 0.7U)
-            if (insulin < 0.7) {
+            // Check for SMB using user-defined threshold
+            if (insulin <= smbThreshold) {
                 smbIOB += iobNow;
                 smbCount++;
             }
@@ -188,7 +194,7 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
         const totalIntervals = numIntervalsPast + numIntervalsFuture;
 
         // Build array from oldest (past) to newest (future)
-        let previousTotalIOB = 0;
+        const previousTotalIOB = 0;
         for (let arrayIdx = 0; arrayIdx < totalIntervals; arrayIdx++) {
             // Convert arrayIdx to time offset from "now"
             const offsetFromNow = arrayIdx - nowIndex;
@@ -292,8 +298,8 @@ export async function calculateInsulinActivityRate(
     });
 
     // Calculate IOB at now and now+5min for each bolus
-    let iobNow = 0;
-    let iobFuture = 0;
+    const iobNow = 0;
+    const iobFuture = 0;
 
     // Simplified: Calculate analytic activity at exactly "now"
     let totalActivity = 0;

@@ -34,6 +34,7 @@ async function main() {
         console.log(`    - Calories: ${tf.components.activity.calories} mg/dL`);
         console.log(`    - Stairs: ${tf.components.activity.stairs} mg/dL`);
         console.log(`    - Heart Rate: ${tf.components.activity.heartRate} mg/dL`);
+        console.log(`    - Stress HR: ${tf.components.activity.stressHeartRate ?? 'N/A'} mg/dL`);
         console.log(`    - Intensity: ${tf.components.activity.intensity}`);
         console.log(`    - Data Available: ${tf.components.activity.dataAvailable}`);
         console.log(`  Unexplained: ${tf.components.unexplained} mg/dL`);

@@ -50,6 +50,9 @@ export interface ISystemConfig extends Document {
         };
     };
 
+    // Profile Settings
+    smb_threshold?: number;
+
     // Metadata
     version: number;
     notes?: string;
@@ -111,6 +114,10 @@ const SystemConfigSchema = new Schema<ISystemConfig>({
         type: Number,
         required: true,
         default: 1
+    },
+    smb_threshold: {
+        type: Number,
+        default: 0.7
     },
     notes: String
 }, {
