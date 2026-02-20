@@ -35,6 +35,7 @@ export interface IEntry extends Document {
     steps?: number;
     identifier?: string;
     app?: string;
+    stale?: boolean;  // Flagged by stale HR detection — excluded from calculations
 }
 
 const EntrySchema = new Schema({
@@ -48,7 +49,8 @@ const EntrySchema = new Schema({
     heartrate: { type: Number },
     steps: { type: Number },
     identifier: { type: String, index: true },
-    app: { type: String }
+    app: { type: String },
+    stale: { type: Boolean }
 }, { collection: 'entries', strict: false });
 
 export const Entry = getModel<IEntry>('Entry', EntrySchema, getNightscoutConn, 'entries');
@@ -107,6 +109,8 @@ export interface IProfileStore {
         calories: number;
         stairs: number;
         hr_spike: number;
+        stress_hr: number;               // mg/dL per elevated HR without steps
+        post_meal_multiplier: number;    // multiplier for post-prandial exercise
     };
 }
 

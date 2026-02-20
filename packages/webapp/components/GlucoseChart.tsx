@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import {
     ComposedChart,
     Line,
@@ -44,6 +45,54 @@ interface GlucoseChartProps {
 }
 
 export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain, targetLow = 70, targetHigh = 180, units = 'mg/dL' }: GlucoseChartProps) {
+    const [hoverData, setHoverData] = useState<any>(null);
+
+    // Invisible tooltip that captures data for the header bar
+    const DataCapture = useCallback(({ active, payload }: any) => {
+        if (active && payload && payload.length) {
+            const point = payload[0].payload;
+            setTimeout(() => setHoverData(point), 0);
+        } else {
+            setTimeout(() => setHoverData(null), 0);
+        }
+        return null;
+    }, []);
+
+    // Custom legend renderer that appends hover values inline
+    const renderLegend = useCallback((props: any) => {
+        const { payload } = props;
+        if (!payload) return null;
+
+        // Map dataKey -> hover value
+        const valueMap: Record<string, string> = {};
+        if (hoverData) {
+            if (hoverData.sgv != null) valueMap['sgv'] = typeof hoverData.sgv === 'number' ? hoverData.sgv.toFixed(units === 'mmol/L' ? 1 : 0) : '';
+            if (hoverData.iob != null) valueMap['iob'] = hoverData.iob.toFixed(2);
+            if (hoverData.cob != null) valueMap['cob'] = hoverData.cob.toFixed(0) + 'g';
+            if (hoverData.activeBasal != null) valueMap['activeBasal'] = hoverData.activeBasal.toFixed(2);
+            if (hoverData.basal != null) valueMap['basal'] = hoverData.basal.toFixed(2);
+        }
+
+        return (
+            <div className="flex items-center justify-center gap-4 text-[11px]">
+                {hoverData && (
+                    <span className="text-zinc-500 font-mono text-xs mr-1">
+                        {format(new Date(hoverData.timestamp), 'HH:mm')}
+                    </span>
+                )}
+                {payload.map((entry: any, index: number) => {
+                    const val = valueMap[entry.dataKey];
+                    return (
+                        <span key={index} className="flex items-center gap-1" style={{ color: entry.color }}>
+                            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: entry.color }}></span>
+                            <span className="text-zinc-400">{entry.value}</span>
+                            {val && <span className="font-mono font-bold" style={{ color: entry.color }}>({val})</span>}
+                        </span>
+                    );
+                })}
+            </div>
+        );
+    }, [hoverData, units]);
 
     // Helper to detect if data is in mg/dL based on values
     // If values are generally > 30, it is likely mg/dL
@@ -56,8 +105,6 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
         : data;
 
     // Filter data to match the visible time domain for accurate gradient calculation
-    // The SVG gradient is applied to the rendered path's bounding box, which corresponds
-    // to the visible data range, not the full dataset.
     const visibleData = timeDomain
         ? chartData.filter(d => d.timestamp >= timeDomain[0] && d.timestamp <= timeDomain[1])
         : chartData;
@@ -65,57 +112,30 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
     // Calculate gradient offsets based on VISIBLE data
     const glucoseValues = visibleData.map(d => d.sgv).filter(v => v != null);
 
-    // For gradient usage, we need the min/max of the ACTUAL DATA visible on the chart
-    // because the linearGradient with objectBoundingBox is applied to the path's bounding box.
     const dataMax = Math.max(...glucoseValues);
     const dataMin = Math.min(...glucoseValues);
 
-    // Calculate Insulin and COB domains for Y=0 alignment
-    const insulinValues = visibleData.flatMap(d => [d.iob, d.basal, d.activeBasal].filter(v => v != null));
+    // Calculate separate maxes for IOB and Basal
+    const iobValues = visibleData.map(d => d.iob).filter(v => v != null);
+    const basalValues = visibleData.flatMap(d => [d.basal, d.activeBasal].filter(v => v != null));
     const cobValues = visibleData.map(d => d.cob).filter(v => v != null);
 
-    const insulinMax = Math.max(...insulinValues, 0);
-    const insulinMin = Math.min(...insulinValues, 0); // Allow negative IOB if present
+    const iobMax = Math.max(...iobValues, 1);
+    const basalMax = Math.max(...basalValues, 0.1);
     const cobMaxData = Math.max(...cobValues, 0);
-
-    // Standard headroom
     const cobMax = cobMaxData > 0 ? cobMaxData * 1.1 : 100;
 
-    // Align Zero Lines:
-    // We want the ratio (0 - min) / (max - min) to be identical for both axes.
-    // insulinRatio = -insulinMin / (insulinMax - insulinMin)
-    // cobRatio = -cobMin / (cobMax - cobMin)
-    // Solve for cobMin: cobMin = - (cobMax * insulinRatio) / (1 - insulinRatio)
-    // Simpler: cobMin = (insulinMin / insulinMax) * cobMax  (if purely proportional)
-    // Actually: 0 position percent P = 1 - (0 - min)/(max - min) = 1 + min/(max-min).
-    // Let's just equate the ratios of "negative range" to "positive range".
-    // |min| / max  should be same?
-    // Let's calculate the required cobMin to match insulin's zero placement.
+    const axisMax = Math.max(dataMax, targetHigh);
+    const yMax = axisMax > 0 ? axisMax * 1.1 : (units === 'mmol/L' ? 22 : 400);
 
-    let cobDomain = [0, 'auto'];
-    let insulinDomain = [insulinMin, insulinMax * 1.1]; // Add headroom
+    // Squash Basal below benchmark (4mmol/L or 72mg/dL)
+    const benchmark = units === 'mmol/L' ? 4 : 72;
+    const targetBasalMax = (basalMax * yMax) / (benchmark * 0.8);
+    const finalBasalMax = Math.max(targetBasalMax, basalMax * 1.1, 1);
 
-    if (insulinMin < 0 && insulinMax > 0) {
-        // Insulin spans zero.
-        const insulinRange = insulinMax - insulinMin;
-        const zeroRatio = -insulinMin / insulinRange; // % height from bottom for 0 line
-
-        // We want COB 0 to be at zeroRatio too.
-        // COB Max is fixed (with headroom). We need to find cobMin.
-        // -cobMin / (cobMax - cobMin) = zeroRatio
-        // -cobMin = zeroRatio * cobMax - zeroRatio * cobMin
-        // cobMin * (zeroRatio - 1) = zeroRatio * cobMax
-        // cobMin = (zeroRatio * cobMax) / (zeroRatio - 1)
-
-        const calculatedCobMin = (zeroRatio * cobMax) / (zeroRatio - 1);
-        cobDomain = [calculatedCobMin, cobMax];
-    } else if (insulinMin >= 0) {
-        // Insulin is all positive. Base is 0.
-        // COB is usually all positive. Base is 0.
-        // Natural alignment at bottom.
-        cobDomain = [0, cobMax];
-        insulinDomain = [0, insulinMax * 1.1];
-    }
+    const iobDomain = [0, iobMax * 1.1];
+    const basalDomain = [0, finalBasalMax];
+    const cobDomain = [0, cobMax];
 
 
     const calculateOffset = (target: number) => {
@@ -127,31 +147,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
     const offsetHigh = calculateOffset(targetHigh);
     const offsetLow = calculateOffset(targetLow);
 
-    // For axis scaling (headroom), we still use the previous logic
-    const axisMax = Math.max(dataMax, targetHigh);
-    const yMax = axisMax > 0 ? axisMax * 1.1 : (units === 'mmol/L' ? 22 : 400);
 
-    // Simple, standard Recharts tooltip
-    const CustomTooltip = ({ active, payload, label }: any) => {
-        if (active && payload && payload.length) {
-            const dateStr = label ? format(new Date(label), 'HH:mm') : '--:--';
-            return (
-                <div className="bg-zinc-900 border border-zinc-700 p-2 rounded shadow-lg text-xs text-zinc-300">
-                    <p className="font-bold mb-1 border-b border-zinc-800 pb-1">{dateStr}</p>
-                    <div className="space-y-1">
-                        {payload.map((p: any) => (
-                            <div key={p.name} className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }}></span>
-                                <span className="font-medium">{p.name}:</span>
-                                <span className="text-white">{Number(p.value).toFixed(1)}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
-        }
-        return null;
-    };
 
 
     if (isLoading && data.length === 0) {
@@ -162,13 +158,18 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
         );
     }
 
+
     return (
         <div className="w-full h-[350px] bg-zinc-900/40 rounded-xl border border-zinc-800/50 p-4">
             <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
                     data={chartData}
-                    // Using standard chart layout margins for consistency, but keeping it simple
-                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                    margin={{
+                        top: 5,
+                        right: 60, // 60 (margin/gutter) + 30 (iob) + 30 (cob) = 120px total
+                        left: 20,  // 20 (margin) + 40 (axis) = 60px total
+                        bottom: 0
+                    }}
                 >
                     <defs>
                         <linearGradient id="splitColor" x1="0" y1="0" x2="0" y2="1">
@@ -183,14 +184,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
                     <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
 
                     <XAxis
-                        dataKey="timestamp"
-                        type="number"
-                        domain={timeDomain || ['auto', 'auto']}
-                        tickFormatter={(t) => format(new Date(t), 'HH:mm')}
-                        stroke="#71717a"
-                        tick={{ fontSize: 11 }}
-                        scale="time"
-                        allowDataOverflow
+                        {...CHART_LAYOUT.getXAxisProps(timeDomain)}
                     />
 
                     {/* Left Axis: Glucose */}
@@ -207,12 +201,23 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
 
                     {/* Right Axes */}
                     <YAxis
-                        yAxisId="insulin"
+                        yAxisId="iob"
                         orientation="right"
                         stroke="#3b82f6"
-                        domain={insulinDomain}
+                        domain={iobDomain}
                         tick={{ fontSize: 10 }}
+                        tickFormatter={(v) => v.toFixed(1)}
                         width={30}
+                        axisLine={false}
+                        tickLine={false}
+                    />
+                    <YAxis
+                        yAxisId="basal"
+                        orientation="right"
+                        stroke="#0ea5e9"
+                        domain={basalDomain}
+                        tick={false}
+                        width={0}
                         axisLine={false}
                         tickLine={false}
                     />
@@ -222,13 +227,17 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
                         stroke="#f97316"
                         domain={cobDomain}
                         tick={{ fontSize: 10 }}
+                        tickFormatter={(v) => v.toFixed(0)}
                         width={30}
                         axisLine={false}
                         tickLine={false}
                     />
 
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                    <Tooltip
+                        content={<DataCapture />}
+                        cursor={{ stroke: '#52525b', strokeWidth: 1 }}
+                    />
+                    <Legend content={renderLegend} verticalAlign="top" height={36} />
 
                     {/* Target Range Band */}
                     <ReferenceArea
@@ -242,7 +251,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
                     {/* Active Basal (Deep Layer) */}
                     {visibleLines.basal && (
                         <Area
-                            yAxisId="insulin"
+                            yAxisId="basal"
                             type="stepAfter"
                             dataKey="activeBasal"
                             name="Actual Basal"
@@ -258,7 +267,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
 
                     {visibleLines.basal && (
                         <Line
-                            yAxisId="insulin"
+                            yAxisId="basal"
                             type="stepAfter"
                             dataKey="basal"
                             name="Scheduled Basal"
@@ -287,7 +296,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
 
                     {visibleLines.iob && (
                         <Line
-                            yAxisId="insulin"
+                            yAxisId="iob"
                             type="monotone"
                             dataKey="iob"
                             name="IOB"

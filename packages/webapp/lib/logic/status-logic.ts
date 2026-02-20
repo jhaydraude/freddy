@@ -5,6 +5,7 @@ import { getIOB } from './iob-logic';
 import { getCOB } from './cob-logic';
 import { getActivityHistory } from './activity-logic';
 import { calculateActivityImpact } from './activity-impact';
+import { getBaseline } from './baseline-logic';
 import { attributeGlucoseChange } from './attribution-logic';
 import { IGlucoseResult, IStatusResult, IIOBResult, ICOBResult, IAttributionResult } from './types';
 
@@ -251,7 +252,7 @@ export async function getStatus(
     const treatmentStart = new Date(dateObj.getTime() - (lookbackMinutes * 60 * 1000)).toISOString();
 
     const activityStart = new Date(dateObj.getTime() - (5 * 60 * 1000));
-    const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange, recentTreatments, activityPoints] = await Promise.all([
+    const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange, recentTreatments, activityPoints, userBaseline] = await Promise.all([
         resolveActiveProfile(ts, bypassCache),
         getCOB(ts, includeTimeseries, bypassCache),
         DeviceStatus.findOne({ created_at: { $lte: ts } }).sort({ created_at: -1 }),
@@ -266,11 +267,12 @@ export async function getStatus(
                 { carbs: { $exists: true, $gt: 0 } }
             ]
         }).sort({ created_at: 1 }).lean(),
-        getActivityHistory(activityStart, dateObj, 5)
+        getActivityHistory(activityStart, dateObj, 5),
+        getBaseline()
     ]);
 
-    // Calculate activity impact
-    const activityImpact = calculateActivityImpact(activityPoints, 5, undefined);
+    // Calculate activity impact with user baseline
+    const activityImpact = calculateActivityImpact(activityPoints, 5, userBaseline);
 
     if (!profileInfo) {
         console.warn("SyncWorker: No profile found during status calculation. Returning partial status.");

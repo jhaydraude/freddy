@@ -1,6 +1,9 @@
 import { SituationTag, Entry, Treatment } from '../db/models';
 import { IStatusResult } from './types';
 import { getStatusHistory } from './history-logic';
+import { detectActivityBouts } from './activity-impact';
+import { getBaseline, calculateHRR, IUserBaseline } from './baseline-logic';
+import { IActivityPoint } from './activity-logic';
 
 export interface ISituationFeatures {
     // === Temporal ===
@@ -32,6 +35,13 @@ export interface ISituationFeatures {
     activity_impact_3h: number;
     activity_impact_6h: number;
     activity_impact_12h: number;
+    activity_impact_24h: number;         // NEW: next-day insulin sensitivity
+
+    // === Enhanced Activity Signals ===
+    days_since_last_exercise: number;    // NEW: regularity/training effect (0-7)
+    exercise_type: number;               // NEW: -1=aerobic, 0=none/mixed, 1=anaerobic
+    elevated_hr_no_steps: number;        // NEW: stress signal (0 or 1)
+    post_meal_exercise: number;          // NEW: 1 if exercising 30-90min post-meal
 
     // === Sensor Health & Data Context ===
     sensor_age_hours: number;
@@ -164,10 +174,11 @@ export class SituationFeatureExtractor {
         const active_insulin_3h = insulinTreatments.reduce((sum, t) => sum + (t.insulin || 0), 0);
         const bolus_count_3h = insulinTreatments.length;
 
-        // Activity (Need to fetch from DB for longer lookback - extended to 12h)
-        const lookbackStart = new Date(windowEnd.getTime() - 12 * 60 * 60 * 1000);
+        // Activity (Need to fetch from DB for longer lookback - extended to 24h)
+        const lookbackStart = new Date(windowEnd.getTime() - 24 * 60 * 60 * 1000);
         const activities = await Entry.find({
             type: 'activity',
+            stale: { $ne: true },
             date: { $gte: lookbackStart.getTime(), $lte: windowEnd.getTime() }
         }).lean();
 
@@ -176,6 +187,66 @@ export class SituationFeatureExtractor {
         const activity_impact_6h = calculateActivityImpact(windowEnd, activities, 6);
         // 12h lookback with longer half-life (6h) to capture extended insulin sensitivity
         const activity_impact_12h = calculateActivityImpact(windowEnd, activities, 12, 2.0, 6.0);
+        // 24h lookback with very long half-life (12h) for next-day effects
+        const activity_impact_24h = calculateActivityImpact(windowEnd, activities, 24, 2.0, 12.0);
+
+        // === Enhanced Activity Signals ===
+        let userBaseline: IUserBaseline | undefined;
+        try {
+            userBaseline = await getBaseline();
+        } catch (e) {
+            // Baseline not available, use defaults
+        }
+
+        // Days since last exercise (find last bout of ≥15 min)
+        const activityPoints: IActivityPoint[] = activities.map((a: any) => ({
+            timestamp: new Date(a.date).toISOString(),
+            steps: a.steps != null ? { count: a.steps } : undefined,
+            heartRate: a.heartrate != null ? { bpm: a.heartrate, bpm_avg: a.heartrate } : undefined
+        }));
+        const bouts = detectActivityBouts(activityPoints, userBaseline);
+        let days_since_last_exercise = 7; // Default: no recent exercise
+        if (bouts.length > 0) {
+            const lastBoutEnd = new Date(bouts[bouts.length - 1].endTime);
+            days_since_last_exercise = Math.min(7, (windowEnd.getTime() - lastBoutEnd.getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        // Exercise type: classify from recent bouts (within 3h)
+        const recentBouts = bouts.filter(b => {
+            const hoursAgo = (windowEnd.getTime() - new Date(b.endTime).getTime()) / (1000 * 60 * 60);
+            return hoursAgo <= 3;
+        });
+        let exercise_type = 0; // 0 = none/mixed
+        if (recentBouts.length > 0) {
+            const aerobicCount = recentBouts.filter(b => b.isAerobic).length;
+            const anaerobicCount = recentBouts.filter(b => b.isAnaerobic).length;
+            if (aerobicCount > anaerobicCount) exercise_type = -1;
+            else if (anaerobicCount > aerobicCount) exercise_type = 1;
+        }
+
+        // Elevated HR without steps (stress signal)
+        // Check the most recent 15 min of data
+        const recentWindow = 15 * 60 * 1000;
+        const recentActivities = activities.filter((a: any) =>
+            windowEnd.getTime() - a.date <= recentWindow
+        );
+        const recentHRRecords = recentActivities.filter((a: any) => a.heartrate != null);
+        const recentStepRecords = recentActivities.filter((a: any) => a.steps != null && a.steps > 0);
+        let elevated_hr_no_steps = 0;
+        if (recentHRRecords.length > 0 && recentStepRecords.length === 0) {
+            // HR is present (device collecting) but no steps — check if HR is elevated
+            const avgRecentHR = recentHRRecords.reduce((sum: number, a: any) => sum + a.heartrate, 0) / recentHRRecords.length;
+            const restingHR = userBaseline?.restingHR || 70;
+            const maxHR = userBaseline?.maxHR || 185;
+            const hrr = calculateHRR(avgRecentHR, restingHR, maxHR);
+            if (hrr > 0.30) elevated_hr_no_steps = 1;
+        }
+
+        // Post-meal exercise: check if there's exercise 30-90 min after last meal
+        let post_meal_exercise = 0;
+        if (recentBouts.length > 0 && minutes_since_last_carbs >= 30 && minutes_since_last_carbs <= 90) {
+            post_meal_exercise = 1;
+        }
 
         // Density Calculations
         const windowSizeMin = 45;
@@ -220,6 +291,11 @@ export class SituationFeatureExtractor {
             activity_impact_3h,
             activity_impact_6h,
             activity_impact_12h,
+            activity_impact_24h,
+            days_since_last_exercise,
+            exercise_type,
+            elevated_hr_no_steps,
+            post_meal_exercise,
             sensor_age_hours: latestStatus.glucose?.sensor.age || 0,
             glucose_density,
             hr_density,

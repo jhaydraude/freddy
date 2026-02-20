@@ -1,6 +1,7 @@
 import { IStatusResult, IAttributionResult, IAttributionTimeframe, IAttributionHistoryPoint } from './types';
 import { getActivityHistory } from './activity-logic';
 import { calculateActivityImpact, DEFAULT_ACTIVITY_COEFFICIENTS, ActivityCoefficients } from './activity-impact';
+import { getBaseline, IUserBaseline } from './baseline-logic';
 
 /**
  * Calculate glucose change attribution for multiple timeframes.
@@ -34,23 +35,37 @@ export async function attributeGlucoseChange(
     // Resolve Activity Coefficients
     let activityCoefficients: ActivityCoefficients = DEFAULT_ACTIVITY_COEFFICIENTS;
     if (currentStatus.profile?.profileData?.activity_coefficients) {
+        const ac = currentStatus.profile.profileData.activity_coefficients;
         activityCoefficients = {
-            STEPS_PER_MINUTE: currentStatus.profile.profileData.activity_coefficients.steps_per_minute,
-            CALORIES: currentStatus.profile.profileData.activity_coefficients.calories,
-            STAIRS: currentStatus.profile.profileData.activity_coefficients.stairs,
-            HR_SPIKE: currentStatus.profile.profileData.activity_coefficients.hr_spike
+            STEPS_PER_MINUTE: ac.steps_per_minute,
+            CALORIES: ac.calories,
+            STAIRS: ac.stairs,
+            HR_SPIKE: ac.hr_spike,
+            STRESS_HR: ac.stress_hr ?? DEFAULT_ACTIVITY_COEFFICIENTS.STRESS_HR,
+            POST_MEAL_MULTIPLIER: ac.post_meal_multiplier ?? DEFAULT_ACTIVITY_COEFFICIENTS.POST_MEAL_MULTIPLIER
         };
     }
 
-    // Fetch activity data for the attribution window
+    // Fetch activity data and user baseline for the attribution window
     const now = new Date(currentStatus.meta?.status_date || new Date());
     const lookback = new Date(now.getTime() - 30 * 60 * 1000); // 30 minutes
     let activityData: any[] = [];
+    let userBaseline: IUserBaseline | undefined;
     try {
-        activityData = await getActivityHistory(lookback, now, 5);
+        [activityData, userBaseline] = await Promise.all([
+            getActivityHistory(lookback, now, 5),
+            getBaseline()
+        ]);
     } catch (error) {
-        console.warn('Failed to fetch activity data for attribution:', error);
+        console.warn('Failed to fetch activity data/baseline for attribution:', error);
     }
+
+    // Determine minutes since last carbs for post-meal exercise multiplier
+    const carbTreatments = currentStatus.treatments?.filter((t: any) => t.carbs && t.carbs > 0) || [];
+    const lastCarbTreatment = carbTreatments.length > 0 ? carbTreatments[carbTreatments.length - 1] : null;
+    const minutesSinceLastCarbs = lastCarbTreatment
+        ? (now.getTime() - new Date(lastCarbTreatment.created_at).getTime()) / (1000 * 60)
+        : null;
 
     for (const minutes of timeframes) {
         // Determine actual glucose change
@@ -111,8 +126,9 @@ export async function attributeGlucoseChange(
         const activityImpactData = calculateActivityImpact(
             activityData.slice(-intervalCount), // Last N intervals
             minutes,
-            undefined,
-            activityCoefficients
+            userBaseline,
+            activityCoefficients,
+            minutesSinceLastCarbs
         );
         const activityImpact = activityImpactData.totalImpact;
 
@@ -149,6 +165,7 @@ export async function attributeGlucoseChange(
                     calories: activityImpactData.components.calories,
                     stairs: activityImpactData.components.stairs,
                     heartRate: activityImpactData.components.heartRate,
+                    stressHeartRate: activityImpactData.components.stressHeartRate,
                     intensity: activityImpactData.intensity,
                     dataAvailable: activityImpactData.dataAvailable
                 },

@@ -51,6 +51,7 @@ export class SyncWorker {
     /**
      * Handle real-time events from Nightscout.
      * We don't save the data, we just invalidate the computed cache.
+     * For activity HR entries, we also detect stale readings in real-time.
      */
     private async handleNSEvent(event: string, data: any) {
         if (!['create', 'update', 'delete'].includes(event)) return;
@@ -58,6 +59,11 @@ export class SyncWorker {
         const { colName, doc } = data;
 
         try {
+            // Real-time stale HR detection for new activity entries
+            if (colName === 'entries' && doc.type === 'activity' && doc.heartrate != null && event === 'create') {
+                await this.checkAndFlagStaleHR(doc);
+            }
+
             // Trigger status re-calculation if it's a recent glucose or treatment event
             if (colName === 'treatments') {
                 const docDate = new Date(doc.created_at || Date.now());
@@ -82,6 +88,56 @@ export class SyncWorker {
             }
         } catch (error) {
             console.error(`SyncWorker: Error handling event:`, error);
+        }
+    }
+
+    /**
+     * Real-time stale HR detection.
+     * When a new HR record arrives, check if it matches the last 2 records.
+     * If all 3 have identical HR values, the newest ones are stale (cached).
+     * 
+     * We preserve the FIRST record in a run (it's a legitimate reading)
+     * and only flag the duplicates that follow it.
+     * 
+     * Example: 2:59=85(real), 3:00=85(stale), 3:01=85(stale)
+     * When 3:01 arrives: flag 3:01 and 3:00, keep 2:59.
+     */
+    private async checkAndFlagStaleHR(doc: any) {
+        try {
+            const { Entry } = await import('../db/models');
+
+            // Find the last 2 HR records before this one
+            const recentHR = await Entry.find({
+                type: 'activity',
+                heartrate: { $exists: true },
+                date: { $lt: doc.date }
+            }).sort({ date: -1 }).limit(2).select('_id heartrate stale').lean();
+
+            if (recentHR.length < 2) return; // Not enough history to judge
+
+            // Check if all 3 (the 2 previous + the new one) have the same HR
+            const allSameHR = recentHR.every(r => r.heartrate === doc.heartrate);
+
+            if (allSameHR) {
+                // Flag the new record as stale
+                await Entry.updateOne(
+                    { _id: doc._id },
+                    { $set: { stale: true } }
+                );
+
+                // Flag the immediate predecessor if not already stale.
+                // Do NOT flag recentHR[1] — it's either the original legitimate
+                // reading, or already flagged from a previous check.
+                if (!(recentHR[0] as any).stale) {
+                    await Entry.updateOne(
+                        { _id: recentHR[0]._id },
+                        { $set: { stale: true } }
+                    );
+                }
+            }
+        } catch (error) {
+            // Non-critical — don't let stale detection break the event pipeline
+            console.warn('SyncWorker: Stale HR check failed:', error);
         }
     }
 

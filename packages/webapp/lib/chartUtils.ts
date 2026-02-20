@@ -31,6 +31,7 @@ export const CHART_LAYOUT = {
         axisLine: false,
         tickLine: false,
         allowDataOverflow: true,
+        minTickGap: 60,
     })
 };
 
@@ -69,13 +70,16 @@ export function transformImpactData(data: any[], timeDomain?: [number, number]) 
             const carbImpact = item.cob?.calculated?.glucoseImpact ?? 0;
             const insulinImpact = (item.iob?.calculated?.glucoseImpact ?? 0) * -1;
             const activityImpact = item.activity?.totalImpact ?? 0;
+            const totalImpact = carbImpact + insulinImpact + activityImpact;
+            const actualDelta = item.glucose?.current?.delta5m ?? null;
             return {
                 timestamp: new Date(item.meta?.status_date || item.glucose?.timestamp).getTime(),
                 insulinImpact,
                 carbImpact,
                 activityImpact,
-                totalImpact: carbImpact + insulinImpact + activityImpact,
-                actualDelta: item.glucose?.current?.delta5m ?? null,
+                totalImpact,
+                actualDelta,
+                residual: actualDelta != null ? actualDelta - totalImpact : null,
                 raw: item
             };
         })
@@ -92,6 +96,8 @@ export function transformImpactData(data: any[], timeDomain?: [number, number]) 
  */
 export function transformActivityData(activityHistory: any[], timeDomain?: [number, number]) {
     if (!activityHistory || activityHistory.length === 0) return [];
+
+    const GAP_THRESHOLD_MS = 10 * 60 * 1000; // 10 min = 2× expected 5-min interval
 
     const transformed = activityHistory
         .map(item => {
@@ -114,8 +120,31 @@ export function transformActivityData(activityHistory: any[], timeDomain?: [numb
         .filter((d): d is any => d !== null)
         .sort((a, b) => a.timestamp - b.timestamp);
 
-    if (timeDomain) {
-        return transformed.filter(d => d.timestamp >= timeDomain[0] && d.timestamp <= timeDomain[1]);
+    // Insert null-HR gap-breaker points where data collection gaps exist.
+    // Without these, Recharts draws a straight line across gaps.
+    const withGaps: any[] = [];
+    for (let i = 0; i < transformed.length; i++) {
+        withGaps.push(transformed[i]);
+
+        if (i < transformed.length - 1) {
+            const gap = transformed[i + 1].timestamp - transformed[i].timestamp;
+            if (gap > GAP_THRESHOLD_MS) {
+                // Insert a null sentinel just after the last real point
+                withGaps.push({
+                    timestamp: transformed[i].timestamp + 60000, // 1 min after last point
+                    steps: 0,
+                    hrAvg: null,
+                    hrMin: null,
+                    hrMax: null,
+                    hrRange: null,
+                    raw: null
+                });
+            }
+        }
     }
-    return transformed;
+
+    if (timeDomain) {
+        return withGaps.filter(d => d.timestamp >= timeDomain[0] && d.timestamp <= timeDomain[1]);
+    }
+    return withGaps;
 }

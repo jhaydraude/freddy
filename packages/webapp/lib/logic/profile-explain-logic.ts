@@ -65,6 +65,7 @@ export async function explainProfileAnalysis(analysis: IProfileAnalysis): Promis
         activity_analysis: analysis.estimated_activity_coefficients ? {
             steps_coefficient: analysis.estimated_activity_coefficients.steps_per_minute,
             hr_spike_coefficient: analysis.estimated_activity_coefficients.hr_spike,
+            stress_hr_coefficient: analysis.estimated_activity_coefficients.stress_hr ?? null,
             confidence: analysis.activity_confidence || null,
             interpretation: Math.abs(analysis.estimated_activity_coefficients.steps_per_minute || 0) < 0.01 ?
                 'No measurable activity impact detected' :

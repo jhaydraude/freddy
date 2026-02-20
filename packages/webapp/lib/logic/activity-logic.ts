@@ -39,6 +39,7 @@ export async function getActivityHistory(start: Date, end: Date, bucketSizeMin: 
 
     const records = await Entry.find({
         type: 'activity',
+        stale: { $ne: true },
         date: { $gte: start.getTime(), $lte: end.getTime() }
     }).sort({ date: 1 }).lean();
 
@@ -99,6 +100,7 @@ export async function getActivitySummary(): Promise<IActivitySummary> {
     // Sum steps for today
     const stepRecords = await Entry.find({
         type: 'activity',
+        stale: { $ne: true },
         steps: { $exists: true },
         date: { $gte: startOfToday.getTime() }
     }).lean();
@@ -115,6 +117,7 @@ export async function getActivitySummary(): Promise<IActivitySummary> {
     // Latest heart rate
     const latestHR = await Entry.findOne({
         type: 'activity',
+        stale: { $ne: true },
         heartrate: { $exists: true }
     }).sort({ date: -1 }).lean();
 
@@ -127,6 +130,7 @@ export async function getActivitySummary(): Promise<IActivitySummary> {
     const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const hrRecords = await Entry.find({
         type: 'activity',
+        stale: { $ne: true },
         heartrate: { $exists: true },
         date: { $gte: last24h.getTime() }
     }).lean();

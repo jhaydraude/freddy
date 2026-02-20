@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
     ComposedChart,
     Bar,
@@ -23,45 +23,19 @@ interface ActivityChartProps {
 
 export default function ActivityChart({ data, isLoading, timeDomain }: ActivityChartProps) {
     const chartData = data;
+    const [hoverData, setHoverData] = useState<any>(null);
 
-    const CustomTooltip = ({ active, payload }: any) => {
+    // Invisible tooltip that captures data for the fixed header bar
+    const DataCapture = useCallback(({ active, payload }: any) => {
         if (active && payload && payload.length) {
             const point = payload[0].payload;
-            return (
-                <div className="bg-zinc-900 border border-zinc-700 p-3 rounded-lg shadow-xl text-sm">
-                    <p className="text-zinc-400 mb-2 border-b border-zinc-800 pb-1">
-                        {format(new Date(point.timestamp), 'HH:mm')}
-                    </p>
-                    <div className="space-y-1">
-                        {point.steps > 0 && (
-                            <div className="flex items-center justify-between gap-4">
-                                <span className="text-violet-400 font-medium">Steps</span>
-                                <span className="font-bold text-white">{point.steps}</span>
-                            </div>
-                        )}
-                        {point.hrAvg && (
-                            <div className="flex flex-col border-t border-zinc-800 pt-1 mt-1">
-                                <div className="flex items-center justify-between gap-4">
-                                    <span className="text-rose-400 font-medium">Heart Rate</span>
-                                    <div className="flex items-baseline gap-1">
-                                        <span className="font-bold text-white">{point.hrAvg}</span>
-                                        <span className="text-xs text-zinc-500">bpm</span>
-                                    </div>
-                                </div>
-                                {(point.hrMin !== point.hrMax) && (
-                                    <div className="text-[10px] text-zinc-500 flex justify-between px-1">
-                                        <span>Min: {point.hrMin}</span>
-                                        <span>Max: {point.hrMax}</span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
+            // Use setTimeout to avoid setState during render
+            setTimeout(() => setHoverData(point), 0);
+        } else {
+            setTimeout(() => setHoverData(null), 0);
         }
-        return null;
-    };
+        return null; // Render nothing — data shown in header bar instead
+    }, []);
 
     if (isLoading) {
         return (
@@ -73,8 +47,6 @@ export default function ActivityChart({ data, isLoading, timeDomain }: ActivityC
 
     const hasData = chartData.some(d => d.steps > 0 || d.hrAvg !== null);
 
-
-
     if (!hasData) {
         return (
             <div className="w-full h-[150px] flex items-center justify-center bg-zinc-950/30 rounded-xl border border-zinc-800/50">
@@ -85,7 +57,43 @@ export default function ActivityChart({ data, isLoading, timeDomain }: ActivityC
 
     return (
         <div className="w-full h-[180px] bg-zinc-900/40 rounded-xl border border-zinc-800/50 p-4 shadow-sm backdrop-blur-sm">
-            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest mb-4 px-2">Activity</h3>
+            {/* Header row: title + hover data bar */}
+            <div className="relative flex items-center mb-2 px-2 h-5">
+                <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest shrink-0">Activity</h3>
+
+                {hoverData && (
+                    <>
+                        {/* Time — fixed position after title */}
+                        <span className="text-xs font-mono text-zinc-500 ml-4 shrink-0">
+                            {format(new Date(hoverData.timestamp), 'HH:mm')}
+                        </span>
+
+                        {/* Values — centered over the remaining space */}
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none animate-in fade-in duration-150">
+                            <div className="flex items-center gap-5 text-xs font-mono">
+                                {hoverData.steps > 0 && (
+                                    <span className="text-violet-400">
+                                        <span className="text-zinc-600 mr-1">Steps</span>
+                                        {hoverData.steps}
+                                    </span>
+                                )}
+                                {hoverData.hrAvg && (
+                                    <span className="text-rose-400">
+                                        <span className="text-zinc-600 mr-1">HR</span>
+                                        {hoverData.hrAvg}
+                                        {hoverData.hrMin !== hoverData.hrMax && (
+                                            <span className="text-zinc-600 text-[10px] ml-1">
+                                                ({hoverData.hrMin}–{hoverData.hrMax})
+                                            </span>
+                                        )}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                )}
+            </div>
+
             <ResponsiveContainer width="100%" height="80%">
                 <ComposedChart
                     data={chartData}
@@ -119,7 +127,10 @@ export default function ActivityChart({ data, isLoading, timeDomain }: ActivityC
                         orientation="right"
                     />
 
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip
+                        content={<DataCapture />}
+                        cursor={{ stroke: '#52525b', strokeWidth: 1 }}
+                    />
 
                     {/* Steps Bar */}
                     <Bar
@@ -139,7 +150,7 @@ export default function ActivityChart({ data, isLoading, timeDomain }: ActivityC
                         stroke="none"
                         fill="#f43f5e"
                         fillOpacity={0.15}
-                        connectNulls
+                        connectNulls={false}
                     />
 
                     {/* HR Average Line */}
@@ -151,7 +162,7 @@ export default function ActivityChart({ data, isLoading, timeDomain }: ActivityC
                         strokeWidth={2}
                         dot={false}
                         activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}
-                        connectNulls
+                        connectNulls={false}
                     />
                 </ComposedChart>
             </ResponsiveContainer>
