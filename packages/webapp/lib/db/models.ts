@@ -358,3 +358,5 @@ const ActivityRecordSchema = new Schema({
 
 export const ActivityRecord = getModel<IActivityRecord>('ActivityRecord', ActivityRecordSchema, getFreddyConn, 'activity_records');
 
+export * from './models/freddy-profile';
+

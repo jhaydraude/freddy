@@ -1,4 +1,5 @@
 import { ITimeWindow } from './profile-analysis-logic';
+import { normalizeISF, denormalizeISF, denormalizeGlucose } from './unit-conversion';
 
 export interface ITuningSuggestion {
     parameter: 'isf' | 'cr' | 'basal' | 'dia' | 'activity' | 'activity_steps' | 'activity_hr' | 'activity_stairs' | 'activity_calories';
@@ -34,9 +35,12 @@ export function calculateProfileTuning(
     const currentBasal = currentProfile?.basal?.[0]?.value || 1.0;
     const currentDIA = currentProfile?.dia || 5;
 
+    const units = currentProfile?.units || 'mg/dL';
+
     // 1. ISF Tuning (Pure Correction Windows)
     if (shouldTune('isf')) {
-        const isfSuggestion = tuneISF(windows, currentISF, currentCR);
+        const normalizedCurrentISF = normalizeISF(currentISF, units);
+        const isfSuggestion = tuneISF(windows, normalizedCurrentISF, currentCR, units);
         if (isfSuggestion) suggestions.push(isfSuggestion);
     }
 
@@ -48,13 +52,13 @@ export function calculateProfileTuning(
 
     // 3. Activity Tuning (Movement Windows)
     if (shouldTune('activity')) {
-        const activitySuggestions = tuneGranularActivity(windows, currentProfile?.activity_coefficients);
+        const activitySuggestions = tuneGranularActivity(windows, currentProfile?.activity_coefficients, units);
         suggestions.push(...activitySuggestions);
     }
 
     // 4. Nighttime Basal Drift
     if (shouldTune('basal')) {
-        const basalSuggestion = tuneBasal(windows, currentBasal);
+        const basalSuggestion = tuneBasal(windows, currentBasal, units);
         if (basalSuggestion) suggestions.push(basalSuggestion);
     }
 
@@ -64,7 +68,7 @@ export function calculateProfileTuning(
     };
 }
 
-function tuneISF(windows: ITimeWindow[], currentISF: number, currentCR: number): ITuningSuggestion | null {
+function tuneISF(windows: ITimeWindow[], currentISF: number, currentCR: number, units: string): ITuningSuggestion | null {
     // Isolate windows: Significant insulin activity, no carbs, low activity
     const cleanWindows = windows.filter(w =>
         w.insulin_activity > 0.5 &&
@@ -97,8 +101,8 @@ function tuneISF(windows: ITimeWindow[], currentISF: number, currentCR: number):
 
     return {
         parameter: 'isf',
-        currentValue: Math.round(currentISF * 10) / 10,
-        suggestedValue: Math.round(avgObservedISF * 10) / 10,
+        currentValue: denormalizeISF(currentISF, units),
+        suggestedValue: denormalizeISF(avgObservedISF, units),
         changePercentage: Math.round(changePct * 10) / 10,
         confidence: observations.length > 10 ? 'high' : 'medium',
         reason: `Based on ${observations.length} clean correction events where carbs and exercise were negligible.`,
@@ -156,7 +160,7 @@ function tuneDIA(windows: ITimeWindow[], currentDIA: number): ITuningSuggestion 
     };
 }
 
-function tuneGranularActivity(windows: ITimeWindow[], currentCoeffs?: any): ITuningSuggestion[] {
+function tuneGranularActivity(windows: ITimeWindow[], currentCoeffs: any, units: string): ITuningSuggestion[] {
     const suggestions: ITuningSuggestion[] = [];
 
     const defaultCoeffs = {
@@ -198,8 +202,8 @@ function tuneGranularActivity(windows: ITimeWindow[], currentCoeffs?: any): ITun
         if (Math.abs(changePct) > 20) {
             suggestions.push({
                 parameter: 'activity_steps',
-                currentValue: coeffs.steps,
-                suggestedValue: Math.round(observedStepCoeff / 10 * 100) / 100,
+                currentValue: denormalizeGlucose(coeffs.steps, units),
+                suggestedValue: denormalizeGlucose(observedStepCoeff / 10, units),
                 changePercentage: Math.round(changePct * 10) / 10,
                 confidence: stepWindows.length > 8 ? 'high' : 'medium',
                 reason: `Aerobic exercise (steps) shows a ${observedStepCoeff < currentStepCoeff ? 'stronger' : 'weaker'} glucose drop than expected.`,
@@ -229,8 +233,8 @@ function tuneGranularActivity(windows: ITimeWindow[], currentCoeffs?: any): ITun
         if (Math.abs(changePct) > 20) {
             suggestions.push({
                 parameter: 'activity_hr',
-                currentValue: coeffs.hr,
-                suggestedValue: Math.round(observedHRCoeff * 10) / 10,
+                currentValue: denormalizeGlucose(coeffs.hr, units),
+                suggestedValue: denormalizeGlucose(observedHRCoeff, units),
                 changePercentage: Math.round(changePct * 10) / 10,
                 confidence: hrWindows.length > 5 ? 'medium' : 'low',
                 reason: `Heart rate spikes (stress/anaerobic) cause ${observedHRCoeff > 0 ? 'more' : 'less'} of a glucose rise than expected.`,
@@ -242,7 +246,7 @@ function tuneGranularActivity(windows: ITimeWindow[], currentCoeffs?: any): ITun
     return suggestions;
 }
 
-function tuneBasal(windows: ITimeWindow[], currentBasal: number): ITuningSuggestion | null {
+function tuneBasal(windows: ITimeWindow[], currentBasal: number, units: string): ITuningSuggestion | null {
     // Isolate stable overnight windows
     const nighttimeWindows = windows.filter(w =>
         (w.hour_of_day >= 0 && w.hour_of_day <= 5) &&
@@ -265,7 +269,7 @@ function tuneBasal(windows: ITimeWindow[], currentBasal: number): ITuningSuggest
         suggestedValue: Math.round((currentBasal + (avgDrift / 50)) * 100) / 100, // 1U roughly = 50 mg/dL drop
         changePercentage: Math.round((avgDrift / 50) / currentBasal * 1000) / 10,
         confidence: 'medium',
-        reason: `Avg overnight drift of ${avgDrift.toFixed(1)} mg/dL observed over ${nighttimeWindows.length} windows.`,
+        reason: `Avg overnight drift of ${denormalizeGlucose(avgDrift, units).toFixed(1)} ${units} observed over ${nighttimeWindows.length} windows.`,
         sampleCount: nighttimeWindows.length
     };
 }

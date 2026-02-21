@@ -33,6 +33,7 @@ import {
     Cell
 } from 'recharts';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ApplySettingsDialog, ApplyOptions } from './ApplySettingsDialog';
 
 interface Props {
     onBack: () => void;
@@ -45,14 +46,19 @@ export const UnifiedFoundationTuner: React.FC<Props> = ({ onBack, initialTuningI
     const [result, setResult] = useState<any>(null);
     const [isApplying, setIsApplying] = useState(false);
     const [analysisPeriod, setAnalysisPeriod] = useState(14);
-    const [selection, setSelection] = useState({
-        dia: true,
-        peak: true,
-        isf: [true, true, true, true, true, true],
-        rates: new Array(12).fill(true)
-    });
+    const [showApplyDialog, setShowApplyDialog] = useState(false);
+    const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
     const [confirmDeleteRun, setConfirmDeleteRun] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+
+    useEffect(() => {
+        fetch('/api/profile/active')
+            .then(r => r.json())
+            .then(data => {
+                if (data?._id) setActiveProfileId(data._id);
+            })
+            .catch(console.error);
+    }, []);
 
     useEffect(() => {
         if (initialTuningId) {
@@ -129,10 +135,36 @@ export const UnifiedFoundationTuner: React.FC<Props> = ({ onBack, initialTuningI
         }
     };
 
-    const handleApply = async () => {
-        // Implementation for later - multi-apply
+    const handleApply = async (options: ApplyOptions) => {
+        if (!activeProfileId || !result) return;
+
         setIsApplying(true);
-        setTimeout(() => setIsApplying(false), 2000);
+        try {
+            const res = await fetch(`/api/profiles/${activeProfileId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'apply',
+                    analysis: result,
+                    mode: options.mode,
+                    newName: options.newName,
+                    selection: options.params
+                })
+            });
+
+            if (res.ok) {
+                alert('Profile updated successfully');
+                setShowApplyDialog(false);
+            } else {
+                const err = await res.json();
+                alert(`Apply failed: ${err.error}`);
+            }
+        } catch (err) {
+            console.error('Apply error:', err);
+            alert('Failed to apply parameters');
+        } finally {
+            setIsApplying(false);
+        }
     };
 
     const renderHeader = () => (
@@ -190,15 +222,11 @@ export const UnifiedFoundationTuner: React.FC<Props> = ({ onBack, initialTuningI
                     </div>
                 ) : status === 'completed' ? (
                     <button
-                        onClick={handleApply}
+                        onClick={() => setShowApplyDialog(true)}
                         disabled={isApplying}
                         className="flex items-center gap-2 px-8 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-400 disabled:opacity-50 transition-all active:scale-95"
                     >
-                        {isApplying ? (
-                            <Loader2 className="animate-spin" size={18} />
-                        ) : (
-                            <Save size={18} />
-                        )}
+                        <Save size={18} />
                         APPLY PARAMETERS
                     </button>
                 ) : (
@@ -327,7 +355,7 @@ export const UnifiedFoundationTuner: React.FC<Props> = ({ onBack, initialTuningI
                                     <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Window Distribution (Time of Day)</h4>
                                     <div className="h-24 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={result.analysis_summary.window_distribution.map((count, i) => ({
+                                            <BarChart data={result.analysis_summary.window_distribution.map((count: number, i: number) => ({
                                                 time: `${i * 2}h`,
                                                 count
                                             }))}>
@@ -391,9 +419,16 @@ export const UnifiedFoundationTuner: React.FC<Props> = ({ onBack, initialTuningI
                                 }))}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
                                     <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 10 }} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 10 }} reversed />
+                                    <YAxis
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: '#71717a', fontSize: 10 }}
+                                        reversed
+                                        tickFormatter={(val) => val.toFixed(cur.units?.includes('mmol') ? 1 : 0)}
+                                    />
                                     <Tooltip
-                                        contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px' }}
+                                        contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '10px' }}
+                                        formatter={(value: number) => [`${value.toFixed(cur.units?.includes('mmol') ? 2 : 1)} ${cur.units}`, '']}
                                     />
                                     <Line type="monotone" dataKey="val" stroke="#818cf8" strokeWidth={3} dot={{ fill: '#818cf8', r: 4 }} />
                                     <Line type="monotone" dataKey="cur" stroke="#52525b" strokeWidth={1} dot={false} strokeDasharray="4 4" />
@@ -419,6 +454,14 @@ export const UnifiedFoundationTuner: React.FC<Props> = ({ onBack, initialTuningI
                 confirmLabel={isDeleting ? 'Deleting...' : 'Delete'}
                 onConfirm={deleteRun}
                 onCancel={() => setConfirmDeleteRun(false)}
+            />
+
+            <ApplySettingsDialog
+                open={showApplyDialog}
+                onClose={() => setShowApplyDialog(false)}
+                onApply={handleApply}
+                isApplying={isApplying}
+                analysisResult={result}
             />
         </div>
     );

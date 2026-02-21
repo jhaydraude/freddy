@@ -37,10 +37,19 @@ export async function getProfileAnalysisHistory(limit: number = 10) {
     return JSON.parse(JSON.stringify(history));
 }
 
+import { freddyProfileService } from './services/freddy-profile-service';
+
 export async function getActiveProfile() {
     await ensureConnected();
-    const profile = await resolveActiveProfile(new Date());
-    return JSON.parse(JSON.stringify(profile));
+    const result = await resolveActiveProfile(new Date());
+
+    let extra: any = {};
+    if (result?.isFreddy) {
+        const active = await freddyProfileService.getActiveProfile();
+        extra._id = active?._id;
+    }
+
+    return JSON.parse(JSON.stringify({ ...result, ...extra }));
 }
 
 import { generateTimeWindows } from './logic/profile-analysis-logic';

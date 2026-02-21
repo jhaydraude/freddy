@@ -31,13 +31,13 @@ class TimeWindow(BaseModel):
     carb_events_count: int
     carb_absorption: float   # Grams actually absorbed in window
     
-    activity_steps: float
-    activity_calories: float
-    activity_floors: float
-    activity_heart_rate: float
-    activity_hr_elevation: float
-    activity_impact: float  # Calculated impact (mg/dL)
-    activity_intensity: str
+    activity_steps: float = 0.0
+    activity_calories: float = 0.0
+    activity_floors: float = 0.0
+    activity_heart_rate: float = 0.0
+    activity_hr_elevation: float = 0.0
+    activity_impact: float = 0.0
+    activity_intensity: str = 'unknown'
     
     hour_of_day: int
     is_stable: bool
@@ -45,7 +45,11 @@ class TimeWindow(BaseModel):
     has_corrections: bool
     
     data_quality: Dict[str, Any]
+    autosens_ratio: float = 1.0
+    basal_drift: float = 0.0
     isolation_confidence: float = 1.0
+    unexplained_residual: Optional[float] = None
+    total_predicted_impact: Optional[float] = None
 
 
 class ProfileAnalysisResult(BaseModel):
@@ -275,16 +279,17 @@ class HolisticProfileAnalyzer:
                 weight *= 0.6
             
             # Penalize unexplained glucose increases (soft penalty instead of removal)
+            # Use carb_absorption instead of raw consumed to account for meal tails
             if window.glucose_change > 0:
                 glucose_increase = window.glucose_change
-                carbs = window.carbs_consumed
+                absorption = window.carb_absorption
                 
                 # Heuristic: 1g carb raises glucose ~3-5 mg/dL
-                # Large increases with few carbs suggest unreported meals
-                if glucose_increase > 80 and carbs < 40:
+                # Large increases with low absorption suggest unreported meals
+                if glucose_increase > 80 and absorption < 20:
                     weight *= 0.2  # Strong penalty but don't remove
                     low_weight_count += 1
-                elif glucose_increase > 50 and carbs < 20:
+                elif glucose_increase > 50 and absorption < 10:
                     weight *= 0.4  # Moderate penalty
                     low_weight_count += 1
             
@@ -295,7 +300,20 @@ class HolisticProfileAnalyzer:
             # Reward windows with good data quality
             if readings >= 12:
                 weight *= 1.1
-            
+
+            # NEW: Residual-based weighting (User Request)
+            # If the current model has a massive unexplained residual, the window is "dirty"
+            # (e.g., unannounced carbs, stress, or severe absorption mismatch)
+            if window.unexplained_residual is not None:
+                abs_residual = abs(window.unexplained_residual)
+                if abs_residual > 60:
+                    weight *= 0.1  # Severe mismatch, likely unannounced event
+                    low_weight_count += 1
+                elif abs_residual > 35:
+                    weight *= 0.5  # Moderate mismatch
+                elif abs_residual < 10:
+                    weight *= 1.2  # Excellent fit, high quality for refinement
+
             weights.append(weight)
         
         if low_weight_count > 0:

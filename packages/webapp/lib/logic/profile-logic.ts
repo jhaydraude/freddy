@@ -1,5 +1,6 @@
-import { Profile, Treatment } from '../db/models';
+import { Profile, Treatment, FreddyProfile } from '../db/models';
 import type { IProfile, IProfileStore } from '../db/models';
+import { freddyToNS } from './profile-conversion';
 
 const profileCache = new Map<string, any>();
 
@@ -7,13 +8,30 @@ const profileCache = new Map<string, any>();
  * Resolves the active profile information at a specific timestamp.
  * Correctly handles historical profile switches (overrides) and base documents.
  */
-export async function resolveActiveProfile(timestamp: string | Date, bypassCache: boolean = false): Promise<{ doc: IProfile | null, activeProfileName: string, profileData: IProfileStore | null, expiration?: string | undefined } | null> {
+export async function resolveActiveProfile(timestamp: string | Date, bypassCache: boolean = false): Promise<{ doc: IProfile | null, activeProfileName: string, profileData: IProfileStore | null, expiration?: string | undefined, isFreddy?: boolean } | null> {
     const targetDate = new Date(timestamp);
     const targetIso = targetDate.toISOString();
 
     const cacheKey = targetIso.substring(0, 16); // YYYY-MM-DDTHH:mm
     if (!bypassCache && profileCache.has(cacheKey)) {
         return profileCache.get(cacheKey);
+    }
+
+    // 0. Check for active Freddy Profile first
+    // Note: We currently only support one globally active Freddy profile, regardless of timestamp,
+    // as it represents the "current tuning". If historical Freddy profiles are needed, 
+    // we would need a different selection logic.
+    const activeFreddy = await FreddyProfile.findOne({ isActive: true });
+    if (activeFreddy) {
+        const profileData = freddyToNS(activeFreddy as any);
+        const result = {
+            activeProfileName: activeFreddy.name,
+            profileData,
+            doc: null,
+            isFreddy: true
+        };
+        profileCache.set(cacheKey, result);
+        return result;
     }
 
     // 1. Find the base profile document active at this time

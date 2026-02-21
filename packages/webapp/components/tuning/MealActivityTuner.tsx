@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { denormalizeGlucose } from '@/lib/logic/unit-conversion';
 import {
     Activity,
     Play,
@@ -33,6 +34,7 @@ import {
     Cell
 } from 'recharts';
 import { ConfirmDialog } from './ConfirmDialog';
+import { ApplySettingsDialog, ApplyOptions } from './ApplySettingsDialog';
 
 interface Props {
     onBack: () => void;
@@ -47,9 +49,20 @@ export const MealActivityTuner: React.FC<Props> = ({ onBack, initialTuningId }) 
     const [analysisPeriod, setAnalysisPeriod] = useState(30);
     const [foundationRuns, setFoundationRuns] = useState<any[]>([]);
     const [selectedBaseline, setSelectedBaseline] = useState<string>('profile');
+    const [showApplyDialog, setShowApplyDialog] = useState(false);
+    const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
 
     const [confirmDeleteRun, setConfirmDeleteRun] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+
+    useEffect(() => {
+        fetch('/api/profile/active')
+            .then(r => r.json())
+            .then(data => {
+                if (data?._id) setActiveProfileId(data._id);
+            })
+            .catch(console.error);
+    }, []);
 
     useEffect(() => {
         // Fetch existing foundation runs for baseline selection
@@ -143,6 +156,38 @@ export const MealActivityTuner: React.FC<Props> = ({ onBack, initialTuningId }) 
         }
     };
 
+    const handleApply = async (options: ApplyOptions) => {
+        if (!activeProfileId || !result) return;
+
+        setIsApplying(true);
+        try {
+            const res = await fetch(`/api/profiles/${activeProfileId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'apply',
+                    analysis: result,
+                    mode: options.mode,
+                    newName: options.newName,
+                    selection: options.params
+                })
+            });
+
+            if (res.ok) {
+                alert('Profile updated successfully');
+                setShowApplyDialog(false);
+            } else {
+                const err = await res.json();
+                alert(`Apply failed: ${err.error}`);
+            }
+        } catch (err) {
+            console.error('Apply error:', err);
+            alert('Failed to apply parameters');
+        } finally {
+            setIsApplying(false);
+        }
+    };
+
     const renderHeader = () => (
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between border-b border-zinc-800 pb-8">
             <div className="flex items-center gap-4">
@@ -210,7 +255,9 @@ export const MealActivityTuner: React.FC<Props> = ({ onBack, initialTuningId }) 
                     </div>
                 ) : status === 'completed' ? (
                     <button
-                        className="flex items-center gap-2 px-8 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-400 transition-all active:scale-95"
+                        onClick={() => setShowApplyDialog(true)}
+                        disabled={isApplying}
+                        className="flex items-center gap-2 px-8 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-400 disabled:opacity-50 transition-all active:scale-95"
                     >
                         <Save size={18} />
                         APPLY PARAMETERS
@@ -297,7 +344,10 @@ export const MealActivityTuner: React.FC<Props> = ({ onBack, initialTuningId }) 
                                 <div key={key}>
                                     <div className="flex items-center justify-between mb-2">
                                         <span className="text-xs text-zinc-500 font-bold uppercase">{key}</span>
-                                        <span className="text-xs font-mono text-zinc-400">{val.toFixed(4)}</span>
+                                        <span className="text-xs font-mono text-zinc-400">
+                                            {denormalizeGlucose(val, cur.units).toFixed(cur.units?.includes('mmol') ? 4 : 2)}
+                                            <span className="ml-1 text-[8px] opacity-60">{cur.units}</span>
+                                        </span>
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <div className="flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
@@ -395,9 +445,16 @@ export const MealActivityTuner: React.FC<Props> = ({ onBack, initialTuningId }) 
                                 }))}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
                                     <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 10 }} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 10 }} reversed />
+                                    <YAxis
+                                        axisLine={false}
+                                        tickLine={false}
+                                        tick={{ fill: '#71717a', fontSize: 10 }}
+                                        reversed
+                                        tickFormatter={(val) => val.toFixed(cur.units?.includes('mmol') ? 1 : 0)}
+                                    />
                                     <Tooltip
-                                        contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px' }}
+                                        contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '10px' }}
+                                        formatter={(value: number) => [`${value.toFixed(cur.units?.includes('mmol') ? 2 : 1)} ${cur.units}`, '']}
                                     />
                                     <Line type="monotone" dataKey="val" stroke="#818cf8" strokeWidth={3} dot={{ fill: '#818cf8', r: 4 }} />
                                     <Line type="monotone" dataKey="cur" stroke="#52525b" strokeWidth={1} dot={false} strokeDasharray="4 4" />
@@ -453,6 +510,14 @@ export const MealActivityTuner: React.FC<Props> = ({ onBack, initialTuningId }) 
                 confirmLabel={isDeleting ? 'Deleting...' : 'Delete'}
                 onConfirm={deleteRun}
                 onCancel={() => setConfirmDeleteRun(false)}
+            />
+
+            <ApplySettingsDialog
+                open={showApplyDialog}
+                onClose={() => setShowApplyDialog(false)}
+                onApply={handleApply}
+                isApplying={isApplying}
+                analysisResult={result}
             />
         </div>
     );

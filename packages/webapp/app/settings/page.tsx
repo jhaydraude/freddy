@@ -245,21 +245,6 @@ export default function SettingsPage() {
                             <p className="text-[10px] text-zinc-600 ml-1">Default: 300000 (5 minutes)</p>
                         </div>
 
-                        {/* SMB Threshold */}
-                        <div className="space-y-2">
-                            <label className="text-xs font-medium text-zinc-500 ml-1">SMB Threshold (U)</label>
-                            <div className="relative">
-                                <input
-                                    type="number"
-                                    step="0.1"
-                                    defaultValue={config?.smb_threshold || 0.7}
-                                    onBlur={(e) => handleSaveConfig('smb_threshold', parseFloat(e.target.value))}
-                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-all font-mono"
-                                />
-                                {saving === 'smb_threshold' && <RefreshCw className="absolute right-3 top-2.5 animate-spin text-zinc-600" size={16} />}
-                            </div>
-                            <p className="text-[10px] text-zinc-600 ml-1">Boluses smaller than this are treated as basal logic.</p>
-                        </div>
                     </div>
                 </section>
 
@@ -303,6 +288,22 @@ export default function SettingsPage() {
                                 onBlur={(e) => handleSavePreference('low_threshold', parseInt(e.target.value))}
                                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-purple-500 transition-all font-mono"
                             />
+                        </div>
+
+                        {/* SMB Threshold */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-zinc-500 ml-1">SMB Threshold (U)</label>
+                            <div className="relative">
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    defaultValue={config?.smb_threshold || 0.7}
+                                    onBlur={(e) => handleSaveConfig('smb_threshold', parseFloat(e.target.value))}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-purple-500 transition-all font-mono"
+                                />
+                                {saving === 'smb_threshold' && <RefreshCw className="absolute right-3 top-2.5 animate-spin text-zinc-600" size={16} />}
+                            </div>
+                            <p className="text-[10px] text-zinc-600 ml-1">Boluses smaller than this are treated as basal logic.</p>
                         </div>
                     </div>
                 </section>
