@@ -3,6 +3,7 @@ import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile
 import { getBolusAbsorption } from './cob-logic';
 import { getActivityHistory } from './activity-logic';
 import { calculateActivityImpact, DEFAULT_ACTIVITY_COEFFICIENTS, ActivityCoefficients } from './activity-impact';
+import { normalizeISF } from './unit-conversion';
 
 /**
  * Time window for holistic profile analysis
@@ -56,6 +57,10 @@ export interface ITimeWindow {
         has_activity_data: boolean;
         readings_count: number;
     };
+
+    // Accuracy Metrics
+    unexplained_residual?: number;  // Actual Change - Predicted Change
+    total_predicted_impact?: number;
 
     // Basal specific
     autosens_ratio?: number;
@@ -165,7 +170,8 @@ export async function generateTimeWindows(
         }
     }
 
-    const smbThreshold = sysConfig?.value !== undefined ? Number(sysConfig.value) : 0.7;
+    const smbThreshold = sysConfig?.value !== undefined ? Number(sysConfig.value) : 1.0;
+    const utcOffset = (profileInfo as any)?.utcOffset !== undefined ? (profileInfo as any).utcOffset : 0;
 
     // === GENERATE WINDOWS ===
     let currentTime = startDate.getTime();
@@ -193,6 +199,7 @@ export async function generateTimeWindows(
 
             // Calculate Metrics
             let bolusInsulin = 0;
+            let smbInsulin = 0;
             let carbsConsumed = 0;
             let carbEvents = 0;
             let hasMeals = false;
@@ -210,11 +217,14 @@ export async function generateTimeWindows(
 
             for (const t of treatmentsInWindow) {
                 if (t.insulin && t.insulin > 0 && (t.eventType === 'Meal Bolus' || t.eventType === 'Correction Bolus')) {
-                    bolusInsulin += t.insulin;
                     if (t.carbs && t.carbs > 0) {
+                        bolusInsulin += t.insulin;
                         hasMeals = true;
-                    } else if (t.insulin > smbThreshold) {
-                        hasCorrections = true; // small boluses act as basal, large act as corrections
+                    } else if (t.insulin <= smbThreshold) {
+                        smbInsulin += t.insulin;
+                    } else {
+                        bolusInsulin += t.insulin;
+                        hasCorrections = true; // large boluses act as corrections
                     }
                 }
 
@@ -259,11 +269,13 @@ export async function generateTimeWindows(
             const basalRate = profileData?.basal
                 ? getValueAtTime(profileData.basal, windowStart)
                 : 1.0;
-            const basalDeilveredRaw = basalRate * windowHours;
+            const scheduledBasal = basalRate * windowHours;
+            const basalDeilveredRaw = scheduledBasal + smbInsulin;
 
             // Simplified Basal Activity implementation: 
             // In a steady state (unchanged basal for > DIA), Activity == Delivery.
-            insulinActivity += basalDeilveredRaw;
+            // Note: SMB activity was precisely calculated and added above, so we only add scheduled basal here.
+            insulinActivity += scheduledBasal;
 
             const totalInsulin = bolusInsulin + basalDeilveredRaw;
             const glucoseChange = glucoseAtEnd.sgv - glucoseAtStart.sgv;
@@ -277,8 +289,6 @@ export async function generateTimeWindows(
             const activityImpact = calculateActivityImpact(windowActivity, windowHours * 60, undefined, activityCoefficients);
 
             const windowSteps = windowActivity.reduce((sum, p) => sum + (p.steps?.count || 0), 0);
-            const windowCalories = windowActivity.reduce((sum, p) => sum + (p.steps?.calories || 0), 0);
-            const windowFloors = windowActivity.reduce((sum, p) => sum + (p.steps?.floors || 0), 0);
 
             // Calculate raw HR elevation percentage
             const restingHR = 70; // Default fallback
@@ -297,32 +307,54 @@ export async function generateTimeWindows(
             // Calculate basal drift and isolation confidence
             let basal_drift: number | undefined;
             let isolation_confidence: number | undefined;
+            let unexplained_residual: number | undefined;
+            let total_predicted_impact: number | undefined;
 
             if (readingCount >= 6) {
-                const isf = profileData?.sens ? getValueAtTime(profileData.sens, windowStart) : 50;
-                // BG Change = Pure Drift - (Insulin * ISF) + Activity Impact
-                // Therefore: Pure Drift = BG Change + (Insulin * ISF) - Activity Impact
-                basal_drift = glucoseChange + (insulinActivity * isf * autosensRatio) - activityImpact.totalImpact;
+                let isf = profileData?.sens ? getValueAtTime(profileData.sens, windowStart) : 50;
+                const icr = profileData?.carbratio ? getValueAtTime(profileData.carbratio, windowStart) : 15;
 
-                if (hasMeals || hasCorrections || carbAbsorption > 0) {
-                    isolation_confidence = 0.0;
-                } else if (bolusInsulin > 0) {
-                    // A bolus was delivered inside this exact window - highly unstable
+                isf = normalizeISF(isf, profileData?.units || 'mg/dL');
+
+                // To calculate unexplained residual, we must only look at DEVIATIONS from the steady state.
+                // In a steady state, scheduledBasal perfectly counteracts Endogenous Glucose Production (EGP).
+                // Therefore, the "insulin force" that changes blood sugar is only the insulin active ABOVE scheduled basal.
+                const activeInsulinDevation = insulinActivity - scheduledBasal;
+
+                const insulinImpact = -(activeInsulinDevation * isf * autosensRatio);
+                const carbImpact = (carbAbsorption * isf * autosensRatio) / icr;
+                const totalImpact = insulinImpact + carbImpact + activityImpact.totalImpact;
+
+                console.log(`[DEBUG] Window ${windowStart.toISOString()}:`);
+                console.log(`  ISF: ${isf}, ICR: ${icr}, Autosens: ${autosensRatio}`);
+                console.log(`  Insulin Deviation: ${activeInsulinDevation} U (Total: ${insulinActivity}, Basal: ${scheduledBasal}) -> Impact: ${insulinImpact} mg/dL`);
+                console.log(`  Carb Absorption: ${carbAbsorption} g -> Impact: ${carbImpact} mg/dL`);
+                console.log(`  Total Impact: ${totalImpact} mg/dL, Actual Change: ${glucoseChange} mg/dL`);
+                console.log(`  => Unexplained Residual: ${glucoseChange - totalImpact} mg/dL`);
+
+                total_predicted_impact = totalImpact;
+                unexplained_residual = glucoseChange - totalImpact;
+
+                // basal_drift for the optimizer is the theoretical required basal equivalent to cover the background drift
+                // calculated using the RAW insulin activity (including basal) to determine total background glucose production.
+                const totalRawInsulinImpact = -(insulinActivity * isf * autosensRatio);
+                basal_drift = glucoseChange - (carbImpact + totalRawInsulinImpact + activityImpact.totalImpact);
+
+                // Threshold for "Impossible" or "Unexplained" residuals (likely sensor error or massive unlogged carbs)
+                // 100 mg/dL (5.5 mmol/L) over 2 hours is a massive deviation not attributable to simple parameter mismatch
+                if (Math.abs(unexplained_residual) > 150) {
+                    console.log(`⚠️ Discarding window at ${windowStart.toISOString()} due to massive unexplained residual: ${Math.round(unexplained_residual)} mg/dL`);
+                    const stepMs = (windowMs / 2);
+                    currentTime += stepMs;
+                    continue;
+                }
+
+                basal_drift = glucoseChange - (carbImpact + insulinImpact + activityImpact.totalImpact);
+
+                if (hasMeals || hasCorrections || carbAbsorption > 1.0) {
                     isolation_confidence = 0.0;
                 } else {
-                    // No bolus happened *inside* this window, check for decaying IOB from a previous window
-                    const extraActivity = Math.max(0, insulinActivity - basalDeilveredRaw);
-
-                    if (extraActivity > 0) {
-                        // A penalty based on how much "extra" insulin activity there is compared to pure basal
-                        // e.g. if extraActivity is 1.0U, and ISF is 50, that's 50mg/dL of "math".
-                        const maxTolerableExtraActivity = 2.0; // U/window
-                        const penalty = Math.min(0.8, extraActivity / maxTolerableExtraActivity);
-                        isolation_confidence = 1.0 - penalty;
-                    } else {
-                        // Pure basal window
-                        isolation_confidence = 1.0;
-                    }
+                    isolation_confidence = 1.0;
                 }
             }
 
@@ -345,16 +377,17 @@ export async function generateTimeWindows(
                 carb_events_count: carbEvents,
                 carb_absorption: Math.round(carbAbsorption * 100) / 100,
 
-                activity_steps: windowSteps,
-                activity_calories: windowCalories,
-                activity_floors: windowFloors,
-                activity_heart_rate: avgHR,
-                activity_hr_elevation: Math.round(hrElevation * 1000) / 1000,
+                // Only report activity metrics if the device was actually collecting data (HR present)
+                activity_steps: activityImpact.dataAvailable ? windowSteps : 0,
+                activity_calories: 0,
+                activity_floors: 0,
+                activity_heart_rate: activityImpact.dataAvailable ? avgHR : 0,
+                activity_hr_elevation: activityImpact.dataAvailable ? (Math.round(hrElevation * 1000) / 1000) : 0,
                 activity_impact: activityImpact.totalImpact,
                 activity_impact_components: activityImpact.components,
                 activity_intensity: activityImpact.intensity,
 
-                hour_of_day: windowStart.getHours(),
+                hour_of_day: new Date(windowStart.getTime() + (utcOffset * 60 * 1000)).getUTCHours(),
                 is_stable: isStable,
                 has_meals: hasMeals,
                 has_corrections: hasCorrections,
@@ -366,14 +399,18 @@ export async function generateTimeWindows(
 
                 autosens_ratio: autosensRatio,
                 basal_drift: basal_drift,
-                isolation_confidence: isolation_confidence
+                isolation_confidence: isolation_confidence,
+                unexplained_residual: unexplained_residual,
+                total_predicted_impact: total_predicted_impact
             });
 
         } catch (error) {
             console.error(`Error processing window starting at ${windowStart.toISOString()}:`, error);
         }
 
-        currentTime += windowMs;
+        // Use a 1-hour sliding step instead of a fixed 2-hour jump for 2x coverage
+        const stepMs = (windowMs / 2);
+        currentTime += stepMs;
     }
 
     console.log(`\n✅ Generated ${windows.length} time windows`);

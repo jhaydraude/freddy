@@ -25,8 +25,6 @@ export interface IActivityImpact {
     totalImpact: number;
     components: {
         steps: number;
-        calories: number;
-        stairs: number;
         heartRate: number;
         stressHeartRate: number;  // Elevated HR without movement (glucose-raising)
     };
@@ -56,8 +54,6 @@ export interface IActivityBout {
  */
 export const DEFAULT_ACTIVITY_COEFFICIENTS = {
     STEPS_PER_MINUTE: -1.0,       // mg/dL per step/min above baseline
-    CALORIES: -0.4,                // mg/dL per kcal
-    STAIRS: +10.0,                 // mg/dL per floor (initial spike)
     HR_SPIKE: +15.0,               // mg/dL for anaerobic HR elevation
     STRESS_HR: +8.0,               // mg/dL per 10% HRR elevation without steps
     POST_MEAL_MULTIPLIER: 1.5,     // Multiplier for exercise 30-90 min post-meal
@@ -120,21 +116,7 @@ function calculateStepsImpact(
     return intensity * coefficients.STEPS_PER_MINUTE * intervalMinutes * boutMultiplier;
 }
 
-/**
- * Calculate glucose impact from calories burned.
- */
-function calculateCaloriesImpact(totalCalories: number, coefficients: ActivityCoefficients): number {
-    if (totalCalories === 0) return 0;
-    return totalCalories * coefficients.CALORIES;
-}
 
-/**
- * Calculate glucose impact from stairs (anaerobic spike).
- */
-function calculateStairsImpact(totalFloors: number, coefficients: ActivityCoefficients): number {
-    if (totalFloors === 0) return 0;
-    return totalFloors * coefficients.STAIRS;
-}
 
 /**
  * Calculate glucose impact from heart rate elevation using HRR.
@@ -310,7 +292,6 @@ function determineIntensity(
     totalSteps: number,
     intervalMinutes: number,
     avgHeartRate: number,
-    totalFloors: number,
     baseline?: IUserBaseline
 ): 'low' | 'moderate' | 'high' | 'very_high' {
     const stepsPerMin = intervalMinutes > 0 ? totalSteps / intervalMinutes : 0;
@@ -332,13 +313,9 @@ function determineIntensity(
     else if (hrr > 0.50) score += 2;
     else if (hrr > 0.30) score += 1;
 
-    // Stairs contribution (high intensity indicator)
-    if (totalFloors > 5) score += 2;
-    else if (totalFloors > 2) score += 1;
-
     // Classify intensity
-    if (score >= 6) return 'very_high';
-    if (score >= 4) return 'high';
+    if (score >= 5) return 'very_high';
+    if (score >= 3) return 'high';
     if (score >= 2) return 'moderate';
     return 'low';
 }
@@ -419,20 +396,17 @@ export function calculateActivityImpact(
 
     // Calculate individual impacts
     const stepsImpact = calculateStepsImpact(totalSteps, intervalMinutes, coefficients, userBaseline, bestBoutMultiplier) * mealMultiplier;
-    const caloriesImpact = calculateCaloriesImpact(totalCalories, coefficients) * mealMultiplier;
-    const stairsImpact = calculateStairsImpact(totalFloors, coefficients);
     const hrImpact = calculateHRImpact(avgHeartRate, coefficients, userBaseline);
     const stressHRImpact = calculateStressHRImpact(avgHeartRate, totalSteps, collectionState, coefficients, userBaseline);
 
     // Total impact
-    const totalImpact = stepsImpact + caloriesImpact + stairsImpact + hrImpact + stressHRImpact;
+    const totalImpact = stepsImpact + hrImpact + stressHRImpact;
 
     // Determine intensity
     const intensity = determineIntensity(
         totalSteps,
         intervalMinutes,
         avgHeartRate,
-        totalFloors,
         userBaseline
     );
 
@@ -440,8 +414,6 @@ export function calculateActivityImpact(
         totalImpact: Math.round(totalImpact * 10) / 10,
         components: {
             steps: Math.round(stepsImpact * 10) / 10,
-            calories: Math.round(caloriesImpact * 10) / 10,
-            stairs: Math.round(stairsImpact * 10) / 10,
             heartRate: Math.round(hrImpact * 10) / 10,
             stressHeartRate: Math.round(stressHRImpact * 10) / 10
         },

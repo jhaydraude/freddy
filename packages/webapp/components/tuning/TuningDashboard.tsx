@@ -2,26 +2,21 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-    Zap,
-    Flame,
-    GitBranch,
-    Activity,
     ChevronRight,
     History,
-    Timer,
     Filter,
-    Trash2
+    Trash2,
+    Dna,
+    Utensils
 } from 'lucide-react';
 import { TuningCategoryCard } from './TuningCategoryCard';
 import { DeprecationBanner } from './DeprecationBanner';
-import { InsulinResponseTuner } from './InsulinResponseTuner';
-import { CarbAbsorptionTuner } from './CarbAbsorptionTuner';
-import { BasalRateTuner } from './BasalRateTuner';
-import { ActivityImpactTuner } from './ActivityImpactTuner';
+import { UnifiedFoundationTuner } from './UnifiedFoundationTuner';
+import { MealActivityTuner } from './MealActivityTuner';
 import { ConfirmDialog } from './ConfirmDialog';
 
-type ViewType = 'categories' | 'insulin-response' | 'carb-absorption' | 'basal-tuning' | 'activity-impact';
-type CategoryId = 'insulin-response' | 'carb-absorption' | 'basal-tuning' | 'activity-impact';
+type ViewType = 'categories' | 'unified-foundation' | 'meal-activity';
+type CategoryId = 'unified-foundation' | 'meal-activity';
 
 interface TuningRun {
     tuning_id: string;
@@ -33,10 +28,8 @@ interface TuningRun {
 }
 
 const CATEGORY_META: Record<CategoryId, { label: string; icon: React.ReactElement; color: string; view: ViewType; filterColor: string }> = {
-    'insulin-response': { label: 'Insulin Response', icon: <Zap size={16} className="text-amber-400" />, color: 'text-amber-400', view: 'insulin-response', filterColor: 'border-amber-500/40 bg-amber-500/10 text-amber-400' },
-    'carb-absorption': { label: 'Carb Absorption', icon: <Flame size={16} className="text-orange-400" />, color: 'text-orange-400', view: 'carb-absorption', filterColor: 'border-orange-500/40 bg-orange-500/10 text-orange-400' },
-    'basal-tuning': { label: 'Basal Rates', icon: <GitBranch size={16} className="text-blue-400" />, color: 'text-blue-400', view: 'basal-tuning', filterColor: 'border-blue-500/40 bg-blue-500/10 text-blue-400' },
-    'activity-impact': { label: 'Activity Impact', icon: <Activity size={16} className="text-emerald-400" />, color: 'text-emerald-400', view: 'activity-impact', filterColor: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400' },
+    'unified-foundation': { label: 'Foundation Tuning', icon: <Dna size={16} className="text-indigo-400" />, color: 'text-indigo-400', view: 'unified-foundation', filterColor: 'border-indigo-500/40 bg-indigo-500/10 text-indigo-400' },
+    'meal-activity': { label: 'Meal & Activity', icon: <Utensils size={16} className="text-orange-400" />, color: 'text-orange-400', view: 'meal-activity', filterColor: 'border-orange-500/40 bg-orange-500/10 text-orange-400' },
 };
 
 /** Returns a human-friendly relative time string, e.g. "3 hours ago", "Yesterday", "Feb 18" */
@@ -82,10 +75,8 @@ export const TuningDashboard: React.FC = () => {
         try {
             setLoading(true);
             const endpoints: Array<{ url: string; category: CategoryId; label: string }> = [
-                { url: '/api/profile/tune-insulin-response', category: 'insulin-response', label: 'Insulin Response' },
-                { url: '/api/profile/tune-carb-absorption', category: 'carb-absorption', label: 'Carb Absorption' },
-                { url: '/api/profile/tune-basal-rate', category: 'basal-tuning', label: 'Basal Rates' },
-                { url: '/api/profile/tune-activity-impact', category: 'activity-impact', label: 'Activity Impact' },
+                { url: '/api/profile/tune-unified-foundation', category: 'unified-foundation', label: 'Foundation Tuning' },
+                { url: '/api/profile/tune-meal-activity', category: 'meal-activity', label: 'Meal & Activity' },
             ];
 
             const results = await Promise.allSettled(
@@ -120,10 +111,8 @@ export const TuningDashboard: React.FC = () => {
     };
 
     const CATEGORY_ENDPOINTS: Record<CategoryId, string> = {
-        'insulin-response': '/api/profile/tune-insulin-response',
-        'carb-absorption': '/api/profile/tune-carb-absorption',
-        'basal-tuning': '/api/profile/tune-basal-rate',
-        'activity-impact': '/api/profile/tune-activity-impact',
+        'unified-foundation': '/api/profile/tune-unified-foundation',
+        'meal-activity': '/api/profile/tune-meal-activity',
     };
 
     const handleDeleteAll = async () => {
@@ -179,44 +168,24 @@ export const TuningDashboard: React.FC = () => {
         lastOptimized?: string;
     })[] = [
             {
-                id: 'insulin-response',
-                title: 'Insulin Response',
-                description: 'Optimize DIA, Peak Time, and ISF based on your actual glucose response to insulin.',
-                icon: <Zap className="text-amber-400" />,
-                status: lastOptimizedOf('insulin-response') ? 'optimized' : 'needs_update',
-                colorClass: 'bg-amber-500',
-                parameters: ['DIA', 'Peak Time', 'ISF ×6'],
-                lastOptimized: lastOptimizedOf('insulin-response'),
+                id: 'unified-foundation',
+                title: 'Foundation Tuner',
+                description: 'Advanced joint optimization of DIA, Basal, and ISF for biological consistency. This establishes your baseline settings.',
+                icon: <Dna className="text-indigo-400" />,
+                status: lastOptimizedOf('unified-foundation') ? 'optimized' : 'needs_update',
+                colorClass: 'bg-indigo-500',
+                parameters: ['DIA', 'Basal Rate ×12', 'ISF ×6'],
+                lastOptimized: lastOptimizedOf('unified-foundation'),
             },
             {
-                id: 'carb-absorption',
-                title: 'Carb Absorption',
-                description: 'Tune your Carb Ratios (ICR) and absorption profiles for different times of day.',
-                icon: <Flame className="text-orange-500" />,
-                status: lastOptimizedOf('carb-absorption') ? 'optimized' : 'needs_update',
+                id: 'meal-activity',
+                title: 'Meal & Activity Tuner',
+                description: 'Refine your Carb Ratio (ICR) and Activity impact coefficients using a fixed foundation baseline. This tunes your bolus and exercise math.',
+                icon: <Utensils className="text-orange-400" />,
+                status: lastOptimizedOf('meal-activity') ? 'optimized' : 'needs_update',
                 colorClass: 'bg-orange-500',
-                parameters: ['ICR ×6', 'Absorption Rate'],
-                lastOptimized: lastOptimizedOf('carb-absorption'),
-            },
-            {
-                id: 'basal-tuning',
-                title: 'Basal Rates',
-                description: 'Analyze fasting periods to find the perfect basal rates for a flat glucose profile.',
-                icon: <GitBranch className="text-blue-500" />,
-                status: lastOptimizedOf('basal-tuning') ? 'optimized' : 'needs_update',
-                colorClass: 'bg-blue-500',
-                parameters: ['Basal Rate ×12'],
-                lastOptimized: lastOptimizedOf('basal-tuning'),
-            },
-            {
-                id: 'activity-impact',
-                title: 'Activity Impact',
-                description: 'Calibrate how exercise and steps affect your insulin sensitivity in real-time.',
-                icon: <Timer className="text-emerald-500" />,
-                status: lastOptimizedOf('activity-impact') ? 'optimized' : 'needs_update',
-                colorClass: 'bg-emerald-500',
-                parameters: ['Step Pace', 'HR Spike', 'Stress HR', 'Calories', 'Stairs'],
-                lastOptimized: lastOptimizedOf('activity-impact'),
+                parameters: ['ICR ×6', 'Activity Coeffs ×2', 'Refined ISF'],
+                lastOptimized: lastOptimizedOf('meal-activity'),
             },
         ];
 
@@ -225,7 +194,7 @@ export const TuningDashboard: React.FC = () => {
             {mismatchDetected && (
                 <DeprecationBanner
                     type="mismatch"
-                    category="Insulin Response"
+                    category="Tuning"
                     onFix={() => console.log('Syncing...')}
                 />
             )}
@@ -234,8 +203,8 @@ export const TuningDashboard: React.FC = () => {
             <section>
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                        Tuning Categories
-                        <span className="text-xs font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">4 TOTAL</span>
+                        Tuning Workflow
+                        <span className="text-xs font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">2 PHASES</span>
                     </h2>
                 </div>
 
@@ -360,7 +329,7 @@ export const TuningDashboard: React.FC = () => {
                 ) : !loading ? (
                     <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-10 text-center text-zinc-600 text-sm">
                         {historyFilter === 'all'
-                            ? 'No optimization runs yet. Start with any category above.'
+                            ? 'No optimization runs yet. Start with Foundation Tuning.'
                             : `No ${CATEGORY_META[historyFilter]?.label} runs yet.`
                         }
                     </div>
@@ -369,19 +338,14 @@ export const TuningDashboard: React.FC = () => {
         </>
     );
 
-
     return (
         <>
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 {view === 'categories' ? renderCategories() :
-                    view === 'insulin-response' ? (
-                        <InsulinResponseTuner onBack={handleBack} initialTuningId={selectedTuningId} />
-                    ) : view === 'carb-absorption' ? (
-                        <CarbAbsorptionTuner onBack={handleBack} initialTuningId={selectedTuningId} />
-                    ) : view === 'basal-tuning' ? (
-                        <BasalRateTuner onBack={handleBack} initialTuningId={selectedTuningId} />
+                    view === 'meal-activity' ? (
+                        <MealActivityTuner onBack={handleBack} initialTuningId={selectedTuningId} />
                     ) : (
-                        <ActivityImpactTuner onBack={handleBack} initialTuningId={selectedTuningId} />
+                        <UnifiedFoundationTuner onBack={handleBack} initialTuningId={selectedTuningId} />
                     )}
             </div>
 
@@ -390,7 +354,7 @@ export const TuningDashboard: React.FC = () => {
                 title="Delete Optimization History"
                 message={
                     confirmDelete.target === 'all'
-                        ? `This will permanently delete all ${history.length} optimization runs across every category. This cannot be undone.`
+                        ? `This will permanently delete all ${history.length} optimization runs. This cannot be undone.`
                         : `This will permanently delete all ${CATEGORY_META[confirmDelete.target as CategoryId]?.label ?? ''} optimization runs. This cannot be undone.`
                 }
                 confirmLabel={isDeleting ? 'Deleting…' : 'Delete'}

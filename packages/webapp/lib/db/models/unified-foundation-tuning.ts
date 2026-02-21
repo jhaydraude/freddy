@@ -1,18 +1,16 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 /**
- * Insulin Response Tuning Interface
- * Stores tuning run results and history for DIA, Peak Time, and ISF optimization
+ * Unified Foundation Tuning Interface
+ * Synchronously optimizes DIA, Peak, ISF, and Basal Rates.
  */
-export interface IInsulinResponseTuning extends Document {
-    // Metadata
+export interface IUnifiedFoundationTuning extends Document {
     tuning_id: string;
     user_id: string;
     created_at: Date;
     status: 'syncing' | 'running' | 'completed' | 'failed' | 'applied';
-    sync_progress?: number; // 0-100
+    sync_progress?: number;
 
-    // Input Configuration
     config: {
         analysis_period_days: number;
         window_hours: number;
@@ -20,68 +18,51 @@ export interface IInsulinResponseTuning extends Document {
         min_windows_required: number;
     };
 
-    // Current Values (baseline)
     current_values: {
         dia: number;
         peak: number;
-        isf: number[];  // 6 time blocks
+        isf: number[];    // 6 blocks
+        basal: number[];  // 12 blocks
+        units: 'mg/dL' | 'mmol/L';
         source: 'profile' | 'previous_tuning';
     };
 
-    // Optimized Results
     optimized_values?: {
         dia: number;
         peak: number;
-        isf: number[];  // 6 time blocks
+        isf: number[];
+        basal: number[];
 
-        // Confidence intervals
         dia_confidence: [number, number];
         peak_confidence: [number, number];
         isf_confidence: [number, number][];
+        basal_confidence: [number, number][];
 
-        // Quality metrics
         r_squared: number;
         rmse: number;
         mae: number;
         windows_analyzed: number;
     };
 
-    // Analysis Details
     analysis_summary?: {
         total_windows: number;
         stable_windows: number;
         meal_windows: number;
         activity_windows: number;
         data_quality_score: number;
+        window_distribution?: number[];  // Number of windows per 2-hour block (12 blocks)
     };
 
-    // Application tracking
-    applied_at?: Date;
-    applied_by?: string;
-
-    // Logs and diagnostics
     logs?: string[];
     error_message?: string;
+    applied_at?: Date;
+    applied_by?: string;
 }
 
-const InsulinResponseTuningSchema = new Schema<IInsulinResponseTuning>({
-    tuning_id: {
-        type: String,
-        required: true,
-        unique: true,
-        index: true
-    },
-    user_id: {
-        type: String,
-        required: true,
-        index: true
-    },
-    created_at: {
-        type: Date,
-        required: true,
-        default: Date.now,
-        index: true
-    },
+const UnifiedFoundationTuningSchema = new Schema<IUnifiedFoundationTuning>({
+    tuning_id: { type: String, required: true, unique: true, index: true },
+    user_id: { type: String, required: true, index: true },
+    created_at: { type: Date, required: true, default: Date.now, index: true },
     status: {
         type: String,
         required: true,
@@ -99,15 +80,19 @@ const InsulinResponseTuningSchema = new Schema<IInsulinResponseTuning>({
         dia: { type: Number, required: true },
         peak: { type: Number, required: true },
         isf: { type: [Number], required: true },
+        basal: { type: [Number], required: true },
+        units: { type: String, required: true, enum: ['mg/dL', 'mmol/L'] },
         source: { type: String, required: true, enum: ['profile', 'previous_tuning'] }
     },
     optimized_values: {
         dia: Number,
         peak: Number,
         isf: [Number],
+        basal: [Number],
         dia_confidence: [Number],
         peak_confidence: [Number],
         isf_confidence: [[Number]],
+        basal_confidence: [[Number]],
         r_squared: Number,
         rmse: Number,
         mae: Number,
@@ -118,21 +103,19 @@ const InsulinResponseTuningSchema = new Schema<IInsulinResponseTuning>({
         stable_windows: Number,
         meal_windows: Number,
         activity_windows: Number,
-        data_quality_score: Number
+        data_quality_score: Number,
+        window_distribution: [Number]
     },
     applied_at: Date,
     applied_by: String,
     logs: [String],
     error_message: String
 }, {
-    collection: 'insulin_response_tuning',
+    collection: 'unified_foundation_tuning',
     timestamps: false
 });
 
-// Indexes for efficient queries
-InsulinResponseTuningSchema.index({ user_id: 1, created_at: -1 });
-InsulinResponseTuningSchema.index({ user_id: 1, status: 1 });
-// Note: tuning_id already has unique index from field definition above
+UnifiedFoundationTuningSchema.index({ user_id: 1, created_at: -1 });
 
-export const InsulinResponseTuning = mongoose.models.InsulinResponseTuning ||
-    mongoose.model<IInsulinResponseTuning>('InsulinResponseTuning', InsulinResponseTuningSchema);
+export const UnifiedFoundationTuning = mongoose.models.UnifiedFoundationTuning ||
+    mongoose.model<IUnifiedFoundationTuning>('UnifiedFoundationTuning', UnifiedFoundationTuningSchema);

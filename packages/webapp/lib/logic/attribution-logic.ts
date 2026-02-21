@@ -38,8 +38,6 @@ export async function attributeGlucoseChange(
         const ac = currentStatus.profile.profileData.activity_coefficients;
         activityCoefficients = {
             STEPS_PER_MINUTE: ac.steps_per_minute,
-            CALORIES: ac.calories,
-            STAIRS: ac.stairs,
             HR_SPIKE: ac.hr_spike,
             STRESS_HR: ac.stress_hr ?? DEFAULT_ACTIVITY_COEFFICIENTS.STRESS_HR,
             POST_MEAL_MULTIPLIER: ac.post_meal_multiplier ?? DEFAULT_ACTIVITY_COEFFICIENTS.POST_MEAL_MULTIPLIER
@@ -162,8 +160,6 @@ export async function attributeGlucoseChange(
                 activity: {
                     value: activityImpactData.totalImpact,
                     steps: activityImpactData.components.steps,
-                    calories: activityImpactData.components.calories,
-                    stairs: activityImpactData.components.stairs,
                     heartRate: activityImpactData.components.heartRate,
                     stressHeartRate: activityImpactData.components.stressHeartRate,
                     intensity: activityImpactData.intensity,

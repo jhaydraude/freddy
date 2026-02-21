@@ -21,7 +21,10 @@ export default function DateRangeSelector({ onRangeChange }: DateRangeSelectorPr
         { label: 'Yesterday', id: 'yesterday', getRange: () => [startOfDay(subDays(new Date(), 1)), endOfDay(subDays(new Date(), 1))] },
         { label: 'Last 7 Days', id: '7d', getRange: () => [startOfDay(subDays(new Date(), 6)), endOfDay(new Date())] },
         { label: 'Last 30 Days', id: '30d', getRange: () => [startOfDay(subDays(new Date(), 29)), endOfDay(new Date())] },
+        { label: 'Last 60 Days', id: '60d', getRange: () => [startOfDay(subDays(new Date(), 59)), endOfDay(new Date())] },
         { label: 'Last 90 Days', id: '90d', getRange: () => [startOfDay(subDays(new Date(), 89)), endOfDay(new Date())] },
+        { label: 'Last 180 Days', id: '180d', getRange: () => [startOfDay(subDays(new Date(), 179)), endOfDay(new Date())] },
+        { label: 'Last 360 Days', id: '360d', getRange: () => [startOfDay(subDays(new Date(), 359)), endOfDay(new Date())] },
     ];
 
     const handlePresetClick = (preset: any) => {
@@ -44,8 +47,8 @@ export default function DateRangeSelector({ onRangeChange }: DateRangeSelectorPr
                         key={preset.id}
                         onClick={() => handlePresetClick(preset)}
                         className={`px-4 py-2 rounded-xl text-xs font-medium transition-all border ${activePreset === preset.id
-                                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
-                                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                            ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                             }`}
                     >
                         {preset.label}
@@ -54,8 +57,8 @@ export default function DateRangeSelector({ onRangeChange }: DateRangeSelectorPr
                 <button
                     onClick={() => setShowCustom(!showCustom)}
                     className={`px-4 py-2 rounded-xl text-xs font-medium transition-all border flex items-center gap-2 ${activePreset === 'custom' || showCustom
-                            ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400'
-                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-400'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                         }`}
                 >
                     <Calendar size={14} />
