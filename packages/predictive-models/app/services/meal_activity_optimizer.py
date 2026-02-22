@@ -52,7 +52,8 @@ class MealActivityOptimizer(HolisticProfileAnalyzer):
         current_cr: Optional[List[float]] = None,
         current_activity_coeffs: Optional[Dict[str, float]] = None,
         lambda_l2: float = 0.2,
-        lambda_smooth: float = 0.05
+        lambda_smooth: float = 0.05,
+        mode: str = 'combined'
     ) -> Optional[MealActivityResult]:
         
         self.logs = []
@@ -66,15 +67,23 @@ class MealActivityOptimizer(HolisticProfileAnalyzer):
             "heartRate": 1.0,   # mg/dL per HR elevation %
         }
 
-        # Convert windows to Pydantic models
+        # Convert windows to Pydantic models & Filter based on mode
         window_objects = []
         for w in windows:
             if isinstance(w, dict):
-                window_objects.append(TimeWindow(**w))
+                obj = TimeWindow(**w)
             else:
-                window_objects.append(w)
+                obj = w
+            
+            # Filtering
+            if mode == 'meal' and not obj.has_meals:
+                continue
+            if mode == 'activity' and not obj.data_quality.get('has_activity_data', False):
+                continue
+                
+            window_objects.append(obj)
 
-        if len(window_objects) < 15:
+        if len(window_objects) < 10:
             return None
 
         self.window_weights = self._calculate_window_weights(window_objects)
@@ -85,25 +94,46 @@ class MealActivityOptimizer(HolisticProfileAnalyzer):
         x0 = self.baseline_isf + self.initial_cr + self.baseline_basal + [self.initial_activity.get(k, 0.0) for k in act_keys]
         x0 = np.array(x0)
 
-        # Bounds
-        # ISF: +/- 30% from baseline, min 10
+        # Default Bounds (combined strategy)
         isf_lb = [max(10.0, v * 0.7) for v in baseline_isf]
         isf_ub = [v * 1.3 for v in baseline_isf]
         
-        # CR: 3 to 50
         cr_lb = [3.0] * 6
         cr_ub = [50.0] * 6
 
-        # Basal: +/- 20% deviation permitted in Level 2
         basal_lb = [max(0.05, v * 0.8) for v in baseline_basal]
         basal_ub = [max(0.1, v * 1.2) for v in baseline_basal]
         
-        # Activity Bounds (all impact usually negative except HR/Stress)
         act_lb = [-1.0, 0.1]
         act_ub = [0.0, 40.0]
         
+        if mode == 'meal':
+            # Lock activity, strict ISF/Basal
+            act_lb = [self.initial_activity["steps"], self.initial_activity["heartRate"]]
+            act_ub = act_lb
+            isf_lb = [max(10.0, v * 0.9) for v in baseline_isf]
+            isf_ub = [v * 1.1 for v in baseline_isf]
+            basal_lb = [max(0.05, v * 0.9) for v in baseline_basal]
+            basal_ub = [max(0.1, v * 1.1) for v in baseline_basal]
+            lambda_l2 = 2.0  # heavily penalize changes to basal/ISF from initial guess
+            
+        elif mode == 'activity':
+            # Lock CR, strict ISF/Basal
+            cr_lb = self.initial_cr
+            cr_ub = self.initial_cr
+            isf_lb = [max(10.0, v * 0.9) for v in baseline_isf]
+            isf_ub = [v * 1.1 for v in baseline_isf]
+            basal_lb = [max(0.05, v * 0.9) for v in baseline_basal]
+            basal_ub = [max(0.1, v * 1.1) for v in baseline_basal]
+            lambda_l2 = 2.0  # heavily penalize changes to basal/ISF from initial guess
+        
         lb = isf_lb + cr_lb + basal_lb + act_lb
         ub = isf_ub + cr_ub + basal_ub + act_ub
+        
+        for i, (lower, upper) in enumerate(zip(lb, ub)):
+            if upper < lower:
+                self._log(f"BOUND ERROR at index {i}: lb={lower}, ub={upper}")
+                
         bounds = Bounds(lb, ub)
 
         # Run optimization
@@ -140,9 +170,9 @@ class MealActivityOptimizer(HolisticProfileAnalyzer):
         ci_results = self._calculate_bootstrap_ci_meal(window_objects, opt_params, lb, ub, lambda_l2, lambda_smooth)
 
         return MealActivityResult(
-            isf=[round(v, 2) for v in opt_isf],
-            cr=[round(v, 2) for v in opt_cr],
-            basal=[round(v, 3) for v in opt_basal],
+            isf=[round(v, 1) for v in opt_isf],
+            cr=[round(v, 1) for v in opt_cr],
+            basal=[round(v * 20.0) / 20.0 for v in opt_basal],
             activity_coefficients={k: round(v, 4) for k, v in opt_act.items()},
             isf_confidence=ci_results['isf'],
             cr_confidence=ci_results['cr'],

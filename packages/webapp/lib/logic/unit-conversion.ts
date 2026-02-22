@@ -20,7 +20,7 @@ export function normalizeISF(value: number, units?: string | null): number {
  */
 export function denormalizeISF(value: number, units?: string | null): number {
     if (units?.toLowerCase().includes('mmol')) {
-        return Math.round((value * MG_DL_TO_MMOL_L) * 100) / 100;
+        return Math.round((value * MG_DL_TO_MMOL_L) * 10) / 10;
     }
     return Math.round(value * 10) / 10;
 }

@@ -243,54 +243,7 @@ const ProfileAnalysisSchema = new Schema({
 
 export const ProfileAnalysis = getModel<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema, getFreddyConn, 'profile_analysis');
 
-// ---------------------------------------------------------------------------
-// SITUATION CLASSIFIER (Freddy Owned)
-// ---------------------------------------------------------------------------
-export interface ISituationTag extends Document {
-    tag_id: string;
-    display_name: string;
-    category: string;
-}
 
-const SituationTagSchema = new Schema({
-    tag_id: { type: String, required: true, unique: true, index: true },
-    display_name: { type: String, required: true },
-    category: { type: String, required: true }
-}, { collection: 'situation_tags' });
-
-export const SituationTag = getModel<ISituationTag>('SituationTag', SituationTagSchema, getFreddyConn, 'situation_tags');
-
-export interface ISituationSegment extends Document {
-    userId: string;
-    tagId: string;
-    startTime: Date;
-    endTime: Date;
-}
-
-const SituationSegmentSchema = new Schema({
-    userId: { type: String, required: true, index: true },
-    tagId: { type: String, required: true, index: true },
-    startTime: { type: Date, required: true, index: true },
-    endTime: { type: Date, required: true, index: true }
-}, { collection: 'situation_segments' });
-
-export const SituationSegment = getModel<ISituationSegment>('SituationSegment', SituationSegmentSchema, getFreddyConn, 'situation_segments');
-
-export interface ISituationWindow extends Document {
-    window_id: string;
-    window_start: Date;
-    window_end: Date;
-    features: Record<string, number>;
-}
-
-const SituationWindowSchema = new Schema({
-    window_id: { type: String, required: true, unique: true, index: true },
-    window_start: { type: Date, required: true, index: true },
-    window_end: { type: Date, required: true, index: true },
-    features: { type: Map, of: Number }
-}, { collection: 'situation_windows' });
-
-export const SituationWindow = getModel<ISituationWindow>('SituationWindow', SituationWindowSchema, getFreddyConn, 'situation_windows');
 
 // ---------------------------------------------------------------------------
 // CONFIGURATION MODELS (Freddy Owned)

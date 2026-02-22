@@ -34,6 +34,7 @@ import {
 } from 'recharts';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ApplySettingsDialog, ApplyOptions } from './ApplySettingsDialog';
+import { UnifiedFoundationResults } from './UnifiedFoundationResults';
 
 interface Props {
     onBack: () => void;
@@ -179,7 +180,7 @@ export const UnifiedFoundationTuner: React.FC<Props> = ({ onBack, initialTuningI
                 <div>
                     <div className="flex items-center gap-2 mb-1">
                         <Dna className="text-indigo-400" size={18} />
-                        <h1 className="text-2xl font-bold text-white tracking-tight">Foundation Tuner (DIA & Basal)</h1>
+                        <h1 className="text-2xl font-bold text-white tracking-tight">Insulin Tuner (DIA & Basal)</h1>
                     </div>
                     <p className="text-zinc-500 text-sm max-w-lg">
                         Unified optimization of insulin action time (DIA), peak time, ISF, and basal rates.
@@ -245,7 +246,7 @@ export const UnifiedFoundationTuner: React.FC<Props> = ({ onBack, initialTuningI
                 <div className="w-20 h-20 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mb-6">
                     <Telescope className="text-indigo-400" size={36} />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">Ready for Foundation Tuning</h3>
+                <h3 className="text-xl font-bold text-white mb-2">Ready for Insulin Tuning</h3>
                 <p className="text-zinc-500 max-w-sm">
                     This analysis looks for the optimal combination of basal rates, ISF, and DIA to explain your glucose trends.
                 </p>
@@ -253,21 +254,121 @@ export const UnifiedFoundationTuner: React.FC<Props> = ({ onBack, initialTuningI
         );
 
         if (status === 'running') return (
-            <div className="py-20 flex flex-col items-center">
-                <div className="relative mb-8">
-                    <div className="w-24 h-24 rounded-full border-4 border-zinc-800 border-t-indigo-500 animate-spin" />
-                    <Activity className="absolute inset-0 m-auto text-indigo-500 animate-pulse" size={32} />
+            <div className="py-10 flex flex-col items-center w-full max-w-4xl mx-auto">
+                <div className="relative mb-6">
+                    <div className="w-20 h-20 rounded-full border-4 border-zinc-800 border-t-indigo-500 animate-spin" />
+                    <Activity className="absolute inset-0 m-auto text-indigo-500 animate-pulse" size={28} />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">Analyzing Foundation Parameters</h3>
-                <p className="text-zinc-500 text-sm max-w-md text-center">
+                <h3 className="text-2xl font-bold text-white mb-2">Analyzing Insulin Parameters</h3>
+                <p className="text-zinc-500 text-sm max-w-lg text-center mb-8">
                     Generating synthetic basal windows and solving the weighted L-BFGS-B objective function...
                 </p>
 
-                <div className="mt-8 w-full max-w-lg bg-zinc-900 rounded-2xl border border-zinc-800 p-4 max-h-40 overflow-y-auto font-mono text-[10px] text-zinc-500 space-y-1">
-                    {result?.logs?.map((log: string, i: number) => (
-                        <div key={i}>{log}</div>
-                    ))}
-                    {!result?.logs?.length && <div>Initializing logs...</div>}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 text-left">
+                        <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Analysis Configuration</h4>
+                        <div className="space-y-4">
+                            <div>
+                                <div className="text-xs text-zinc-500 font-bold uppercase mb-1">Timeframe Reviewed</div>
+                                <div className="text-sm font-bold text-white bg-zinc-800/50 inline-block px-3 py-1 rounded-lg border border-zinc-800">
+                                    {(() => {
+                                        const days = result?.config?.analysis_period_days || analysisPeriod;
+                                        const end = new Date(result?.created_at || Date.now());
+                                        const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+                                        const format = (d: Date) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                                        return `${format(start)} - ${format(end)} (${days} Days)`;
+                                    })()}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-xs text-zinc-500 font-bold uppercase mb-1">Window Selection Criteria</div>
+                                <div className="text-sm text-zinc-400 space-y-1 bg-zinc-800/20 p-3 rounded-lg border border-zinc-800/50">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                        <span>Stable glucose periods</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                        <span>&gt;4h post-meal</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                        <span>&gt;2h post-activity</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                                        <span>High sensor confidence</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 text-left flex flex-col">
+                        <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Window Discovery Progress</h4>
+                        {result?.analysis_summary?.window_distribution ? (
+                            <div className="flex-1 flex flex-col justify-end">
+                                <div className="h-28 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={result.analysis_summary.window_distribution.map((count: number, i: number) => ({
+                                            time: `${i * 2}h`,
+                                            count
+                                        }))}>
+                                            <XAxis dataKey="time" hide />
+                                            <Tooltip
+                                                contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px', fontSize: '10px' }}
+                                                labelStyle={{ color: '#71717a' }}
+                                            />
+                                            <Bar dataKey="count" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                <div className="text-xs text-indigo-400 font-bold text-center mt-3 bg-indigo-500/10 py-2 rounded-lg border border-indigo-500/20">
+                                    {result.analysis_summary.total_windows || result.analysis_summary.windows_analyzed || 0} valid windows found
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-center">
+                                <div className="w-10 h-10 rounded-full border-2 border-zinc-800 border-t-zinc-500 animate-spin mb-3" />
+                                <span className="text-xs text-zinc-500 font-bold uppercase tracking-widest animate-pulse">Scanning History...</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="w-full bg-[#0a0a0a] rounded-2xl border border-zinc-800 p-5 font-mono text-xs text-zinc-500 text-left shadow-inner flex flex-col animate-in fade-in slide-in-from-bottom-8 duration-700">
+                    <div className="flex items-center justify-between mb-3 pb-2 border-b border-zinc-800/80">
+                        <h4 className="text-[10px] font-sans font-bold text-zinc-500 uppercase tracking-widest">Process Log</h4>
+                        <div className="flex items-center gap-2">
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                            </span>
+                            <span className="text-[10px] font-sans font-bold text-indigo-400 uppercase tracking-widest">Running</span>
+                        </div>
+                    </div>
+                    <div className="h-48 overflow-y-auto pr-2 space-y-1.5 custom-scrollbar">
+                        {result?.logs?.map((log: string, i: number) => {
+                            let colorClass = 'text-zinc-400';
+                            if (log.includes('WARN')) colorClass = 'text-amber-400';
+                            else if (log.includes('ERR')) colorClass = 'text-red-400';
+                            else if (log.includes('INFO') || log.includes('Step')) colorClass = 'text-indigo-200';
+                            else if (log.includes('SUCCESS') || log.includes('Found')) colorClass = 'text-emerald-400';
+
+                            return (
+                                <div key={i} className={`flex gap-3 ${colorClass}`}>
+                                    <span className="text-zinc-600 select-none">[{new Date().toISOString().substring(11, 19)}]</span>
+                                    <span>{log}</span>
+                                </div>
+                            );
+                        })}
+                        {!result?.logs?.length && (
+                            <div className="flex gap-3 text-zinc-500 animate-pulse">
+                                <span className="text-zinc-700 select-none">[{new Date().toISOString().substring(11, 19)}]</span>
+                                <span>Initializing optimization sequence...</span>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         );
@@ -292,153 +393,7 @@ export const UnifiedFoundationTuner: React.FC<Props> = ({ onBack, initialTuningI
     };
 
     const renderResults = () => {
-        if (status !== 'completed' || !result?.optimized_values) return null;
-
-        const opt = result.optimized_values;
-        const cur = result.current_values;
-
-        return (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 py-8 animate-in fade-in duration-500">
-                {/* Global Insulin Parameters */}
-                <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 overflow-hidden relative">
-                        <div className="absolute top-0 right-0 p-8 text-indigo-500/5 rotate-12">
-                            <Zap size={120} />
-                        </div>
-                        <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-6">Insulin Action (Foundation)</h3>
-
-                        <div className="space-y-8 relative">
-                            <div>
-                                <div className="text-xs text-zinc-500 font-bold uppercase mb-2 flex items-center justify-between">
-                                    DIA (Duration)
-                                    <span className="text-indigo-400">95% CI: {opt.dia_confidence[0].toFixed(1)}-{opt.dia_confidence[1].toFixed(1)}h</span>
-                                </div>
-                                <div className="flex items-baseline gap-3">
-                                    <div className="text-4xl font-bold text-white font-mono">{opt.dia.toFixed(2)}h</div>
-                                    <div className={`text-sm font-bold ${opt.dia > cur.dia ? 'text-blue-400' : 'text-orange-400'}`}>
-                                        {opt.dia > cur.dia ? '↑' : '↓'} {Math.abs(opt.dia - cur.dia).toFixed(2)}h
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div>
-                                <div className="text-xs text-zinc-500 font-bold uppercase mb-2 flex items-center justify-between">
-                                    Peak Time
-                                    <span className="text-indigo-400">95% CI: {opt.peak_confidence[0].toFixed(0)}-{opt.peak_confidence[1].toFixed(0)}m</span>
-                                </div>
-                                <div className="flex items-baseline gap-3">
-                                    <div className="text-4xl font-bold text-white font-mono">{opt.peak.toFixed(0)}m</div>
-                                    <div className={`text-sm font-bold ${opt.peak > cur.peak ? 'text-emerald-400' : 'text-orange-400'}`}>
-                                        {opt.peak > cur.peak ? '↑' : '↓'} {Math.abs(opt.peak - cur.peak).toFixed(0)}m
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="pt-4 border-t border-zinc-800">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs text-zinc-500 font-bold uppercase">Model Fit (R²)</span>
-                                    <span className="text-emerald-400 text-sm font-bold font-mono">{(opt.r_squared * 100).toFixed(1)}%</span>
-                                </div>
-                                <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-emerald-500 rounded-full"
-                                        style={{ width: `${Math.max(0, opt.r_squared * 100)}%` }}
-                                    />
-                                </div>
-                                <p className="text-[10px] text-zinc-600 mt-2 italic">
-                                    R² score of {opt.r_squared.toFixed(3)} based on {opt.windows_analyzed} isolated windows.
-                                </p>
-                            </div>
-
-                            {result.analysis_summary?.window_distribution && (
-                                <div className="pt-6 border-t border-zinc-800">
-                                    <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mb-4">Window Distribution (Time of Day)</h4>
-                                    <div className="h-24 w-full">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={result.analysis_summary.window_distribution.map((count: number, i: number) => ({
-                                                time: `${i * 2}h`,
-                                                count
-                                            }))}>
-                                                <XAxis dataKey="time" hide />
-                                                <Tooltip
-                                                    contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '8px', fontSize: '10px' }}
-                                                    labelStyle={{ color: '#71717a' }}
-                                                />
-                                                <Bar dataKey="count" fill="#4f46e5" radius={[2, 2, 0, 0]} />
-                                            </BarChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                    <p className="text-[9px] text-zinc-500 mt-2">
-                                        Optimization weighted toward times with higher window counts.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Basal Rate & ISF Profiles */}
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest">Basal Schedule (U/hr)</h3>
-                            <div className="flex items-center gap-4 text-[10px] uppercase font-bold tracking-wider">
-                                <div className="flex items-center gap-1.5 text-zinc-600"><div className="w-2 h-2 rounded-full border border-zinc-600" /> Current</div>
-                                <div className="flex items-center gap-1.5 text-indigo-400"><div className="w-2 h-2 rounded-full bg-indigo-400" /> Optimized</div>
-                            </div>
-                        </div>
-                        <div className="h-64 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={opt.basal.map((val: number, i: number) => ({
-                                    time: `${i * 2}:00`,
-                                    optimized: val,
-                                    current: cur.basal[i]
-                                }))}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
-                                    <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 10 }} />
-                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 10 }} />
-                                    <Tooltip
-                                        contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px' }}
-                                        itemStyle={{ fontSize: '11px', fontWeight: 'bold' }}
-                                    />
-                                    <Bar dataKey="optimized" fill="#818cf8" radius={[4, 4, 0, 0]} />
-                                    <Bar dataKey="current" fill="transparent" stroke="#52525b" strokeWidth={1} strokeDasharray="4 4" radius={[4, 4, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                        <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest mb-6">ISF Sensitivity Schedule ({cur.units || 'mg/dL'}/U)</h3>
-                        <div className="h-48 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart data={opt.isf.map((val: number, i: number) => ({
-                                    time: `${i * 4}:00`,
-                                    val: val,
-                                    cur: cur.isf[i]
-                                }))}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
-                                    <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fill: '#71717a', fontSize: 10 }} />
-                                    <YAxis
-                                        axisLine={false}
-                                        tickLine={false}
-                                        tick={{ fill: '#71717a', fontSize: 10 }}
-                                        reversed
-                                        tickFormatter={(val) => val.toFixed(cur.units?.includes('mmol') ? 1 : 0)}
-                                    />
-                                    <Tooltip
-                                        contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px', fontSize: '10px' }}
-                                        formatter={(value: number) => [`${value.toFixed(cur.units?.includes('mmol') ? 2 : 1)} ${cur.units}`, '']}
-                                    />
-                                    <Line type="monotone" dataKey="val" stroke="#818cf8" strokeWidth={3} dot={{ fill: '#818cf8', r: 4 }} />
-                                    <Line type="monotone" dataKey="cur" stroke="#52525b" strokeWidth={1} dot={false} strokeDasharray="4 4" />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
+        return <UnifiedFoundationResults status={status} result={result} />;
     };
 
     return (

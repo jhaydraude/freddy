@@ -58,6 +58,9 @@ export interface ITimeWindow {
         readings_count: number;
     };
 
+    // Phase classification
+    phase_category: 'Fasting' | 'Fed' | 'Active';
+
     // Accuracy Metrics
     unexplained_residual?: number;  // Actual Change - Predicted Change
     total_predicted_impact?: number;
@@ -162,10 +165,10 @@ export async function generateTimeWindows(
         // Activity Coefficients
         if (profileData.activity_coefficients) {
             activityCoefficients = {
-                STEPS_PER_MINUTE: profileData.activity_coefficients.steps_per_minute,
-                CALORIES: profileData.activity_coefficients.calories,
-                STAIRS: profileData.activity_coefficients.stairs,
-                HR_SPIKE: profileData.activity_coefficients.hr_spike
+                STEPS_PER_MINUTE: profileData.activity_coefficients.steps_per_minute ?? DEFAULT_ACTIVITY_COEFFICIENTS.STEPS_PER_MINUTE,
+                HR_SPIKE: profileData.activity_coefficients.hr_spike ?? DEFAULT_ACTIVITY_COEFFICIENTS.HR_SPIKE,
+                STRESS_HR: profileData.activity_coefficients.stress_hr ?? DEFAULT_ACTIVITY_COEFFICIENTS.STRESS_HR,
+                POST_MEAL_MULTIPLIER: profileData.activity_coefficients.post_meal_multiplier ?? DEFAULT_ACTIVITY_COEFFICIENTS.POST_MEAL_MULTIPLIER
             };
         }
     }
@@ -358,6 +361,13 @@ export async function generateTimeWindows(
                 }
             }
 
+            let phaseCategory: 'Fasting' | 'Fed' | 'Active' = 'Fasting';
+            if (activityImpact.totalImpact < -5 || (activityImpact.dataAvailable && (windowSteps > 500 || hrElevation > 0.1))) {
+                phaseCategory = 'Active';
+            } else if (hasMeals || carbAbsorption > 1.0) {
+                phaseCategory = 'Fed';
+            }
+
             windows.push({
                 start: windowStart,
                 end: windowEnd,
@@ -396,6 +406,8 @@ export async function generateTimeWindows(
                     has_activity_data: activityImpact.dataAvailable,
                     readings_count: readingCount
                 },
+
+                phase_category: phaseCategory,
 
                 autosens_ratio: autosensRatio,
                 basal_drift: basal_drift,

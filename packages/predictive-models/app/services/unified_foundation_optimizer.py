@@ -4,7 +4,7 @@ Unified Foundation Optimizer - Jointly optimizes DIA, Peak, ISF, and Basal Rates
 
 import numpy as np
 from scipy.optimize import minimize, Bounds
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Any, Optional, Tuple
 from pydantic import BaseModel
 import math
 
@@ -124,7 +124,7 @@ class UnifiedFoundationOptimizer(HolisticProfileAnalyzer):
             dia=round(opt_dia, 2),
             peak=round(opt_peak, 1),
             isf=[round(v, 1) for v in opt_isf],
-            basal=[round(v, 3) for v in opt_basal],
+            basal=[round(v * 20.0) / 20.0 for v in opt_basal],
             dia_confidence=ci_results['dia'],
             peak_confidence=ci_results['peak'],
             isf_confidence=ci_results['isf'],

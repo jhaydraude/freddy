@@ -7,6 +7,7 @@ from ..services.meal_activity_optimizer import MealActivityOptimizer, MealActivi
 router = APIRouter()
 
 class MealActivityRequest(BaseModel):
+    mode: str = 'combined'
     windows: List[TimeWindow]
     baseline_isf: List[float]    # 6 blocks
     baseline_basal: List[float]  # 12 blocks
@@ -24,6 +25,7 @@ async def tune_meal_activity(request: MealActivityRequest):
     
     try:
         result = optimizer.analyze_meal_activity(
+            mode=request.mode,
             windows=request.windows,
             baseline_isf=request.baseline_isf,
             baseline_basal=request.baseline_basal,

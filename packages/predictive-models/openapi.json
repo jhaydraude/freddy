@@ -406,20 +406,19 @@
         }
       }
     },
-    "/api/v1/train/situation": {
+    "/api/v1/tune/unified-foundation": {
       "post": {
         "tags": [
-          "situation",
-          "situation"
+          "unified-foundation-tuning"
         ],
-        "summary": "Train Situation Model",
-        "description": "Train a situation classification model.",
-        "operationId": "train_situation_model_api_v1_train_situation_post",
+        "summary": "Tune Unified Foundation",
+        "description": "Jointly optimize DIA, Peak, ISF, and Basal Rates.",
+        "operationId": "tune_unified_foundation_api_v1_tune_unified_foundation_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SituationTrainRequest"
+                "$ref": "#/components/schemas/UnifiedFoundationRequest"
               }
             }
           },
@@ -431,7 +430,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SituationTrainResponse"
+                  "$ref": "#/components/schemas/UnifiedFoundationResult"
                 }
               }
             }
@@ -449,20 +448,19 @@
         }
       }
     },
-    "/api/v1/classify/situation": {
+    "/api/v1/tune/meal-activity": {
       "post": {
         "tags": [
-          "situation",
-          "situation"
+          "meal-activity-tuning"
         ],
-        "summary": "Classify Situation",
-        "description": "Classify a time window into situations.",
-        "operationId": "classify_situation_api_v1_classify_situation_post",
+        "summary": "Tune Meal Activity",
+        "description": "Optimize Carb Ratio and Activity Coefficients using fixed Foundation Baseline.",
+        "operationId": "tune_meal_activity_api_v1_tune_meal_activity_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SituationClassifyRequest"
+                "$ref": "#/components/schemas/MealActivityRequest"
               }
             }
           },
@@ -474,91 +472,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SituationClassifyResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/metrics/situation/{model_name}": {
-      "get": {
-        "tags": [
-          "situation",
-          "situation"
-        ],
-        "summary": "Get Situation Metrics",
-        "description": "Get metrics and metadata for a specific situation model.",
-        "operationId": "get_situation_metrics_api_v1_metrics_situation__model_name__get",
-        "parameters": [
-          {
-            "name": "model_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Model Name"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/tune/insulin-response": {
-      "post": {
-        "tags": [
-          "insulin-response-tuning"
-        ],
-        "summary": "Tune Insulin Response",
-        "description": "Optimize insulin response parameters (DIA, Peak Time, ISF).\n\nThis endpoint performs advanced optimization to find the best-fit\ninsulin response parameters based on historical glucose and treatment data.",
-        "operationId": "tune_insulin_response_api_v1_tune_insulin_response_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InsulinResponseTuningRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InsulinResponseTuningResponse"
+                  "$ref": "#/components/schemas/MealActivityResult"
                 }
               }
             }
@@ -962,58 +876,54 @@
         "title": "ISFEstimateResponse",
         "description": "ISF estimation response"
       },
-      "InsulinResponseTuningRequest": {
+      "MealActivityRequest": {
         "properties": {
           "windows": {
             "items": {
-              "type": "object"
+              "$ref": "#/components/schemas/TimeWindow"
             },
             "type": "array",
             "title": "Windows"
           },
-          "current_dia": {
-            "type": "number",
-            "title": "Current Dia",
-            "default": 5.0
+          "baseline_isf": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Baseline Isf"
           },
-          "current_peak": {
-            "type": "number",
-            "title": "Current Peak",
-            "default": 45.0
+          "baseline_basal": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Baseline Basal"
           },
-          "current_isf": {
+          "current_cr": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Current Cr"
+          },
+          "current_activity_coeffs": {
             "anyOf": [
               {
-                "items": {
+                "additionalProperties": {
                   "type": "number"
                 },
-                "type": "array"
+                "type": "object"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Current Isf"
-          },
-          "optimize_dia": {
-            "type": "boolean",
-            "title": "Optimize Dia",
-            "default": true
-          },
-          "optimize_peak": {
-            "type": "boolean",
-            "title": "Optimize Peak",
-            "default": true
-          },
-          "optimize_isf": {
-            "type": "boolean",
-            "title": "Optimize Isf",
-            "default": true
+            "title": "Current Activity Coeffs"
           },
           "lambda_l2": {
             "type": "number",
             "title": "Lambda L2",
-            "default": 0.1
+            "default": 0.2
           },
           "lambda_smooth": {
             "type": "number",
@@ -1023,21 +933,15 @@
         },
         "type": "object",
         "required": [
-          "windows"
+          "windows",
+          "baseline_isf",
+          "baseline_basal",
+          "current_cr"
         ],
-        "title": "InsulinResponseTuningRequest",
-        "description": "Request for insulin response tuning"
+        "title": "MealActivityRequest"
       },
-      "InsulinResponseTuningResponse": {
+      "MealActivityResult": {
         "properties": {
-          "dia": {
-            "type": "number",
-            "title": "Dia"
-          },
-          "peak": {
-            "type": "number",
-            "title": "Peak"
-          },
           "isf": {
             "items": {
               "type": "number"
@@ -1045,33 +949,26 @@
             "type": "array",
             "title": "Isf"
           },
-          "dia_confidence": {
-            "prefixItems": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "number"
-              }
-            ],
+          "cr": {
+            "items": {
+              "type": "number"
+            },
             "type": "array",
-            "maxItems": 2,
-            "minItems": 2,
-            "title": "Dia Confidence"
+            "title": "Cr"
           },
-          "peak_confidence": {
-            "prefixItems": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "number"
-              }
-            ],
+          "basal": {
+            "items": {
+              "type": "number"
+            },
             "type": "array",
-            "maxItems": 2,
-            "minItems": 2,
-            "title": "Peak Confidence"
+            "title": "Basal"
+          },
+          "activity_coefficients": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Activity Coefficients"
           },
           "isf_confidence": {
             "items": {
@@ -1089,6 +986,57 @@
             },
             "type": "array",
             "title": "Isf Confidence"
+          },
+          "cr_confidence": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Cr Confidence"
+          },
+          "basal_confidence": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Basal Confidence"
+          },
+          "activity_confidence": {
+            "additionalProperties": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "object",
+            "title": "Activity Confidence"
           },
           "r_squared": {
             "type": "number",
@@ -1121,24 +1069,18 @@
           "activity_windows": {
             "type": "integer",
             "title": "Activity Windows"
-          },
-          "data_quality_score": {
-            "type": "number",
-            "title": "Data Quality Score"
-          },
-          "recommendation": {
-            "type": "string",
-            "title": "Recommendation"
           }
         },
         "type": "object",
         "required": [
-          "dia",
-          "peak",
           "isf",
-          "dia_confidence",
-          "peak_confidence",
+          "cr",
+          "basal",
+          "activity_coefficients",
           "isf_confidence",
+          "cr_confidence",
+          "basal_confidence",
+          "activity_confidence",
           "r_squared",
           "rmse",
           "mae",
@@ -1146,12 +1088,10 @@
           "total_windows",
           "stable_windows",
           "meal_windows",
-          "activity_windows",
-          "data_quality_score",
-          "recommendation"
+          "activity_windows"
         ],
-        "title": "InsulinResponseTuningResponse",
-        "description": "Response from insulin response tuning"
+        "title": "MealActivityResult",
+        "description": "Results from meal and activity optimization"
       },
       "PredictRequest": {
         "properties": {
@@ -1895,179 +1835,182 @@
         "title": "ProfileTuningSample",
         "description": "Single training sample for profile tuning."
       },
-      "SituationClassifyRequest": {
+      "TimeWindow": {
         "properties": {
-          "model_name": {
+          "start": {
             "type": "string",
-            "title": "Model Name",
-            "default": "situation_classifier"
+            "title": "Start"
           },
-          "features": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Features"
+          "end": {
+            "type": "string",
+            "title": "End"
           },
-          "threshold": {
+          "duration_hours": {
             "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Threshold",
-            "default": 0.5
-          }
-        },
-        "type": "object",
-        "required": [
-          "features"
-        ],
-        "title": "SituationClassifyRequest",
-        "description": "Request to classify a window."
-      },
-      "SituationClassifyResponse": {
-        "properties": {
-          "tags": {
-            "items": {
-              "$ref": "#/components/schemas/TagPrediction"
-            },
-            "type": "array",
-            "title": "Tags"
+            "title": "Duration Hours"
           },
-          "classified_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Classified At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "tags"
-        ],
-        "title": "SituationClassifyResponse",
-        "description": "Response from classification."
-      },
-      "SituationTrainRequest": {
-        "properties": {
-          "model_name": {
-            "type": "string",
-            "title": "Model Name",
-            "default": "situation_classifier"
-          },
-          "samples": {
-            "items": {
-              "$ref": "#/components/schemas/SituationTrainingSample"
-            },
-            "type": "array",
-            "title": "Samples"
-          },
-          "test_size": {
+          "glucose_start": {
             "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Test Size",
-            "default": 0.2
-          }
-        },
-        "type": "object",
-        "required": [
-          "samples"
-        ],
-        "title": "SituationTrainRequest",
-        "description": "Request to train a situation classifier."
-      },
-      "SituationTrainResponse": {
-        "properties": {
-          "model_name": {
-            "type": "string",
-            "title": "Model Name"
+            "title": "Glucose Start"
           },
-          "samples_count": {
+          "glucose_end": {
+            "type": "number",
+            "title": "Glucose End"
+          },
+          "glucose_change": {
+            "type": "number",
+            "title": "Glucose Change"
+          },
+          "glucose_readings_count": {
             "type": "integer",
-            "title": "Samples Count"
+            "title": "Glucose Readings Count"
           },
-          "tag_metrics": {
-            "additionalProperties": {
-              "additionalProperties": {
+          "bolus_insulin": {
+            "type": "number",
+            "title": "Bolus Insulin"
+          },
+          "basal_insulin_delivered": {
+            "type": "number",
+            "title": "Basal Insulin Delivered"
+          },
+          "total_insulin": {
+            "type": "number",
+            "title": "Total Insulin"
+          },
+          "insulin_activity": {
+            "type": "number",
+            "title": "Insulin Activity"
+          },
+          "carbs_consumed": {
+            "type": "number",
+            "title": "Carbs Consumed"
+          },
+          "carb_events_count": {
+            "type": "integer",
+            "title": "Carb Events Count"
+          },
+          "carb_absorption": {
+            "type": "number",
+            "title": "Carb Absorption"
+          },
+          "activity_steps": {
+            "type": "number",
+            "title": "Activity Steps",
+            "default": 0.0
+          },
+          "activity_calories": {
+            "type": "number",
+            "title": "Activity Calories",
+            "default": 0.0
+          },
+          "activity_floors": {
+            "type": "number",
+            "title": "Activity Floors",
+            "default": 0.0
+          },
+          "activity_heart_rate": {
+            "type": "number",
+            "title": "Activity Heart Rate",
+            "default": 0.0
+          },
+          "activity_hr_elevation": {
+            "type": "number",
+            "title": "Activity Hr Elevation",
+            "default": 0.0
+          },
+          "activity_impact": {
+            "type": "number",
+            "title": "Activity Impact",
+            "default": 0.0
+          },
+          "activity_intensity": {
+            "type": "string",
+            "title": "Activity Intensity",
+            "default": "unknown"
+          },
+          "hour_of_day": {
+            "type": "integer",
+            "title": "Hour Of Day"
+          },
+          "is_stable": {
+            "type": "boolean",
+            "title": "Is Stable"
+          },
+          "has_meals": {
+            "type": "boolean",
+            "title": "Has Meals"
+          },
+          "has_corrections": {
+            "type": "boolean",
+            "title": "Has Corrections"
+          },
+          "data_quality": {
+            "type": "object",
+            "title": "Data Quality"
+          },
+          "autosens_ratio": {
+            "type": "number",
+            "title": "Autosens Ratio",
+            "default": 1.0
+          },
+          "basal_drift": {
+            "type": "number",
+            "title": "Basal Drift",
+            "default": 0.0
+          },
+          "isolation_confidence": {
+            "type": "number",
+            "title": "Isolation Confidence",
+            "default": 1.0
+          },
+          "unexplained_residual": {
+            "anyOf": [
+              {
                 "type": "number"
               },
-              "type": "object"
-            },
-            "type": "object",
-            "title": "Tag Metrics"
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unexplained Residual"
           },
-          "feature_importance": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Feature Importance"
-          },
-          "trained_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Trained At"
+          "total_predicted_impact": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Predicted Impact"
           }
         },
+        "additionalProperties": true,
         "type": "object",
         "required": [
-          "model_name",
-          "samples_count",
-          "tag_metrics",
-          "feature_importance"
+          "start",
+          "end",
+          "duration_hours",
+          "glucose_start",
+          "glucose_end",
+          "glucose_change",
+          "glucose_readings_count",
+          "bolus_insulin",
+          "basal_insulin_delivered",
+          "total_insulin",
+          "insulin_activity",
+          "carbs_consumed",
+          "carb_events_count",
+          "carb_absorption",
+          "hour_of_day",
+          "is_stable",
+          "has_meals",
+          "has_corrections",
+          "data_quality"
         ],
-        "title": "SituationTrainResponse",
-        "description": "Response from training."
-      },
-      "SituationTrainingSample": {
-        "properties": {
-          "features": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "type": "object",
-            "title": "Features",
-            "description": "Feature vector for the window"
-          },
-          "labels": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Labels",
-            "description": "List of active tag IDs"
-          }
-        },
-        "type": "object",
-        "required": [
-          "features",
-          "labels"
-        ],
-        "title": "SituationTrainingSample",
-        "description": "A single training sample with features and labels."
-      },
-      "TagPrediction": {
-        "properties": {
-          "tag_id": {
-            "type": "string",
-            "title": "Tag Id"
-          },
-          "probability": {
-            "type": "number",
-            "title": "Probability"
-          },
-          "above_threshold": {
-            "type": "boolean",
-            "title": "Above Threshold"
-          }
-        },
-        "type": "object",
-        "required": [
-          "tag_id",
-          "probability",
-          "above_threshold"
-        ],
-        "title": "TagPrediction",
-        "description": "Probability for a single tag."
+        "title": "TimeWindow",
+        "description": "Single time window for analysis"
       },
       "TrainRequest": {
         "properties": {
@@ -2197,6 +2140,204 @@
           "status": "success",
           "trained_at": "2024-01-01T12:00:00"
         }
+      },
+      "UnifiedFoundationRequest": {
+        "properties": {
+          "windows": {
+            "items": {
+              "$ref": "#/components/schemas/TimeWindow"
+            },
+            "type": "array",
+            "title": "Windows"
+          },
+          "current_dia": {
+            "type": "number",
+            "title": "Current Dia"
+          },
+          "current_peak": {
+            "type": "number",
+            "title": "Current Peak"
+          },
+          "current_isf": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Current Isf"
+          },
+          "current_basal": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Current Basal"
+          },
+          "lambda_l2": {
+            "type": "number",
+            "title": "Lambda L2",
+            "default": 0.1
+          },
+          "lambda_smooth": {
+            "type": "number",
+            "title": "Lambda Smooth",
+            "default": 0.05
+          }
+        },
+        "type": "object",
+        "required": [
+          "windows",
+          "current_dia",
+          "current_peak",
+          "current_isf",
+          "current_basal"
+        ],
+        "title": "UnifiedFoundationRequest"
+      },
+      "UnifiedFoundationResult": {
+        "properties": {
+          "dia": {
+            "type": "number",
+            "title": "Dia"
+          },
+          "peak": {
+            "type": "number",
+            "title": "Peak"
+          },
+          "isf": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Isf"
+          },
+          "basal": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Basal"
+          },
+          "dia_confidence": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Dia Confidence"
+          },
+          "peak_confidence": {
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array",
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Peak Confidence"
+          },
+          "isf_confidence": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Isf Confidence"
+          },
+          "basal_confidence": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Basal Confidence"
+          },
+          "r_squared": {
+            "type": "number",
+            "title": "R Squared"
+          },
+          "rmse": {
+            "type": "number",
+            "title": "Rmse"
+          },
+          "mae": {
+            "type": "number",
+            "title": "Mae"
+          },
+          "windows_analyzed": {
+            "type": "integer",
+            "title": "Windows Analyzed"
+          },
+          "total_windows": {
+            "type": "integer",
+            "title": "Total Windows"
+          },
+          "stable_windows": {
+            "type": "integer",
+            "title": "Stable Windows"
+          },
+          "meal_windows": {
+            "type": "integer",
+            "title": "Meal Windows"
+          },
+          "activity_windows": {
+            "type": "integer",
+            "title": "Activity Windows"
+          },
+          "data_quality_score": {
+            "type": "number",
+            "title": "Data Quality Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dia",
+          "peak",
+          "isf",
+          "basal",
+          "dia_confidence",
+          "peak_confidence",
+          "isf_confidence",
+          "basal_confidence",
+          "r_squared",
+          "rmse",
+          "mae",
+          "windows_analyzed",
+          "total_windows",
+          "stable_windows",
+          "meal_windows",
+          "activity_windows",
+          "data_quality_score"
+        ],
+        "title": "UnifiedFoundationResult",
+        "description": "Results from unified foundation optimization"
       },
       "ValidationError": {
         "properties": {

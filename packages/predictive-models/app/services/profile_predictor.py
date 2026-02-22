@@ -261,9 +261,7 @@ def prepare_profile_training_data(samples: List[Dict[str, Any]]) -> tuple[pd.Dat
         # The model will learn the optimal adjustments from the data
         
         # Calculate a "quality score" from outcomes
-        time_in_range = sample['outcome_time_in_range']
-        time_below = sample['outcome_time_below_range']
-        glucose_cv = sample['outcome_glucose_cv']
+
         
         # For training, we create targets based on outcome quality
         # Better outcomes (high TIR, low variability) → targets close to current

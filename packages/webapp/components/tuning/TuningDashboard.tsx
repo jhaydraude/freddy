@@ -7,7 +7,8 @@ import {
     Filter,
     Trash2,
     Dna,
-    Utensils
+    Utensils,
+    Activity
 } from 'lucide-react';
 import { TuningCategoryCard } from './TuningCategoryCard';
 import { DeprecationBanner } from './DeprecationBanner';
@@ -15,8 +16,8 @@ import { UnifiedFoundationTuner } from './UnifiedFoundationTuner';
 import { MealActivityTuner } from './MealActivityTuner';
 import { ConfirmDialog } from './ConfirmDialog';
 
-type ViewType = 'categories' | 'unified-foundation' | 'meal-activity';
-type CategoryId = 'unified-foundation' | 'meal-activity';
+type ViewType = 'categories' | 'unified-foundation' | 'meal' | 'activity' | 'combined';
+type CategoryId = 'unified-foundation' | 'meal' | 'activity' | 'combined';
 
 interface TuningRun {
     tuning_id: string;
@@ -28,8 +29,10 @@ interface TuningRun {
 }
 
 const CATEGORY_META: Record<CategoryId, { label: string; icon: React.ReactElement; color: string; view: ViewType; filterColor: string }> = {
-    'unified-foundation': { label: 'Foundation Tuning', icon: <Dna size={16} className="text-indigo-400" />, color: 'text-indigo-400', view: 'unified-foundation', filterColor: 'border-indigo-500/40 bg-indigo-500/10 text-indigo-400' },
-    'meal-activity': { label: 'Meal & Activity', icon: <Utensils size={16} className="text-orange-400" />, color: 'text-orange-400', view: 'meal-activity', filterColor: 'border-orange-500/40 bg-orange-500/10 text-orange-400' },
+    'unified-foundation': { label: 'Stage 1: Insulin', icon: <Dna size={16} className="text-indigo-400" />, color: 'text-indigo-400', view: 'unified-foundation', filterColor: 'border-indigo-500/40 bg-indigo-500/10 text-indigo-400' },
+    'meal': { label: 'Stage 2: Meal', icon: <Utensils size={16} className="text-orange-400" />, color: 'text-orange-400', view: 'meal', filterColor: 'border-orange-500/40 bg-orange-500/10 text-orange-400' },
+    'activity': { label: 'Stage 3: Activity', icon: <Activity size={16} className="text-emerald-400" />, color: 'text-emerald-400', view: 'activity', filterColor: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400' },
+    'combined': { label: 'Combined Tuning', icon: <ChevronRight size={16} className="text-blue-400" />, color: 'text-blue-400', view: 'combined', filterColor: 'border-blue-500/40 bg-blue-500/10 text-blue-400' },
 };
 
 /** Returns a human-friendly relative time string, e.g. "3 hours ago", "Yesterday", "Feb 18" */
@@ -75,8 +78,10 @@ export const TuningDashboard: React.FC = () => {
         try {
             setLoading(true);
             const endpoints: Array<{ url: string; category: CategoryId; label: string }> = [
-                { url: '/api/profile/tune-unified-foundation', category: 'unified-foundation', label: 'Foundation Tuning' },
-                { url: '/api/profile/tune-meal-activity', category: 'meal-activity', label: 'Meal & Activity' },
+                { url: '/api/profile/tune-unified-foundation', category: 'unified-foundation', label: 'Stage 1: Insulin' },
+                { url: '/api/profile/tune-meal', category: 'meal', label: 'Stage 2: Meal' },
+                { url: '/api/profile/tune-activity', category: 'activity', label: 'Stage 3: Activity' },
+                { url: '/api/profile/tune-combined', category: 'combined', label: 'Combined Tuning' },
             ];
 
             const results = await Promise.allSettled(
@@ -112,7 +117,9 @@ export const TuningDashboard: React.FC = () => {
 
     const CATEGORY_ENDPOINTS: Record<CategoryId, string> = {
         'unified-foundation': '/api/profile/tune-unified-foundation',
-        'meal-activity': '/api/profile/tune-meal-activity',
+        'meal': '/api/profile/tune-meal',
+        'activity': '/api/profile/tune-activity',
+        'combined': '/api/profile/tune-combined',
     };
 
     const handleDeleteAll = async () => {
@@ -169,7 +176,7 @@ export const TuningDashboard: React.FC = () => {
     })[] = [
             {
                 id: 'unified-foundation',
-                title: 'Foundation Tuner',
+                title: 'Stage 1: Insulin Tuner',
                 description: 'Advanced joint optimization of DIA, Basal, and ISF for biological consistency. This establishes your baseline settings.',
                 icon: <Dna className="text-indigo-400" />,
                 status: lastOptimizedOf('unified-foundation') ? 'optimized' : 'needs_update',
@@ -178,14 +185,34 @@ export const TuningDashboard: React.FC = () => {
                 lastOptimized: lastOptimizedOf('unified-foundation'),
             },
             {
-                id: 'meal-activity',
-                title: 'Meal & Activity Tuner',
-                description: 'Refine your Carb Ratio (ICR) and Activity impact coefficients using a fixed foundation baseline. This tunes your bolus and exercise math.',
+                id: 'meal',
+                title: 'Stage 2: Meal Tuner',
+                description: 'Refine your Carb Ratio (ICR) using a fixed insulin baseline. This strictly isolates post-prandial math.',
                 icon: <Utensils className="text-orange-400" />,
-                status: lastOptimizedOf('meal-activity') ? 'optimized' : 'needs_update',
+                status: lastOptimizedOf('meal') ? 'optimized' : 'needs_update',
                 colorClass: 'bg-orange-500',
-                parameters: ['ICR ×6', 'Activity Coeffs ×2', 'Refined ISF'],
-                lastOptimized: lastOptimizedOf('meal-activity'),
+                parameters: ['CR ×6', 'Refined ISF'],
+                lastOptimized: lastOptimizedOf('meal'),
+            },
+            {
+                id: 'activity',
+                title: 'Stage 3: Activity Tuner',
+                description: 'Refine your Activity Coefficients (Steps & HR). Takes the active profile, an insulin tuner run, or a meal tuner run as the baseline.',
+                icon: <Activity className="text-emerald-400" />,
+                status: lastOptimizedOf('activity') ? 'optimized' : 'needs_update',
+                colorClass: 'bg-emerald-500',
+                parameters: ['Activity Coeffs ×2', 'Refined ISF'],
+                lastOptimized: lastOptimizedOf('activity'),
+            },
+            {
+                id: 'combined',
+                title: 'Combined Tuner',
+                description: 'Run Stage 1 -> Stage 2 -> Stage 3 sequentially, fully automated.',
+                icon: <ChevronRight className="text-blue-400" />,
+                status: lastOptimizedOf('combined') ? 'optimized' : 'needs_update',
+                colorClass: 'bg-blue-500',
+                parameters: ['All Parameters'],
+                lastOptimized: lastOptimizedOf('combined'),
             },
         ];
 
@@ -204,7 +231,7 @@ export const TuningDashboard: React.FC = () => {
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-bold text-white flex items-center gap-3">
                         Tuning Workflow
-                        <span className="text-xs font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">2 PHASES</span>
+                        <span className="text-xs font-medium px-2 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">STAGED ISOLATION</span>
                     </h2>
                 </div>
 
@@ -329,7 +356,7 @@ export const TuningDashboard: React.FC = () => {
                 ) : !loading ? (
                     <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-10 text-center text-zinc-600 text-sm">
                         {historyFilter === 'all'
-                            ? 'No optimization runs yet. Start with Foundation Tuning.'
+                            ? 'No optimization runs yet. Start with Insulin Tuning.'
                             : `No ${CATEGORY_META[historyFilter]?.label} runs yet.`
                         }
                     </div>
@@ -342,8 +369,12 @@ export const TuningDashboard: React.FC = () => {
         <>
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 {view === 'categories' ? renderCategories() :
-                    view === 'meal-activity' ? (
-                        <MealActivityTuner onBack={handleBack} initialTuningId={selectedTuningId} />
+                    view === 'meal' ? (
+                        <MealActivityTuner onBack={handleBack} initialTuningId={selectedTuningId} mode="meal" />
+                    ) : view === 'activity' ? (
+                        <MealActivityTuner onBack={handleBack} initialTuningId={selectedTuningId} mode="activity" />
+                    ) : view === 'combined' ? (
+                        <MealActivityTuner onBack={handleBack} initialTuningId={selectedTuningId} mode="combined" />
                     ) : (
                         <UnifiedFoundationTuner onBack={handleBack} initialTuningId={selectedTuningId} />
                     )}

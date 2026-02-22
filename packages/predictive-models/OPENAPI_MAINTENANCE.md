@@ -71,8 +71,7 @@ Current endpoints in the spec:
 ### Profile Analysis
 - `POST /api/v1/analyze/profile` - Holistic profile analysis
 
-### Situation Modeling
-- `POST /api/v1/situation/predict` - Situation-based predictions
+
 
 ### **Insulin Response Tuning** ✅ NEW
 - `POST /api/v1/tune/insulin-response` - Optimize DIA, Peak, ISF

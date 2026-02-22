@@ -10,6 +10,7 @@ export interface IMealActivityTuning extends Document {
     user_id: string;
     created_at: Date;
     status: 'syncing' | 'running' | 'completed' | 'failed' | 'applied';
+    mode: 'meal' | 'activity' | 'combined';
 
     config: {
         analysis_period_days: number;
@@ -20,6 +21,8 @@ export interface IMealActivityTuning extends Document {
     };
 
     current_values: {
+        dia: number;
+        peak: number;
         isf: number[];    // 6 blocks
         basal: number[];  // 12 blocks
         cr: number[];     // 6 blocks
@@ -32,6 +35,8 @@ export interface IMealActivityTuning extends Document {
     };
 
     optimized_values?: {
+        dia: number;
+        peak: number;
         isf: number[];
         cr: number[];
         basal: number[];
@@ -78,6 +83,12 @@ const MealActivityTuningSchema = new Schema<IMealActivityTuning>({
         enum: ['syncing', 'running', 'completed', 'failed', 'applied'],
         index: true
     },
+    mode: {
+        type: String,
+        required: true,
+        enum: ['meal', 'activity', 'combined'],
+        default: 'combined'
+    },
     config: {
         analysis_period_days: { type: Number, required: true },
         window_hours: { type: Number, required: true },
@@ -86,6 +97,8 @@ const MealActivityTuningSchema = new Schema<IMealActivityTuning>({
         baseline_tuning_id: String
     },
     current_values: {
+        dia: { type: Number, required: true },
+        peak: { type: Number, required: true },
         isf: { type: [Number], required: true },
         basal: { type: [Number], required: true },
         cr: { type: [Number], required: true },
@@ -97,6 +110,8 @@ const MealActivityTuningSchema = new Schema<IMealActivityTuning>({
         source: { type: String, required: true, enum: ['profile', 'foundation_run'] }
     },
     optimized_values: {
+        dia: Number,
+        peak: Number,
         isf: [Number],
         cr: [Number],
         basal: [Number],

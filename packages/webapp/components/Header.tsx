@@ -39,16 +39,7 @@ export default function Header({
                             <LayoutDashboard size={14} />
                             <span className="hidden sm:inline">Dashboard</span>
                         </Link>
-                        <Link
-                            href="/modeller"
-                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/modeller')
-                                ? 'bg-zinc-800 text-white shadow-sm'
-                                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
-                                }`}
-                        >
-                            <Tags size={14} />
-                            <span className="hidden sm:inline">Situation Modeller</span>
-                        </Link>
+
                         <Link
                             href="/tuning"
                             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/tuning')

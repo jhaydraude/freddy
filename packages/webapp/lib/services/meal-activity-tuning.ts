@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
-import { MealActivityTuning, IMealActivityTuning } from '../db/models/meal-activity-tuning';
+import { MealActivityTuning } from '../db/models/meal-activity-tuning';
 import { UnifiedFoundationTuning } from '../db/models/unified-foundation-tuning';
-import { getProfileStore, getProfileAtTime, getValueAtTime } from '../logic/profile-logic';
+import { getProfileStore, getProfileAtTime, getValueAtTime, resolveActiveProfile } from '../logic/profile-logic';
 import { generateTimeWindows } from '../logic/profile-analysis-logic';
 import { connectToDatabase } from '../db/connection';
 import { normalizeISF, denormalizeISF } from '../logic/unit-conversion';
@@ -12,6 +12,7 @@ export interface MealActivityTuningConfig {
     include_activity?: boolean;
     min_windows_required?: number;
     baseline_tuning_id?: string;
+    mode?: 'meal' | 'activity' | 'combined';
 }
 
 export class MealActivityTuningService {
@@ -27,30 +28,48 @@ export class MealActivityTuningService {
         // Fetch Baseline
         let baselineBasal: number[] = [];
         let baselineISF: number[] = [];
+        let baselineDia: number = 5.0;
+        let baselinePeak: number = 45;
         let units: 'mg/dL' | 'mmol/L' = 'mg/dL';
-        let source: 'profile' | 'foundation_run' = 'profile';
+        let source: string = 'profile';
 
         if (config.baseline_tuning_id) {
             const foundation = await UnifiedFoundationTuning.findOne({ tuning_id: config.baseline_tuning_id });
+            const mealTuner = await MealActivityTuning.findOne({ tuning_id: config.baseline_tuning_id });
+
             if (foundation && foundation.status === 'completed' && foundation.optimized_values) {
                 baselineBasal = foundation.optimized_values.basal;
                 baselineISF = foundation.optimized_values.isf;
+                baselineDia = foundation.optimized_values.dia || foundation.current_values.dia || 5.0;
+                baselinePeak = foundation.optimized_values.peak || foundation.current_values.peak || 45;
                 units = foundation.current_values.units;
                 source = 'foundation_run';
+            } else if (mealTuner && mealTuner.status === 'completed' && mealTuner.optimized_values) {
+                baselineBasal = mealTuner.optimized_values.basal || mealTuner.current_values.basal;
+                baselineISF = mealTuner.optimized_values.isf || mealTuner.current_values.isf;
+                baselineDia = mealTuner.optimized_values.dia || mealTuner.current_values.dia || 5.0;
+                baselinePeak = mealTuner.optimized_values.peak || mealTuner.current_values.peak || 45;
+                units = mealTuner.current_values.units;
+                source = 'meal_run';
             }
         }
 
-        const profileDoc = await getProfileAtTime(new Date());
-        const profileStore = getProfileStore(profileDoc || undefined);
+        const profileInfo = await resolveActiveProfile(new Date());
+        const profileStore = getProfileStore(profileInfo?.doc || undefined, profileInfo?.activeProfileName, profileInfo?.profileData || undefined);
 
         if (baselineBasal.length === 0) {
             baselineBasal = this._extractBasalSchedule(profileStore, 12);
             baselineISF = this._extractISFSchedule(profileStore, 6);
+            baselineDia = profileStore?.dia || 5.0;
+            const curveType = (profileStore as any)?.curve || 'ultra-rapid';
+            baselinePeak = curveType === 'rapid-acting' ? 55 : 45;
             units = (profileStore?.units || 'mg/dL').toLowerCase().includes('mmol') ? 'mmol/L' : 'mg/dL';
             source = 'profile';
         }
 
         const current_values = {
+            dia: baselineDia,
+            peak: baselinePeak,
             basal: baselineBasal,
             isf: baselineISF,
             cr: this._extractCRSchedule(profileStore, 6),
@@ -117,29 +136,117 @@ export class MealActivityTuningService {
             }
 
             // Normalize ISF to mg/dL for consistent mathematical analysis in Python
-            const normalizedISF = tuning.current_values.isf.map(v => normalizeISF(v, tuning.current_values.units));
+            let current_isf = tuning.current_values.isf.map(v => normalizeISF(v, tuning.current_values.units));
+            let current_basal = tuning.current_values.basal;
+            let current_dia = tuning.current_values.dia;
+            let current_peak = tuning.current_values.peak;
+            let current_cr = tuning.current_values.cr;
+            let current_activity_coeffs = tuning.current_values.activity_coefficients;
+            let optimized: any = null;
 
-            const response = await fetch(`${process.env.PREDICTIVE_MODELS_URL || 'http://localhost:8000'}/api/v1/tune/meal-activity`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    windows: validWindows,
-                    baseline_isf: normalizedISF,
-                    baseline_basal: tuning.current_values.basal,
-                    current_cr: tuning.current_values.cr,
-                    current_activity_coeffs: tuning.current_values.activity_coefficients
-                })
-            });
+            if (tuning.mode === 'combined') {
+                tuning.logs.push('[Stage 1] Starting Insulin Foundation optimization...');
+                await tuning.save();
 
-            if (!response.ok) {
-                const err = await response.json();
-                const detail = typeof err.detail === 'string'
-                    ? err.detail
-                    : JSON.stringify(err.detail);
-                throw new Error(detail || 'Python API failed');
+                const foundationWindows = windows.filter(w =>
+                    w.data_quality.readings_count >= 6 &&
+                    w.isolation_confidence !== undefined &&
+                    w.isolation_confidence >= 0.1 &&
+                    w.carb_absorption <= 5.0 &&
+                    Math.abs(w.unexplained_residual || 0) <= 50
+                );
+
+                tuning.logs.push(`[Stage 1] Transmitting ${foundationWindows.length} compatible windows to solver...`);
+                await tuning.save();
+
+                const fResponse = await fetch(`${process.env.PREDICTIVE_MODELS_URL || 'http://localhost:8000'}/api/v1/tune/unified-foundation`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        windows: foundationWindows,
+                        current_dia,
+                        current_peak,
+                        current_isf,
+                        current_basal
+                    })
+                });
+
+                if (!fResponse.ok) throw new Error('Stage 1 (Insulin) optimization failed.');
+                const fOptimized = await fResponse.json();
+                current_isf = fOptimized.isf;
+                current_basal = fOptimized.basal;
+
+                tuning.logs.push('[Stage 1] Insulin Foundation optimization completed successfully!');
+                tuning.logs.push('[Stage 2] Starting Meal Ratio optimization...');
+                await tuning.save();
+
+                const mResponse = await fetch(`${process.env.PREDICTIVE_MODELS_URL || 'http://localhost:8000'}/api/v1/tune/meal-activity`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'meal',
+                        windows: validWindows,
+                        baseline_isf: current_isf,
+                        baseline_basal: current_basal,
+                        current_cr,
+                        current_activity_coeffs
+                    })
+                });
+
+                if (!mResponse.ok) throw new Error('Stage 2 (Meal) optimization failed.');
+                const mOptimized = await mResponse.json();
+                current_cr = mOptimized.cr;
+
+                tuning.logs.push('[Stage 2] Meal Ratio optimization completed successfully!');
+                tuning.logs.push('[Stage 3] Starting Activity Coefficient optimization...');
+                await tuning.save();
+
+                const aResponse = await fetch(`${process.env.PREDICTIVE_MODELS_URL || 'http://localhost:8000'}/api/v1/tune/meal-activity`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'activity',
+                        windows: validWindows,
+                        baseline_isf: current_isf,
+                        baseline_basal: current_basal,
+                        current_cr,
+                        current_activity_coeffs
+                    })
+                });
+
+                if (!aResponse.ok) throw new Error('Stage 3 (Activity) optimization failed.');
+                optimized = await aResponse.json();
+                // Ensure the final state inherits intermediate combinations
+                optimized.basal = current_basal;
+                optimized.isf = current_isf;
+                optimized.cr = current_cr;
+
+                tuning.logs.push('[Stage 3] Activity Coefficient optimization completed successfully!');
+            } else {
+                tuning.logs.push(`Starting ${tuning.mode} optimization pass...`);
+                await tuning.save();
+
+                const response = await fetch(`${process.env.PREDICTIVE_MODELS_URL || 'http://localhost:8000'}/api/v1/tune/meal-activity`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: tuning.mode,
+                        windows: validWindows,
+                        baseline_isf: current_isf,
+                        baseline_basal: current_basal,
+                        current_cr,
+                        current_activity_coeffs
+                    })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    const detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
+                    throw new Error(detail || 'Python API failed');
+                }
+
+                optimized = await response.json();
             }
-
-            const optimized = await response.json();
 
             // Denormalize ISF back to user's units
             optimized.isf = optimized.isf.map((v: number) => denormalizeISF(v, tuning.current_values.units));
@@ -158,6 +265,8 @@ export class MealActivityTuningService {
                 distribution[bin]++;
             });
 
+            optimized.dia = tuning.current_values.dia;
+            optimized.peak = tuning.current_values.peak;
             tuning.optimized_values = optimized;
             tuning.analysis_summary = {
                 total_windows: windows.length,

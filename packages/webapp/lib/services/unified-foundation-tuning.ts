@@ -1,10 +1,8 @@
 import { randomUUID } from 'crypto';
-import { UnifiedFoundationTuning, IUnifiedFoundationTuning } from '../db/models/unified-foundation-tuning';
-import { getProfileStore, getProfileAtTime, getValueAtTime } from '../logic/profile-logic';
+import { UnifiedFoundationTuning } from '../db/models/unified-foundation-tuning';
+import { getProfileStore, getProfileAtTime, getValueAtTime, resolveActiveProfile } from '../logic/profile-logic';
 import { generateTimeWindows } from '../logic/profile-analysis-logic';
 import { connectToDatabase } from '../db/connection';
-import { SystemConfig } from '../db/models';
-import { nsClient } from '../ns/ns-client';
 import { normalizeISF, denormalizeISF } from '../logic/unit-conversion';
 
 export interface UnifiedTuningConfig {
@@ -51,8 +49,8 @@ export class UnifiedFoundationTuningService {
         const include_activity = config.include_activity !== false;
         const min_windows_required = config.min_windows_required || 15;
 
-        const profileDoc = await getProfileAtTime(new Date());
-        const profileStore = getProfileStore(profileDoc || undefined);
+        const profileInfo = await resolveActiveProfile(new Date());
+        const profileStore = getProfileStore(profileInfo?.doc || undefined, profileInfo?.activeProfileName, profileInfo?.profileData || undefined);
 
         const current_values = {
             dia: profileStore?.dia || 5.0,
@@ -138,7 +136,8 @@ export class UnifiedFoundationTuningService {
 
             if (!response.ok) {
                 const err = await response.json();
-                throw new Error(err.detail || 'Python API failed');
+                const errorStr = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
+                throw new Error(errorStr || 'Python API failed');
             }
 
             const optimized = await response.json();

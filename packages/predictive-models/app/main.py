@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import train, predict, glucose, profile, profile_estimation, profile_analysis, situation, unified_foundation_tuning, meal_activity_tuning
+from app.routers import train, predict, glucose, profile, profile_estimation, profile_analysis, unified_foundation_tuning, meal_activity_tuning
 from app.utils.logging import setup_logging
 
 # Setup logging
@@ -36,7 +36,7 @@ app.include_router(glucose.router, prefix="/api/v1", tags=["glucose-prediction"]
 app.include_router(profile.router, prefix="/api/v1", tags=["profile-tuning"])
 app.include_router(profile_estimation.router, prefix="/api/v1", tags=["profile-estimation"])
 app.include_router(profile_analysis.router, prefix="/api/v1", tags=["profile-analysis"])
-app.include_router(situation.router, prefix="/api/v1", tags=["situation"])
+
 app.include_router(unified_foundation_tuning.router, prefix="/api/v1", tags=["unified-foundation-tuning"])
 app.include_router(meal_activity_tuning.router, prefix="/api/v1", tags=["meal-activity-tuning"])
 

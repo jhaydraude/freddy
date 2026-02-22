@@ -142,7 +142,7 @@ export class FreddyProfileService {
         if (sel.isf && results.estimated_isf) {
             profile.isf = mapToSchedule(results.estimated_isf.map((v: number) => denormalizeISF(v, profile?.units)), 4);
         } else if (sel.isf && results.isf) {
-            profile.isf = mapToSchedule(results.isf.map((v: number) => denormalizeISF(v, profile?.units)), 4);
+            profile.isf = mapToSchedule(results.isf, 4);
         }
 
         if (sel.basal && results.estimated_basal_rates) {
@@ -176,10 +176,10 @@ export class FreddyProfileService {
         } else if (sel.activity && results.activity_coefficients) {
             profile.activityCoefficients = {
                 steps: results.activity_coefficients.steps !== undefined
-                    ? denormalizeGlucose(results.activity_coefficients.steps, profile?.units)
+                    ? results.activity_coefficients.steps
                     : profile.activityCoefficients.steps,
                 heartRate: results.activity_coefficients.heartRate !== undefined
-                    ? denormalizeGlucose(results.activity_coefficients.heartRate, profile?.units)
+                    ? results.activity_coefficients.heartRate
                     : profile.activityCoefficients.heartRate
             };
         }
