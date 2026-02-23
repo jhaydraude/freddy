@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/db/connection';
-import { Entry, UserPreference } from '@/lib/db/models';
+import { Entry, UserPreference, Treatment } from '@/lib/db/models';
 import { calculateStatistics } from '@/lib/logic/statistics-logic';
 
 export async function GET(request: Request) {
@@ -47,8 +47,55 @@ export async function GET(request: Request) {
 
         const stats = calculateStatistics(readings, lowThreshold, highThreshold, units);
 
+        // Fetch treatments for TDD
+        const treatments = await Treatment.find({
+            created_at: {
+                $gte: startDate.toISOString(),
+                $lte: endDate.toISOString()
+            },
+            $or: [
+                { insulin: { $exists: true, $gt: 0 } },
+                { eventType: "Correction Bolus" },
+                { eventType: "Meal Bolus" },
+                { type: "SMB" }
+            ]
+        }).lean();
+
+        // Separate boluses. For basals we should ideally calculate the area under the curve 
+        // using basal logic. For simplicity, we can get the getBasalIOB for daily chunks 
+        // or rely on a daily basal approximate using getBasalIOB or just treat it as boluses are enough?
+        // Wait, TDD requires basal. The calculation here is easier if we calculate basal delivery 
+        // for each day. We can use createBasalCurvesForTimeseries to get delivered curves and sum them up?
+        // Or we can just calculate scheduled basal if there is no temp basal history.
+        // Let's import createBasalCurvesForTimeseries
+        const { createBasalCurvesForTimeseries } = await import('@/lib/logic/iob-basal');
+        const { resolveActiveProfile } = await import('@/lib/logic/profile-logic');
+
+        const profileInfo = await resolveActiveProfile(endDateStr);
+        // Let's just create curves and sum the delivered basal for the whole period to get total and hourly?
+        // Wait, creating curves for potentially 90 days is 90 * 24 * 12 = 25000 intervals. That's fast enough 
+        // and we can sum them up per day.
+
+        const { deliveredCurves } = await createBasalCurvesForTimeseries(
+            startDate,
+            endDate,
+            4, // default dia
+            45, // default peak
+            profileInfo
+        );
+
+        // Convert delivered Curves to simple basal records to pass to calculateTDDStatistics
+        const basals = deliveredCurves.map((c: any) => ({
+            timestamp: new Date(c.time).getTime(),
+            insulin: c.amount
+        }));
+
+        const { calculateTDDStatistics } = await import('@/lib/logic/statistics-logic');
+        const tddStats = calculateTDDStatistics(treatments, basals);
+
         return NextResponse.json({
             ...stats,
+            tdd: tddStats,
             meta: {
                 startDate: startDateStr,
                 endDate: endDateStr,
@@ -56,6 +103,7 @@ export async function GET(request: Request) {
             }
         });
     } catch (error: any) {
+
         console.error('Error in /api/statistics:', error);
         return NextResponse.json({
             error: error.message,

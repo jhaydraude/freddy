@@ -5,6 +5,7 @@ import Header from '@/components/Header';
 import DateRangeSelector from '@/components/DateRangeSelector';
 import PercentileChart from '@/components/PercentileChart';
 import StatisticsCards from '@/components/StatisticsCards';
+import TDDStats from '@/components/TDDStats';
 import { RefreshCw, Download, FileText } from 'lucide-react';
 import { startOfDay, subDays, endOfDay } from 'date-fns';
 
@@ -81,6 +82,12 @@ export default function StatisticsPage() {
                             units={userPrefs?.units}
                             targetLow={userPrefs?.low_threshold}
                             targetHigh={userPrefs?.high_threshold}
+                        />
+
+                        {/* TDD Section */}
+                        <TDDStats
+                            tdd={statsData.tdd}
+                            units={userPrefs?.units || 'U'}
                         />
 
                         {/* Insights / Footer */}
