@@ -1,5 +1,3 @@
-// No external date-fns imports needed for current logic
-
 export interface PercentilePoint {
     timestamp: number;
     p5: number;
@@ -7,6 +5,25 @@ export interface PercentilePoint {
     p50: number;
     p75: number;
     p95: number;
+}
+
+function getLocalTimeData(date: Date, formatter: Intl.DateTimeFormat | null) {
+    if (!formatter) {
+        return {
+            year: date.getFullYear(),
+            month: String(date.getMonth() + 1).padStart(2, '0'),
+            day: String(date.getDate()).padStart(2, '0'),
+            hour: date.getHours()
+        };
+    }
+    const parts = formatter.formatToParts(date);
+    const yr = parts.find(p => p.type === 'year')?.value || String(date.getFullYear());
+    const mo = parts.find(p => p.type === 'month')?.value || String(date.getMonth() + 1).padStart(2, '0');
+    const da = parts.find(p => p.type === 'day')?.value || String(date.getDate()).padStart(2, '0');
+    let hrStr = parts.find(p => p.type === 'hour')?.value || String(date.getHours());
+    if (hrStr === '24') hrStr = '00';
+
+    return { year: parseInt(yr, 10), month: mo, day: da, hour: parseInt(hrStr, 10) };
 }
 
 export interface StatisticsResult {
@@ -47,7 +64,9 @@ export function estimateHbA1c(meanGlucoseMgDl: number): number {
     return (meanGlucoseMgDl + 46.7) / 28.7;
 }
 
-export function calculateStatistics(readings: any[], lowThreshold: number, highThreshold: number, units: string) {
+export interface ReadingRecord { sgv?: number; timestamp?: string | number | Date; dateString?: string; }
+
+export function calculateStatistics(readings: ReadingRecord[], lowThreshold: number, highThreshold: number, units: string, timeZone?: string) {
     if (readings.length === 0) {
         return {
             percentiles: [],
@@ -111,10 +130,12 @@ export function calculateStatistics(readings: any[], lowThreshold: number, highT
     const hourlyGroups: Map<number, number[]> = new Map();
     for (let i = 0; i < 24; i++) hourlyGroups.set(i, []);
 
+    const tzFormatter = timeZone ? new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }) : null;
+
     readings.forEach(r => {
         if (r.sgv) {
-            const date = new Date(r.timestamp || r.dateString);
-            const hour = date.getHours();
+            const date = new Date(r.timestamp || r.dateString || 0);
+            const { hour } = getLocalTimeData(date, tzFormatter);
             const val = isMmol
                 ? Math.round((r.sgv / 18.018) * 10) / 10
                 : r.sgv;
@@ -150,26 +171,30 @@ export function calculateStatistics(readings: any[], lowThreshold: number, highT
     };
 }
 
-export function calculateTDDStatistics(boluses: any[], basals: any[]) {
+export interface TreatmentRecord { created_at?: string | number | Date; timestamp?: string | number | Date; date?: string | number | Date; insulin?: number; deliveredInsulin?: number; carbs?: number; }
+
+export function calculateTDDStatistics(boluses: TreatmentRecord[], basals: TreatmentRecord[], timeZone?: string) {
     // 1. Daily totals
     const dailyData: Record<string, { basal: number, bolus: number, date: Date }> = {};
 
-    const processRecord = (record: any, type: 'basal' | 'bolus') => {
+    const tzFormatter = timeZone ? new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }) : null;
+
+    const processRecord = (record: TreatmentRecord, type: 'basal' | 'bolus') => {
         const ts = record.created_at || record.timestamp || record.date;
         if (!ts) return;
 
         const date = new Date(ts);
         if (isNaN(date.getTime())) return;
 
-        // Correct to start of day in local time for grouping, but simpler to use date string formatting if available
-        // Assuming we have date objects, we'll group by yyyy-mm-dd
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
+        const { year, month, day } = getLocalTimeData(date, tzFormatter);
         const dayKey = `${year}-${month}-${day}`;
 
         if (!dailyData[dayKey]) {
-            dailyData[dayKey] = { basal: 0, bolus: 0, date: new Date(year, date.getMonth(), date.getDate()) };
+            // Re-creating a native Date here implies the 'day' zero hour will be server-based, 
+            // but for simple sorting and .getDay() it acts as a reliable linear timeline mapping element.
+            // Using setFullYear etc ensures we get a predictable relative Date for graphing.
+            const sortableDate = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10));
+            dailyData[dayKey] = { basal: 0, bolus: 0, date: sortableDate };
         }
 
         const insulin = record.insulin || record.deliveredInsulin || 0;
@@ -207,18 +232,15 @@ export function calculateTDDStatistics(boluses: any[], basals: any[]) {
     // Group records by day+hour to get delivery per hour for a specific day
     const dayHourData: Record<string, Record<number, { basal: number, bolus: number }>> = {};
 
-    const processHourly = (record: any, type: 'basal' | 'bolus') => {
+    const processHourly = (record: TreatmentRecord, type: 'basal' | 'bolus') => {
         const ts = record.created_at || record.timestamp || record.date;
         if (!ts) return;
 
         const date = new Date(ts);
         if (isNaN(date.getTime())) return;
 
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
+        const { year, month, day, hour } = getLocalTimeData(date, tzFormatter);
         const dayKey = `${year}-${month}-${day}`;
-        const hour = date.getHours();
 
         if (!dayHourData[dayKey]) dayHourData[dayKey] = {};
         if (!dayHourData[dayKey][hour]) dayHourData[dayKey][hour] = { basal: 0, bolus: 0 };
@@ -273,5 +295,146 @@ export function calculateTDDStatistics(boluses: any[], basals: any[]) {
             weekends: calculateStats(weekendTotals)
         },
         hourlyStats
+    };
+}
+
+export interface ActivityRecord { created_at?: string | number | Date; timestamp?: string | number | Date; date?: string | number | Date; steps?: number; heartrate?: number; }
+
+export function calculateActivityStatistics(activities: ActivityRecord[], rangeDays?: number, timeZone?: string) {
+    if (activities.length === 0) {
+        return null;
+    }
+
+    const dailyData: Record<string, { steps: number, hrValues: number[], date: Date }> = {};
+    const allHrValues: number[] = [];
+    let totalSteps = 0;
+
+    const tzFormatter = timeZone ? new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }) : null;
+
+    activities.forEach(record => {
+        const ts = record.created_at || record.timestamp || record.date;
+        if (!ts) return;
+
+        const date = new Date(ts);
+        if (isNaN(date.getTime())) return;
+
+        const { year, month, day } = getLocalTimeData(date, tzFormatter);
+        const dayKey = `${year}-${month}-${day}`;
+
+        if (!dailyData[dayKey]) {
+            const sortableDate = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10));
+            dailyData[dayKey] = { steps: 0, hrValues: [], date: sortableDate };
+        }
+
+        if (record.steps) {
+            dailyData[dayKey].steps += record.steps;
+            totalSteps += record.steps;
+        }
+
+        if (record.heartrate) {
+            dailyData[dayKey].hrValues.push(record.heartrate);
+            allHrValues.push(record.heartrate);
+        }
+    });
+
+    const days = Object.values(dailyData).sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    let avgDailySteps = 0;
+    if (totalSteps > 0) {
+        const divider = rangeDays && rangeDays > 0 ? rangeDays : (days.length > 0 ? days.length : 1);
+        avgDailySteps = totalSteps / divider;
+    }
+
+    let hrStats = { min: 0, max: 0, median: 0, mean: 0 };
+    if (allHrValues.length > 0) {
+        const sortedHr = [...allHrValues].sort((a, b) => a - b);
+        hrStats = {
+            min: sortedHr[0],
+            max: sortedHr[sortedHr.length - 1],
+            median: calculatePercentile(sortedHr, 50),
+            mean: allHrValues.reduce((a, b) => a + b, 0) / allHrValues.length
+        };
+    }
+
+    return {
+        dailySeries: days.map(d => ({
+            date: d.date.toISOString(),
+            steps: d.steps,
+            medianHeartRate: d.hrValues.length > 0 ? calculatePercentile(d.hrValues, 50) : null,
+            maxHeartRate: d.hrValues.length > 0 ? Math.max(...d.hrValues) : null,
+            minHeartRate: d.hrValues.length > 0 ? Math.min(...d.hrValues) : null
+        })),
+        stats: {
+            avgDailySteps: Math.round(avgDailySteps),
+            totalSteps,
+            heartRate: hrStats
+        }
+    };
+}
+
+export function calculateCarbStatistics(treatments: TreatmentRecord[], rangeDays?: number, timeZone?: string) {
+    if (treatments.length === 0) {
+        return null;
+    }
+
+    const dailyData: Record<string, { carbs: number, date: Date }> = {};
+    let totalCarbs = 0;
+
+    const tzFormatter = timeZone ? new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false }) : null;
+
+    treatments.forEach(record => {
+        const carbs = record.carbs || 0;
+        if (carbs <= 0) return;
+
+        const ts = record.created_at || record.timestamp || record.date;
+        if (!ts) return;
+
+        const date = new Date(ts);
+        if (isNaN(date.getTime())) return;
+
+        const { year, month, day } = getLocalTimeData(date, tzFormatter);
+        const dayKey = `${year}-${month}-${day}`;
+
+        if (!dailyData[dayKey]) {
+            const sortableDate = new Date(year, parseInt(month, 10) - 1, parseInt(day, 10));
+            dailyData[dayKey] = { carbs: 0, date: sortableDate };
+        }
+
+        dailyData[dayKey].carbs += carbs;
+        totalCarbs += carbs;
+    });
+
+    const days = Object.values(dailyData).sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    let avgDailyCarbs = 0;
+    if (totalCarbs > 0) {
+        const divider = rangeDays && rangeDays > 0 ? rangeDays : (days.length > 0 ? days.length : 1);
+        avgDailyCarbs = totalCarbs / divider;
+    }
+
+    const calculateStats = (vals: number[]) => {
+        if (vals.length === 0) return { median: 0, p95: 0 };
+        return {
+            median: calculatePercentile(vals, 50),
+            p95: calculatePercentile(vals, 95)
+        };
+    };
+
+    const allTotals = days.map(d => d.carbs);
+    const weekdayTotals = days.filter(d => d.date.getDay() >= 1 && d.date.getDay() <= 5).map(d => d.carbs);
+    const weekendTotals = days.filter(d => d.date.getDay() === 0 || d.date.getDay() === 6).map(d => d.carbs);
+
+    return {
+        dailySeries: days.map(d => ({
+            date: d.date.toISOString(),
+            carbs: d.carbs,
+        })),
+        stats: {
+            overall: calculateStats(allTotals),
+            weekdays: calculateStats(weekdayTotals),
+            weekends: calculateStats(weekendTotals),
+            totalCarbs,
+            avgDailyCarbs: Math.round(avgDailyCarbs)
+        }
     };
 }

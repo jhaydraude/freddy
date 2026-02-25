@@ -3,8 +3,18 @@
 import { TrendingUp, Activity, BarChart, Target, Zap } from 'lucide-react';
 
 interface StatisticsCardsProps {
-    stats: any;
-    tir: any;
+    stats: {
+        hba1c?: number;
+        mean?: number;
+        stdDev?: number;
+        cv?: number;
+    };
+    tir: {
+        totalReadings?: number;
+        low?: number;
+        inRange?: number;
+        high?: number;
+    };
     units: string;
 }
 
@@ -62,6 +72,10 @@ export default function StatisticsCards({ stats, tir, units }: StatisticsCardsPr
 
     return (
         <div className="space-y-6">
+            <h3 className="text-xl font-black text-zinc-100 uppercase tracking-tighter flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Glucose
+            </h3>
+
             {/* TIR Progress Bar */}
             <div className="p-6 bg-zinc-900/40 rounded-2xl border border-zinc-800/50 space-y-4">
                 <div className="flex items-center justify-between">

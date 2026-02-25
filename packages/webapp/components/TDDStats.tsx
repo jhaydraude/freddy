@@ -1,7 +1,8 @@
 'use client';
 
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, ReferenceLine, CartesianGrid, AreaChart, Area } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, AreaChart, Area } from 'recharts';
 import { format } from 'date-fns';
+import { Droplet, CalendarDays } from 'lucide-react';
 
 interface TDDStatsProps {
     tdd: {
@@ -27,14 +28,14 @@ interface TDDStatsProps {
     units: string;
 }
 
-export default function TDDStats({ tdd, units }: TDDStatsProps) {
+export default function TDDStats({ tdd }: TDDStatsProps) {
     if (!tdd) return null;
 
     const cards = [
-        { label: 'Overall Median', value: tdd.stats.overall.median.toFixed(1) },
-        { label: 'Overall P95', value: tdd.stats.overall.p95.toFixed(1) },
-        { label: 'Weekday Median', value: tdd.stats.weekdays.median.toFixed(1) },
-        { label: 'Weekend Median', value: tdd.stats.weekends.median.toFixed(1) }
+        { label: 'Overall Median', value: tdd.stats.overall.median.toFixed(1), icon: Droplet },
+        { label: 'Overall P95', value: tdd.stats.overall.p95.toFixed(1), icon: Droplet },
+        { label: 'Weekday Median', value: tdd.stats.weekdays.median.toFixed(1), icon: CalendarDays },
+        { label: 'Weekend Median', value: tdd.stats.weekends.median.toFixed(1), icon: CalendarDays }
     ];
 
     const formattedDaily = tdd.dailySeries.map(d => ({
@@ -57,7 +58,10 @@ export default function TDDStats({ tdd, units }: TDDStatsProps) {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {cards.map((card, i) => (
                     <div key={i} className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800/50 space-y-2 backdrop-blur-sm transition-transform hover:scale-[1.02]">
-                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">{card.label}</span>
+                        <div className="flex items-center gap-1.5 opacity-60">
+                            <card.icon size={12} className="text-zinc-400" />
+                            <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{card.label}</span>
+                        </div>
                         <div className="flex items-baseline gap-1">
                             <span className="text-2xl font-black text-indigo-400 tracking-tight">{card.value}</span>
                             <span className="text-[10px] text-zinc-600 font-bold uppercase">U</span>
@@ -91,6 +95,7 @@ export default function TDDStats({ tdd, units }: TDDStatsProps) {
                                 tickFormatter={(val) => `${val}U`}
                             />
                             <Tooltip
+                                offset={60}
                                 contentStyle={{
                                     backgroundColor: '#18181b',
                                     border: '1px solid #27272a',
@@ -99,6 +104,7 @@ export default function TDDStats({ tdd, units }: TDDStatsProps) {
                                 }}
                                 itemStyle={{ color: '#e4e4e7', fontSize: '12px', fontWeight: 'bold' }}
                                 labelStyle={{ color: '#a1a1aa', fontSize: '10px', textTransform: 'uppercase', marginBottom: '8px' }}
+                                formatter={(value: number, name: string) => [`${value.toFixed(1)}U`, name]}
                             />
                             <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                             <Bar dataKey="total" fill="#8b5cf6" name="Total Insulin" radius={[4, 4, 0, 0]} />
@@ -133,6 +139,7 @@ export default function TDDStats({ tdd, units }: TDDStatsProps) {
                                 tickFormatter={(val) => `${val}U`}
                             />
                             <Tooltip
+                                offset={60}
                                 contentStyle={{
                                     backgroundColor: '#18181b',
                                     border: '1px solid #27272a',
@@ -141,6 +148,7 @@ export default function TDDStats({ tdd, units }: TDDStatsProps) {
                                 }}
                                 itemStyle={{ color: '#e4e4e7', fontSize: '12px', fontWeight: 'bold' }}
                                 labelStyle={{ color: '#a1a1aa', fontSize: '10px', textTransform: 'uppercase', marginBottom: '8px' }}
+                                formatter={(value: number, name: string) => [`${value.toFixed(1)}U`, name]}
                             />
                             <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
                             <Area type="monotone" dataKey="p95" stroke="transparent" fill="#8b5cf6" fillOpacity={0.1} name="95th Percentile" />

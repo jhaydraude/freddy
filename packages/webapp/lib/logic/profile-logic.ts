@@ -5,45 +5,33 @@ import { freddyToNS } from './profile-conversion';
 const profileCache = new Map<string, any>();
 
 /**
- * Resolves the active profile information at a specific timestamp.
- * Correctly handles historical profile switches (overrides) and base documents.
+ * Synchronously resolves the active profile from pre-fetched arrays of profiles and treatments.
+ * Crucial for avoiding N+1 queries when processing long time series.
  */
-export async function resolveActiveProfile(timestamp: string | Date, bypassCache: boolean = false): Promise<{ doc: IProfile | null, activeProfileName: string, profileData: IProfileStore | null, expiration?: string | undefined, isFreddy?: boolean } | null> {
+export function resolveProfileFromData(
+    timestamp: string | Date,
+    baseProfiles: IProfile[],
+    profileSwitches: any[],
+    activeFreddy: any | null
+): { doc: IProfile | null, activeProfileName: string, profileData: IProfileStore | null, expiration?: string | undefined, isFreddy?: boolean } | null {
     const targetDate = new Date(timestamp);
     const targetIso = targetDate.toISOString();
 
-    const cacheKey = targetIso.substring(0, 16); // YYYY-MM-DDTHH:mm
-    if (!bypassCache && profileCache.has(cacheKey)) {
-        return profileCache.get(cacheKey);
-    }
-
-    // 0. Check for active Freddy Profile first
-    // Note: We currently only support one globally active Freddy profile, regardless of timestamp,
-    // as it represents the "current tuning". If historical Freddy profiles are needed, 
-    // we would need a different selection logic.
-    const activeFreddy = await FreddyProfile.findOne({ isActive: true });
     if (activeFreddy) {
         const profileData = freddyToNS(activeFreddy as any);
-        const result = {
+        return {
             activeProfileName: activeFreddy.name,
             profileData,
             doc: null,
             isFreddy: true
         };
-        profileCache.set(cacheKey, result);
-        return result;
     }
 
-    // 1. Find the base profile document active at this time
-    const baseDoc = await Profile.findOne({
-        startDate: { $lte: targetIso }
-    }).sort({ startDate: -1 });
+    const sortedBase = [...baseProfiles].sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+    const baseDoc = sortedBase.find(p => p.startDate <= targetIso);
 
-    // 2. Find the most recent Profile Switch that happened BEFORE the target time.
-    const activeSwitch = await Treatment.findOne({
-        eventType: "Profile Switch",
-        created_at: { $lte: targetIso }
-    }).sort({ created_at: -1 });
+    const sortedSwitches = [...profileSwitches].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const activeSwitch = sortedSwitches.find(s => s.created_at <= targetIso);
 
     let result: any = null;
 
@@ -103,7 +91,7 @@ export async function resolveActiveProfile(timestamp: string | Date, bypassCache
 
     if (!result) {
         // Fallback to base document if no active switch found
-        const doc = baseDoc || await Profile.findOne({}).sort({ startDate: -1 });
+        const doc = baseDoc || sortedBase[0];
         if (doc) {
             result = {
                 doc,
@@ -112,6 +100,42 @@ export async function resolveActiveProfile(timestamp: string | Date, bypassCache
             };
         }
     }
+
+    return result;
+}
+
+/**
+ * Resolves the active profile information at a specific timestamp.
+ * Correctly handles historical profile switches (overrides) and base documents.
+ */
+export async function resolveActiveProfile(timestamp: string | Date, bypassCache: boolean = false): Promise<{ doc: IProfile | null, activeProfileName: string, profileData: IProfileStore | null, expiration?: string | undefined, isFreddy?: boolean } | null> {
+    const targetDate = new Date(timestamp);
+    const targetIso = targetDate.toISOString();
+
+    const cacheKey = targetIso.substring(0, 16); // YYYY-MM-DDTHH:mm
+    if (!bypassCache && profileCache.has(cacheKey)) {
+        return profileCache.get(cacheKey);
+    }
+
+    const activeFreddy = await FreddyProfile.findOne({ isActive: true });
+
+    // We fetch a couple of base documents just in case (e.g. recent profile)
+    const baseDocs = await Profile.find({
+        startDate: { $lte: targetIso }
+    }).sort({ startDate: -1 }).limit(2);
+
+    // If none found before, grab the very first one regardless of time
+    if (baseDocs.length === 0) {
+        const oldest = await Profile.findOne({}).sort({ startDate: 1 });
+        if (oldest) baseDocs.push(oldest);
+    }
+
+    const activeSwitches = await Treatment.find({
+        eventType: "Profile Switch",
+        created_at: { $lte: targetIso }
+    }).sort({ created_at: -1 }).limit(10); // Grab last 10 switches to be safe
+
+    const result = resolveProfileFromData(targetDate, baseDocs, activeSwitches, activeFreddy);
 
     if (result) {
         profileCache.set(cacheKey, result);

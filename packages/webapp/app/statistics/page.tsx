@@ -6,12 +6,16 @@ import DateRangeSelector from '@/components/DateRangeSelector';
 import PercentileChart from '@/components/PercentileChart';
 import StatisticsCards from '@/components/StatisticsCards';
 import TDDStats from '@/components/TDDStats';
+import ActivityStats from '@/components/ActivityStats';
+import CarbStats from '@/components/CarbStats';
 import { RefreshCw, Download, FileText } from 'lucide-react';
 import { startOfDay, subDays, endOfDay } from 'date-fns';
 
 export default function StatisticsPage() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [statsData, setStatsData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [userPrefs, setUserPrefs] = useState<any>(null);
     const [range, setRange] = useState({
         start: startOfDay(subDays(new Date(), 6)),
@@ -21,7 +25,8 @@ export default function StatisticsPage() {
     const fetchStats = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/statistics?startDate=${range.start.toISOString()}&endDate=${range.end.toISOString()}`);
+            const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const res = await fetch(`/api/statistics?startDate=${range.start.toISOString()}&endDate=${range.end.toISOString()}&timeZone=${encodeURIComponent(timeZone)}`);
             if (res.ok) {
                 const data = await res.json();
                 setStatsData(data);
@@ -88,6 +93,16 @@ export default function StatisticsPage() {
                         <TDDStats
                             tdd={statsData.tdd}
                             units={userPrefs?.units || 'U'}
+                        />
+
+                        {/* Activity Section */}
+                        <ActivityStats
+                            activity={statsData.activity}
+                        />
+
+                        {/* Carbs Section */}
+                        <CarbStats
+                            carbs={statsData.carbs}
                         />
 
                         {/* Insights / Footer */}

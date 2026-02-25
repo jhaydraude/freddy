@@ -1,7 +1,7 @@
-import { Treatment } from '../db/models';
+import { Treatment, Profile, FreddyProfile } from '../db/models';
 import { resolveActiveProfile, getProfileStore } from './profile-logic';
 import { getBasalFromSchedule } from './basal-logic';
-import { decayIOB, activityInsulin } from './insulin-math';
+import { decayIOB } from './insulin-math';
 import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve } from './iob-curves';
 
 /**
@@ -83,8 +83,6 @@ export async function getBasalIOB(
     let scheduledActivity = 0;
     let deliveredActivity = 0;
     let currentDeliveredRate = 0;
-    const stepMin = INTERVAL_MINUTES;
-    const stepMs = stepMin * 60 * 1000;
 
     for (let i = 0; i < sortedEvents.length - 1; i++) {
         const segStart = sortedEvents[i]!;
@@ -167,7 +165,7 @@ export async function createBasalCurvesForTimeseries(
     endWindow: Date,
     dia: number,
     peak: number,
-    profileInfo: any,
+    profileInfo: unknown,
     includeFuture: boolean = false
 ): Promise<{ deliveredCurves: IInsulinEventCurve[], scheduledCurves: IInsulinEventCurve[] }> {
     const deliveredCurves: IInsulinEventCurve[] = [];
@@ -269,3 +267,123 @@ export async function createBasalCurvesForTimeseries(
 
     return { deliveredCurves, scheduledCurves };
 }
+
+/**
+ * Calculates basal totals and hourly rates by linearly mapping temp basals 
+ * and using a default profile for gaps, completely eliminating O(N^2) timeline evaluation.
+ * Optimized specifically for large-scale TDD calculation.
+ */
+export async function calculateBasalSummary(
+    startWindow: Date,
+    endWindow: Date
+): Promise<{ timestamp: number, insulin: number }[]> {
+    const summary: { timestamp: number, insulin: number }[] = [];
+
+    const tempBasals = await Treatment.find({
+        eventType: "Temp Basal",
+        created_at: {
+            $gte: new Date(startWindow.getTime() - 24 * 60 * 60 * 1000).toISOString(),
+            $lte: endWindow.toISOString()
+        }
+    }).sort({ created_at: 1 }).lean() as { created_at: string, duration?: number, rate?: number, percent?: number }[];
+
+    const activeFreddy = await FreddyProfile.findOne({ isActive: true }).lean();
+    let defaultBasalSchedule: Array<{ time: string, value: number }> = [];
+
+    if (activeFreddy && typeof activeFreddy === 'object' && 'basal' in activeFreddy) {
+        defaultBasalSchedule = (activeFreddy as { basal: Array<{ time: string, value: number }> }).basal;
+    } else {
+        const baseDoc = await Profile.findOne({ startDate: { $lte: endWindow.toISOString() } }).sort({ startDate: -1 }).lean();
+        if (baseDoc) {
+            const name = baseDoc.defaultProfile;
+            const store = baseDoc.store instanceof Map ? baseDoc.store.get(name) : (baseDoc.store as { [key: string]: { basal?: Array<{ time: string, value: number }> } })[name];
+            if (store && store.basal) {
+                defaultBasalSchedule = store.basal;
+            }
+        }
+    }
+
+    const { getBasalFromSchedule } = await import('./basal-logic');
+
+    // Creates an array of non-overlapping intervals from tempBasals
+    const intervals: { start: number, end: number, rate?: number, percent?: number }[] = [];
+
+    for (let i = 0; i < tempBasals.length; i++) {
+        const tb = tempBasals[i];
+        const tStart = new Date(tb.created_at).getTime();
+        const duration = tb.duration || 0;
+        let tEnd = tStart + duration * 60000;
+
+        // Truncate by next temp basal if it exists
+        if (i + 1 < tempBasals.length) {
+            const nextStart = new Date(tempBasals[i + 1].created_at).getTime();
+            if (nextStart < tEnd) {
+                tEnd = nextStart;
+            }
+        }
+
+        // Only keep if the interval overlaps our [startWindow, endWindow]
+        const actualStart = Math.max(startWindow.getTime(), tStart);
+        const actualEnd = Math.min(endWindow.getTime(), tEnd);
+
+        if (actualEnd > actualStart) {
+            intervals.push({
+                start: actualStart,
+                end: actualEnd,
+                rate: tb.rate,
+                percent: tb.percent
+            });
+        }
+    }
+
+    let currentTime = startWindow.getTime();
+    const endTime = endWindow.getTime();
+    let intervalIdx = 0;
+
+    // Linearly step through time
+    while (currentTime < endTime) {
+        // Skip intervals that are completely in the past
+        while (intervalIdx < intervals.length && intervals[intervalIdx].end <= currentTime) {
+            intervalIdx++;
+        }
+
+        const currentInterval = intervalIdx < intervals.length ? intervals[intervalIdx] : null;
+
+        if (currentInterval && currentInterval.start <= currentTime) {
+            // We are INSIDE a temp basal right now
+            const segmentEnd = currentInterval.end;
+            let insulinRate = 0;
+            if (currentInterval.rate !== undefined && currentInterval.rate !== null) {
+                insulinRate = currentInterval.rate;
+            } else if (currentInterval.percent !== undefined && currentInterval.percent !== null) {
+                const schedRate = getBasalFromSchedule(defaultBasalSchedule, new Date(currentTime));
+                insulinRate = (schedRate * currentInterval.percent) / 100;
+            } else {
+                insulinRate = getBasalFromSchedule(defaultBasalSchedule, new Date(currentTime));
+            }
+
+            const durationHours = (segmentEnd - currentTime) / 3600000;
+            if (durationHours > 0) {
+                summary.push({ timestamp: currentTime, insulin: insulinRate * durationHours });
+            }
+            currentTime = segmentEnd;
+        } else {
+            // We are IN A GAP (or after all temp basals)
+            const nextEventTime = currentInterval ? currentInterval.start : endTime;
+            // Advance by maximum 1 hour chunks so we pick up schedule changes easily
+            const maxStep = 60 * 60 * 1000;
+            const segmentEnd = Math.min(nextEventTime, currentTime + maxStep);
+
+            const schedRate = getBasalFromSchedule(defaultBasalSchedule, new Date(currentTime));
+            const durationHours = (segmentEnd - currentTime) / 3600000;
+            if (durationHours > 0) {
+                summary.push({ timestamp: currentTime, insulin: schedRate * durationHours });
+            }
+
+            currentTime = segmentEnd;
+        }
+    }
+
+    return summary;
+}
+
