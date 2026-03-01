@@ -1,11 +1,11 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 /**
  * Meal & Activity Tuning Interface
  * Follow-up pass to optimize Carb Ratio and Activity Coefficients
  * using a fixed Foundation Baseline.
  */
-export interface IMealActivityTuning extends Document {
+export interface IMealActivityTuning {
     tuning_id: string;
     user_id: string;
     created_at: Date;
@@ -146,5 +146,5 @@ const MealActivityTuningSchema = new Schema<IMealActivityTuning>({
 
 MealActivityTuningSchema.index({ user_id: 1, created_at: -1 });
 
-export const MealActivityTuning = mongoose.models.MealActivityTuning ||
+export const MealActivityTuning: any = mongoose.models.MealActivityTuning ||
     mongoose.model<IMealActivityTuning>('MealActivityTuning', MealActivityTuningSchema);

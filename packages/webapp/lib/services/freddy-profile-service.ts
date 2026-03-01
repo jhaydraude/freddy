@@ -187,7 +187,8 @@ export class FreddyProfileService {
         await profile.save();
 
         if (options?.mode === 'create') {
-            await this.activateProfile(profile._id);
+            const profileId = (profile as any)._id?.toString();
+            if (profileId) await this.activateProfile(profileId);
         }
 
         return profile;

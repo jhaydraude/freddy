@@ -30,7 +30,7 @@ async function testApi() {
             const testUrl = `${baseUrl}/${endpoint}?count=1`;
             console.log(`\n--- Using Auth: ${auth.name} ---`);
             try {
-                const res = await fetch(testUrl, { headers: auth.headers });
+                const res = await fetch(testUrl, { headers: auth.headers as unknown as Record<string, string> });
                 console.log(`Result: ${res.status} ${res.statusText}`);
                 if (res.ok) {
                     const data = await res.json();

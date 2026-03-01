@@ -120,7 +120,7 @@ export class UnifiedFoundationTuningService {
             await tuning.save();
 
             // Normalize ISF to mg/dL for consistent mathematical analysis in Python
-            const normalizedISF = tuning.current_values.isf.map(v => normalizeISF(v, tuning.current_values.units));
+            const normalizedISF = tuning.current_values.isf.map((v: any) => normalizeISF(v, tuning.current_values.units));
 
             const response = await fetch(`${process.env.PREDICTIVE_MODELS_URL || 'http://localhost:8000'}/api/v1/tune/unified-foundation`, {
                 method: 'POST',

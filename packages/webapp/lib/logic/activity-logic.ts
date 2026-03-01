@@ -105,12 +105,12 @@ export async function getActivitySummary(): Promise<IActivitySummary> {
         date: { $gte: startOfToday.getTime() }
     }).lean();
 
-    const stepsToday = stepRecords.reduce((sum, r) => sum + (r.steps || 0), 0);
+    const stepsToday = stepRecords.reduce((sum: number, r: any) => sum + ((r as any).steps || 0), 0);
 
     // Latest activity record
     const latestRecord = await Entry.findOne({
         type: 'activity'
-    }).sort({ date: -1 }).lean();
+    }).sort({ date: -1 }).lean() as any;
 
     const latestActivityTimestamp = latestRecord ? new Date(latestRecord.date).toISOString() : null;
 
@@ -119,7 +119,7 @@ export async function getActivitySummary(): Promise<IActivitySummary> {
         type: 'activity',
         stale: { $ne: true },
         heartrate: { $exists: true }
-    }).sort({ date: -1 }).lean();
+    }).sort({ date: -1 }).lean() as any;
 
     const latestHeartRate = latestHR ? {
         bpm: latestHR.heartrate!,
@@ -137,10 +137,10 @@ export async function getActivitySummary(): Promise<IActivitySummary> {
 
     let heartRateStats;
     if (hrRecords.length > 0) {
-        const bpms = hrRecords.map(r => r.heartrate).filter((b): b is number => b != null);
+        const bpms = (hrRecords as any[]).map((r: any) => r.heartrate).filter((b: unknown): b is number => b != null);
         if (bpms.length > 0) {
             heartRateStats = {
-                avg: Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length),
+                avg: Math.round(bpms.reduce((a: number, b: number) => a + b, 0) / bpms.length),
                 min: Math.min(...bpms),
                 max: Math.max(...bpms)
             };

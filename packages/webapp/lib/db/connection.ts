@@ -62,7 +62,7 @@ async function initializeFreddy() {
     // 1. Load system config from DB
     const configs = await SystemConfig.find({});
     const dbConfig: Record<string, any> = {};
-    configs.forEach(c => { dbConfig[c.key] = c.value; });
+    configs.forEach((c: any) => { dbConfig[c.key] = c.value; });
 
     configManager.updateConfig(dbConfig);
     console.error('Freddy Settings loaded from database.');

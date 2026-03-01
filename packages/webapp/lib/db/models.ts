@@ -1,20 +1,19 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 import { getNightscoutConn, getFreddyConn } from './connection';
 
 // Helper to lazily bind a model to the correct connection
-function getModel<T>(name: string, schema: Schema, connectionGetter: () => mongoose.Connection, collection?: string) {
-    // We use a dummy function as target so the Proxy is recognized as a constructor
-    const dummy = function () { } as unknown as mongoose.Model<T & Document>;
+function getModel(name: string, schema: any, connectionGetter: () => any, collection?: string): any {
+    const dummy = function () { } as any;
 
     return new Proxy(dummy, {
         get(target, prop) {
             const conn = connectionGetter();
-            const model = conn.models[name] || conn.model<T & Document>(name, schema, collection);
+            const model = conn.models[name] || conn.model(name, schema, collection);
             return (model as any)[prop];
         },
         construct(target, args) {
             const conn = connectionGetter();
-            const model = conn.models[name] || conn.model<T & Document>(name, schema, collection);
+            const model = conn.models[name] || conn.model(name, schema, collection);
             return Reflect.construct(model as any, args);
         }
     });
@@ -23,7 +22,7 @@ function getModel<T>(name: string, schema: Schema, connectionGetter: () => mongo
 // ---------------------------------------------------------------------------
 // ENTRIES (Glucose Readings) - Nightscout Owned
 // ---------------------------------------------------------------------------
-export interface IEntry extends Document {
+export interface IEntry {
     sgv?: number;
     date: number;
     dateString: string;
@@ -53,12 +52,12 @@ const EntrySchema = new Schema({
     stale: { type: Boolean }
 }, { collection: 'entries', strict: false });
 
-export const Entry = getModel<IEntry>('Entry', EntrySchema, getNightscoutConn, 'entries');
+export const Entry: any = getModel('Entry', EntrySchema, getNightscoutConn, 'entries');
 
 // ---------------------------------------------------------------------------
 // TREATMENTS (Insulin, Carbs, Temp Basals) - Nightscout Owned
 // ---------------------------------------------------------------------------
-export interface ITreatment extends Document {
+export interface ITreatment {
     eventType: string;
     insulin?: number;
     carbs?: number;
@@ -91,7 +90,7 @@ const TreatmentSchema = new Schema({
     percentage: { type: Number }
 }, { collection: 'treatments', strict: false });
 
-export const Treatment = getModel<ITreatment>('Treatment', TreatmentSchema, getNightscoutConn, 'treatments');
+export const Treatment: any = getModel('Treatment', TreatmentSchema, getNightscoutConn, 'treatments');
 
 // ---------------------------------------------------------------------------
 // PROFILE (User Settings) - Nightscout Owned
@@ -114,7 +113,8 @@ export interface IProfileStore {
     };
 }
 
-export interface IProfile extends Document {
+export interface IProfile {
+    _id?: string;
     startDate: string;
     defaultProfile: string;
     store: Record<string, IProfileStore>;
@@ -128,12 +128,12 @@ const ProfileSchema = new Schema({
     created_at: { type: String }
 }, { collection: 'profile', strict: false });
 
-export const Profile = getModel<IProfile>('Profile', ProfileSchema, getNightscoutConn, 'profile');
+export const Profile: any = getModel('Profile', ProfileSchema, getNightscoutConn, 'profile');
 
 // ---------------------------------------------------------------------------
 // DEVICE STATUS (Pump & Uploader Status) - Nightscout Owned
 // ---------------------------------------------------------------------------
-export interface IDeviceStatus extends Document {
+export interface IDeviceStatus {
     created_at: string;
     pump?: {
         battery?: { percent?: number; voltage?: number; status?: string; };
@@ -177,12 +177,12 @@ const DeviceStatusSchema = new Schema({
     device: String
 }, { collection: 'devicestatus', strict: false });
 
-export const DeviceStatus = getModel<IDeviceStatus>('DeviceStatus', DeviceStatusSchema, getNightscoutConn, 'devicestatus');
+export const DeviceStatus: any = getModel('DeviceStatus', DeviceStatusSchema, getNightscoutConn, 'devicestatus');
 
 // ---------------------------------------------------------------------------
 // COMPUTED STATUS (Freddy Owned)
 // ---------------------------------------------------------------------------
-export interface IComputedStatus extends Document {
+export interface IComputedStatus {
     timestamp: Date;
     status: any;
     attribution?: any;
@@ -202,12 +202,12 @@ const ComputedStatusSchema = new Schema({
     version: { type: String, default: "1.0" }
 }, { collection: 'computedstatus' });
 
-export const ComputedStatus = getModel<IComputedStatus>('ComputedStatus', ComputedStatusSchema, getFreddyConn, 'computedstatus');
+export const ComputedStatus: any = getModel('ComputedStatus', ComputedStatusSchema, getFreddyConn, 'computedstatus');
 
 // ---------------------------------------------------------------------------
 // PROFILE ANALYSIS (Freddy Owned)
 // ---------------------------------------------------------------------------
-export interface IProfileAnalysis extends Document {
+export interface IProfileAnalysis {
     timestamp: Date;
     current_profile?: IProfileStore;
     recommended_profile?: IProfileStore;
@@ -222,6 +222,12 @@ export interface IProfileAnalysis extends Document {
     mae: number;
     windows_analyzed: number;
     recommendation: string;
+    estimated_activity_coefficients?: {
+        steps_per_minute?: number;
+        hr_spike?: number;
+        stress_hr?: number;
+    };
+    [key: string]: unknown;
 }
 
 const ProfileAnalysisSchema = new Schema({
@@ -241,14 +247,14 @@ const ProfileAnalysisSchema = new Schema({
     recommendation: { type: String }
 }, { collection: 'profile_analysis' });
 
-export const ProfileAnalysis = getModel<IProfileAnalysis>('ProfileAnalysis', ProfileAnalysisSchema, getFreddyConn, 'profile_analysis');
+export const ProfileAnalysis: any = getModel('ProfileAnalysis', ProfileAnalysisSchema, getFreddyConn, 'profile_analysis');
 
 
 
 // ---------------------------------------------------------------------------
 // CONFIGURATION MODELS (Freddy Owned)
 // ---------------------------------------------------------------------------
-export interface ISystemConfig extends Document {
+export interface ISystemConfig {
     key: string;
     value: any;
     updated_at: Date;
@@ -260,9 +266,9 @@ const SystemConfigSchema = new Schema({
     updated_at: { type: Date, default: Date.now }
 }, { collection: 'system_config' });
 
-export const SystemConfig = getModel<ISystemConfig>('SystemConfig', SystemConfigSchema, getFreddyConn, 'system_config');
+export const SystemConfig: any = getModel('SystemConfig', SystemConfigSchema, getFreddyConn, 'system_config');
 
-export interface IUserPreference extends Document {
+export interface IUserPreference {
     userId: string;
     key: string;
     value: any;
@@ -274,12 +280,12 @@ const UserPreferenceSchema = new Schema({
     value: { type: Schema.Types.Mixed, required: true }
 }, { collection: 'user_preferences' });
 
-export const UserPreference = getModel<IUserPreference>('UserPreference', UserPreferenceSchema, getFreddyConn, 'user_preferences');
+export const UserPreference: any = getModel('UserPreference', UserPreferenceSchema, getFreddyConn, 'user_preferences');
 
 // ---------------------------------------------------------------------------
 // ACTIVITY DATA (Freddy Owned)
 // ---------------------------------------------------------------------------
-export interface IActivityRecord extends Document {
+export interface IActivityRecord {
     id: string;
     type: string;
     timestamp?: number;
@@ -309,7 +315,7 @@ const ActivityRecordSchema = new Schema({
     created_at: { type: Date, default: Date.now, index: true }
 }, { collection: 'activity_records' });
 
-export const ActivityRecord = getModel<IActivityRecord>('ActivityRecord', ActivityRecordSchema, getFreddyConn, 'activity_records');
+export const ActivityRecord: any = getModel('ActivityRecord', ActivityRecordSchema, getFreddyConn, 'activity_records');
 
 export * from './models/freddy-profile';
 

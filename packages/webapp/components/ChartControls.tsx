@@ -27,17 +27,44 @@ export default function ChartControls({
     fetchData,
     loading
 }: ChartControlsProps) {
+    const [isRecalculating, setIsRecalculating] = React.useState(false);
+
+    const handleRecalculate = async () => {
+        setIsRecalculating(true);
+        try {
+            // First trigger the background rebuild for the current window
+            const end = new Date(Date.now() - (viewOffsetMinutes * 60 * 1000));
+            const start = new Date(end.getTime() - (windowSize * 60 * 1000));
+
+            await fetch('/api/cache/recalculate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    startTime: start.toISOString(),
+                    endTime: end.toISOString()
+                })
+            });
+            // Then fetch the fresh data (bypassing cache to ensure latest if rebuild hasn't finished, 
+            // though the API call above waits for it to finish)
+            await fetchData(true);
+        } catch (error) {
+            console.error('Failed to recalculate:', error);
+        } finally {
+            setIsRecalculating(false);
+        }
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
                 <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em]">Historical Analysis</h4>
                 <button
-                    onClick={() => fetchData(true)}
-                    disabled={loading}
+                    onClick={handleRecalculate}
+                    disabled={loading || isRecalculating}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm backdrop-blur-sm"
-                    title="Recalculate all statuses (bypass cache)"
+                    title="Recalculate all statuses for current window"
                 >
-                    <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+                    <RefreshCw size={14} className={(loading || isRecalculating) ? "animate-spin" : ""} />
                     Recalculate
                 </button>
             </div>

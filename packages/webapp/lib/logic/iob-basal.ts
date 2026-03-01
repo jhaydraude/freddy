@@ -3,6 +3,7 @@ import { resolveActiveProfile, getProfileStore } from './profile-logic';
 import { getBasalFromSchedule } from './basal-logic';
 import { decayIOB } from './insulin-math';
 import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve } from './iob-curves';
+import type { IStatusContext } from './types';
 
 /**
  * Calculates both Scheduled and Delivered Basal IOB for a given time window.
@@ -13,13 +14,14 @@ export async function getBasalIOB(
     endTime: Date,
     profileDia?: number,
     peak: number = 45,
-    bypassCache: boolean = false
+    bypassCache: boolean = false,
+    context?: IStatusContext
 ): Promise<{ scheduledIOB: number, deliveredIOB: number, deliveredRate: number, scheduledActivity: number, deliveredActivity: number }> {
     const startMs = startTime.getTime();
     const endMs = endTime.getTime();
 
     // 1. Initial Resolution for DIA
-    const initialRes = await resolveActiveProfile(startTime, bypassCache);
+    const initialRes = context?.profileInfo || await resolveActiveProfile(startTime, bypassCache);
     if (!initialRes) return { scheduledIOB: 0, deliveredIOB: 0, deliveredRate: 0, scheduledActivity: 0, deliveredActivity: 0 };
 
     const initialStore = getProfileStore(
@@ -45,10 +47,13 @@ export async function getBasalIOB(
     }
 
     const lookbackMs = 48 * 60 * 60 * 1000;
-    const switches = await Treatment.find({
-        eventType: "Profile Switch",
-        created_at: { $gte: new Date(windowStartMs - lookbackMs).toISOString(), $lte: endTime.toISOString() }
-    });
+    let switches = context?.treatments?.filter(t => t.eventType === "Profile Switch");
+    if (!switches) {
+        switches = await Treatment.find({
+            eventType: "Profile Switch",
+            created_at: { $gte: new Date(windowStartMs - lookbackMs).toISOString(), $lte: endTime.toISOString() }
+        }).lean() as any[];
+    }
 
     for (const s of switches) {
         const createdMs = new Date(s.created_at).getTime();
@@ -63,10 +68,13 @@ export async function getBasalIOB(
     }
 
     // Timeline Source B: Temp Basals
-    const temps = await Treatment.find({
-        eventType: "Temp Basal",
-        created_at: { $gte: new Date(windowStartMs - 24 * 60 * 60 * 1000).toISOString(), $lte: endTime.toISOString() }
-    });
+    let temps = context?.treatments?.filter(t => t.eventType === "Temp Basal");
+    if (!temps) {
+        temps = await Treatment.find({
+            eventType: "Temp Basal",
+            created_at: { $gte: new Date(windowStartMs - 24 * 60 * 60 * 1000).toISOString(), $lte: endTime.toISOString() }
+        }).lean() as any[];
+    }
 
     for (const t of temps) {
         const tStart = new Date(t.created_at).getTime();

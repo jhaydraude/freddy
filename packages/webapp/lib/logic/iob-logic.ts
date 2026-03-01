@@ -2,7 +2,7 @@ import { Treatment, DeviceStatus, SystemConfig } from '../db/models';
 import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic';
 import { calculateInsulinEventCurve, INTERVAL_MINUTES, type IInsulinEventCurve } from './iob-curves';
 import { getBasalIOB, createBasalCurvesForTimeseries } from './iob-basal';
-import { IIOBResult } from './types';
+import { IIOBResult, type IStatusContext } from './types';
 import { activityInsulin } from './insulin-math';
 
 /**
@@ -13,9 +13,14 @@ import { activityInsulin } from './insulin-math';
  * @param includeTimeseries - If true, include historical timeseries arrays
  * @returns Detailed IOB result with glucose impact and optional timeseries
  */
-export async function getIOB(timestamp: string | Date, includeTimeseries: boolean = true, bypassCache: boolean = false): Promise<IIOBResult> {
+export async function getIOB(
+    timestamp: string | Date,
+    includeTimeseries: boolean = true,
+    bypassCache: boolean = false,
+    context?: IStatusContext
+): Promise<IIOBResult> {
     const endWindow = new Date(timestamp);
-    const profileInfo = await resolveActiveProfile(endWindow, bypassCache);
+    const profileInfo = context?.profileInfo || await resolveActiveProfile(endWindow, bypassCache);
 
     // Default values
     let isf = 50;
@@ -27,18 +32,28 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
     // 1. Get Autosens Ratio from latest DeviceStatus (relative to requested time)
     // Note: Future versions will calculate this locally to exclude activity impact, 
     // rather than relying on AAPS's devicestatus.
-    const statusDoc = await DeviceStatus.findOne({
-        "openaps.suggested.sensitivityRatio": { $exists: true },
-        "created_at": { $lte: endWindow.toISOString() }
-    }).sort({ created_at: -1 });
+    let statusDoc = context?.deviceStatus;
+    if (!statusDoc) {
+        statusDoc = await DeviceStatus.findOne({
+            "openaps.suggested.sensitivityRatio": { $exists: true },
+            "created_at": { $lte: endWindow.toISOString() }
+        }).sort({ created_at: -1 }).lean() as any;
+    }
 
-    if (statusDoc?.openaps?.suggested?.sensitivityRatio) {
-        autosensRatio = statusDoc.openaps.suggested.sensitivityRatio;
+    const suggested = statusDoc?.openaps?.suggested as any;
+    if (suggested?.sensitivityRatio) {
+        autosensRatio = suggested.sensitivityRatio;
     }
 
     // Get SMB testing threshold from System Config (defaults to 0.7)
-    const sysConfigDoc = await SystemConfig.findOne({ key: 'smb_threshold' }).lean();
-    const smbThreshold = sysConfigDoc?.value !== undefined ? Number(sysConfigDoc.value) : 0.7;
+    let smbThreshold = 0.7;
+    if (context?.sysConfig) {
+        const sysConf = context.sysConfig.find((c: any) => c.key === 'smb_threshold');
+        if (sysConf?.value !== undefined) smbThreshold = Number(sysConf.value);
+    } else {
+        const sysConfigDoc = await SystemConfig.findOne({ key: 'smb_threshold' }).lean() as any;
+        if (sysConfigDoc?.value !== undefined) smbThreshold = Number(sysConfigDoc.value);
+    }
 
     if (!profileInfo) {
         return {
@@ -74,10 +89,20 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
     const startWindow = new Date(endWindow.getTime() - diaMs);
 
     // 2. Fetch Boluses and calculate IOB curves
-    const boluses = await Treatment.find({
-        eventType: { $in: ["Meal Bolus", "Correction Bolus", "Bolus", "Bolus Wizard", "bolus", "meal bolus", "correction bolus"] },
-        created_at: { $lte: endWindow.toISOString(), $gte: startWindow.toISOString() }
-    });
+    let boluses = context?.treatments;
+    if (boluses) {
+        // Filter contextual treatments
+        boluses = boluses.filter(b => {
+            const isBolus = ["Meal Bolus", "Correction Bolus", "Bolus", "Bolus Wizard", "bolus", "meal bolus", "correction bolus"].includes(b.eventType);
+            const isInWindow = b.created_at <= endWindow.toISOString() && b.created_at >= startWindow.toISOString();
+            return isBolus && isInWindow;
+        });
+    } else {
+        boluses = await Treatment.find({
+            eventType: { $in: ["Meal Bolus", "Correction Bolus", "Bolus", "Bolus Wizard", "bolus", "meal bolus", "correction bolus"] },
+            created_at: { $lte: endWindow.toISOString(), $gte: startWindow.toISOString() }
+        }).lean() as any[];
+    }
 
     const bolusCurves: IInsulinEventCurve[] = [];
     let bolusIOB = 0;
@@ -108,7 +133,7 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
     }
 
     // 3. Basal IOB (Delivered & Scheduled)
-    const basalRes = await getBasalIOB(startWindow, endWindow, dia, peak, bypassCache);
+    const basalRes = await getBasalIOB(startWindow, endWindow, dia, peak, bypassCache, context);
 
     // 4. Calculate totals
     const deliveredIOB = bolusIOB + basalRes.deliveredIOB;
@@ -117,7 +142,7 @@ export async function getIOB(timestamp: string | Date, includeTimeseries: boolea
 
     // 5. Calculate glucose impact
     const impactISF = isf / autosensRatio;
-    const insulinActivityRate = await calculateInsulinActivityRate(endWindow, dia, peak, bypassCache);
+    const insulinActivityRate = await calculateInsulinActivityRate(endWindow, dia, peak, bypassCache, context);
     const glucoseImpact = insulinActivityRate * impactISF;
 
     // 6. Construct result
@@ -284,7 +309,8 @@ export async function calculateInsulinActivityRate(
     timestamp: Date,
     dia: number,
     peak: number = 45,
-    bypassCache: boolean = false
+    bypassCache: boolean = false,
+    context?: IStatusContext
 ): Promise<number> {
     const now = timestamp;
     const nowPlus5 = new Date(now.getTime() + 5 * 60 * 1000);
@@ -292,10 +318,19 @@ export async function calculateInsulinActivityRate(
     const startWindow = new Date(now.getTime() - diaMs);
 
     // Fetch boluses in DIA window
-    const boluses = await Treatment.find({
-        eventType: { $in: ["Meal Bolus", "Correction Bolus", "Bolus", "Bolus Wizard", "bolus", "meal bolus", "correction bolus"] },
-        created_at: { $lte: now.toISOString(), $gte: startWindow.toISOString() }
-    });
+    let boluses = context?.treatments;
+    if (boluses) {
+        boluses = boluses.filter(b => {
+            const isBolus = ["Meal Bolus", "Correction Bolus", "Bolus", "Bolus Wizard", "bolus", "meal bolus", "correction bolus"].includes(b.eventType);
+            const isInWindow = b.created_at <= now.toISOString() && b.created_at >= startWindow.toISOString();
+            return isBolus && isInWindow;
+        });
+    } else {
+        boluses = await Treatment.find({
+            eventType: { $in: ["Meal Bolus", "Correction Bolus", "Bolus", "Bolus Wizard", "bolus", "meal bolus", "correction bolus"] },
+            created_at: { $lte: now.toISOString(), $gte: startWindow.toISOString() }
+        }).lean() as any[];
+    }
 
     // Calculate IOB at now and now+5min for each bolus
     const iobNow = 0;
@@ -318,7 +353,7 @@ export async function calculateInsulinActivityRate(
     // Add basal contribution using getBasalIOB which already calculates windows
     // basalNow fields are in Units/hr (instantaneous rate). 
     // Convert to Units per 5 minutes to match bolus activity above.
-    const basalNow = await getBasalIOB(startWindow, now, dia, peak, bypassCache);
+    const basalNow = await getBasalIOB(startWindow, now, dia, peak, bypassCache, context);
     const netBasalActivityRate = (basalNow.deliveredActivity - basalNow.scheduledActivity);
     totalActivity += (netBasalActivityRate * 5 / 60);
 

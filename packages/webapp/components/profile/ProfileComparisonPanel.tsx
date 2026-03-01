@@ -130,10 +130,10 @@ export default function ProfileComparisonPanel({
                             dot={false}
                             label={(props: any) => {
                                 const { x, y, value, index } = props;
-                                if (index === 0 || data[index].primary !== data[index - 1].primary) {
+                                if (index === 0 || (data[index] && data[index - 1] && data[index].primary !== data[index - 1].primary)) {
                                     return <text x={x + 2} y={y - 8} fill="#10b981" fontSize={10} textAnchor="start" fontWeight="bold">{yFormatter(value)}</text>;
                                 }
-                                return null;
+                                return <path />; // Return empty path instead of null
                             }}
                         />
                         {secondaryProfile && (
@@ -146,10 +146,10 @@ export default function ProfileComparisonPanel({
                                 dot={false}
                                 label={(props: any) => {
                                     const { x, y, value, index } = props;
-                                    if (value !== undefined && (index === 0 || data[index].secondary !== data[index - 1].secondary)) {
+                                    if (value !== undefined && (index === 0 || (data[index] && data[index - 1] && data[index].secondary !== data[index - 1].secondary))) {
                                         return <text x={x + 2} y={y + 14} fill="#8b5cf6" fontSize={10} textAnchor="start" fontWeight="bold">{yFormatter(value)}</text>;
                                     }
-                                    return null;
+                                    return <path />; // Return empty path instead of null
                                 }}
                             />
                         )}

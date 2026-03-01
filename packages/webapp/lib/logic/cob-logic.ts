@@ -1,7 +1,7 @@
 import { Treatment, Entry, DeviceStatus } from '../db/models';
 import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic';
 import { getIOB, calculateInsulinActivityRate } from './iob-logic';
-import { ICOBResult } from './types';
+import { ICOBResult, type IStatusContext } from './types';
 
 /** Result for a single carb event's absorption curve */
 export interface ICarbEventCurve {
@@ -259,23 +259,31 @@ export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: n
 /**
  * Main Service: Get COB + Timeseries
  */
-export async function getCOB(timestamp: string | Date, includeTimeseries: boolean = true, bypassCache: boolean = false): Promise<ICOBResult> {
+export async function getCOB(
+    timestamp: string | Date,
+    includeTimeseries: boolean = true,
+    bypassCache: boolean = false,
+    context?: IStatusContext
+): Promise<ICOBResult> {
     const date = new Date(timestamp);
     const lookbackMs = MAX_LOOKBACK_HOURS * 60 * 60 * 1000;
 
-    const profileInfo = await resolveActiveProfile(date, bypassCache);
+    const profileInfo = context?.profileInfo || await resolveActiveProfile(date, bypassCache);
     let isf = 50;
     let cr = 10;
     let units = 'mg/dL';
     let minCarbImpact = 8;
 
-    const configDoc = await DeviceStatus.findOne({
-        "configuration.sensitivityConfiguration.openaps_smb_min_5m_carbimpact": { $exists: true },
-        "created_at": { $lte: date.toISOString() }
-    }).sort({ created_at: -1 });
+    let configDoc = context?.deviceStatus;
+    if (!configDoc) {
+        configDoc = await DeviceStatus.findOne({
+            "configuration.sensitivityConfiguration.openaps_smb_min_5m_carbimpact": { $exists: true },
+            "created_at": { $lte: date.toISOString() }
+        }).sort({ created_at: -1 }).lean() as any;
+    }
 
-    if (configDoc?.configuration?.sensitivityConfiguration?.openaps_smb_min_5m_carbimpact) {
-        minCarbImpact = configDoc.configuration.sensitivityConfiguration.openaps_smb_min_5m_carbimpact;
+    if ((configDoc as any)?.configuration?.sensitivityConfiguration?.openaps_smb_min_5m_carbimpact) {
+        minCarbImpact = (configDoc as any).configuration.sensitivityConfiguration.openaps_smb_min_5m_carbimpact;
     }
 
     if (profileInfo) {
@@ -294,14 +302,23 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
     // Extended lookback query
     // We fetch a wide window to account for long durations
     // Start lookback = MAX_LOOKBACK (12h)
-    const treatments = await Treatment.find({
-        eventType: { $in: ['Meal Bolus', 'Carb Correction', 'Bolus Wizard', 'Bolus', 'meal bolus', 'carb correction', 'bolus'] },
-        carbs: { $exists: true, $gt: 0 },
-        created_at: {
-            $lte: date.toISOString(),
-            $gte: new Date(date.getTime() - lookbackMs).toISOString()
-        }
-    });
+    let treatments = context?.treatments;
+    if (treatments) {
+        treatments = treatments.filter(t => {
+            const isCarbEvent = ['Meal Bolus', 'Carb Correction', 'Bolus Wizard', 'Bolus', 'meal bolus', 'carb correction', 'bolus'].includes(t.eventType) && (t.carbs ?? 0) > 0;
+            const isInWindow = t.created_at <= date.toISOString() && t.created_at >= new Date(date.getTime() - lookbackMs).toISOString();
+            return isCarbEvent && isInWindow;
+        });
+    } else {
+        treatments = await Treatment.find({
+            eventType: { $in: ['Meal Bolus', 'Carb Correction', 'Bolus Wizard', 'Bolus', 'meal bolus', 'carb correction', 'bolus'] },
+            carbs: { $exists: true, $gt: 0 },
+            created_at: {
+                $lte: date.toISOString(),
+                $gte: new Date(date.getTime() - lookbackMs).toISOString()
+            }
+        }).lean() as any[];
+    }
 
     // Use consistent absorption rate based on profile settings
     // Note: Dynamic absorption adjustment removed to prevent COB oscillations
@@ -313,11 +330,14 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
 
 
     // Get Reported COB
-    const latestStatus = await DeviceStatus.findOne({
-        "openaps.suggested": { $exists: true },
-        "created_at": { $lte: date.toISOString() }
-    }).sort({ created_at: -1 });
-    const reportedCOB = latestStatus?.openaps?.suggested?.COB || 0;
+    let latestStatus = context?.deviceStatus;
+    if (!latestStatus) {
+        latestStatus = await DeviceStatus.findOne({
+            "openaps.suggested": { $exists: true },
+            "created_at": { $lte: date.toISOString() }
+        }).sort({ created_at: -1 }).lean() as any;
+    }
+    const reportedCOB = (latestStatus?.openaps?.suggested as any)?.COB || 0;
     const reportedTime = latestStatus?.created_at || '';
 
     const result: ICOBResult = {
@@ -368,9 +388,10 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
                 const tEvent = new Date(treat.created_at).getTime();
                 const duration = treat.duration ? treat.duration / 60000 : 0;
                 const dtMin = (t - tEvent) / 60000;
+                const treatCarbs = treat.carbs ?? 0;
 
-                const res = getBolusAbsorption(dtMin, treat.carbs, duration, absorptionRate);
-                const remaining = Math.max(0, treat.carbs - res.absorbed);
+                const res = getBolusAbsorption(dtMin, treatCarbs, duration, absorptionRate);
+                const remaining = Math.max(0, treatCarbs - res.absorbed);
 
                 totalCOB += remaining;
                 totalAbs += res.rate;
@@ -378,10 +399,10 @@ export async function getCOB(timestamp: string | Date, includeTimeseries: boolea
                 // Pending logic
                 let pending = 0;
                 if (duration > 0 && dtMin < duration) {
-                    if (dtMin < 0) pending = treat.carbs;
-                    else pending = treat.carbs * (1 - dtMin / duration);
+                    if (dtMin < 0) pending = treatCarbs;
+                    else pending = treatCarbs * (1 - dtMin / duration);
                 } else if (duration > 0 && dtMin < 0) {
-                    pending = treat.carbs;
+                    pending = treatCarbs;
                 }
                 const active = Math.max(0, remaining - pending);
 

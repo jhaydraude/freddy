@@ -98,7 +98,7 @@ export async function generateProfileTrainingSample(
         const units = profileStore.units || 'mg/dl';
 
         // Calculate outcome metrics
-        const glucoseValues = glucoseEntries.map(e => e.sgv).filter((sgv): sgv is number => sgv !== undefined);
+        const glucoseValues = glucoseEntries.map((e: any) => e.sgv).filter((sgv: any): sgv is number => sgv !== undefined);
 
         // Define target range: 4-9 mmol/L = 72-162 mg/dL
         let lowerBound = 72;
@@ -111,9 +111,9 @@ export async function generateProfileTrainingSample(
             upperBound = 9.0;
         }
 
-        const inRange = glucoseValues.filter(g => g >= lowerBound && g <= upperBound).length;
-        const belowRange = glucoseValues.filter(g => g < lowerBound).length;
-        const aboveRange = glucoseValues.filter(g => g > upperBound).length;
+        const inRange = glucoseValues.filter((g: any) => g >= lowerBound && g <= upperBound).length;
+        const belowRange = glucoseValues.filter((g: any) => g < lowerBound).length;
+        const aboveRange = glucoseValues.filter((g: any) => g > upperBound).length;
         const total = glucoseValues.length;
 
         const outcome_time_in_range = (inRange / total) * 100;
@@ -121,8 +121,8 @@ export async function generateProfileTrainingSample(
         const outcome_time_above_range = (aboveRange / total) * 100;
 
         // Calculate glucose standard deviation and CV
-        const mean = glucoseValues.reduce((sum, val) => sum + val, 0) / glucoseValues.length;
-        const variance = glucoseValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / glucoseValues.length;
+        const mean = glucoseValues.reduce((sum: any, val: any) => sum + val, 0) / glucoseValues.length;
+        const variance = glucoseValues.reduce((sum: any, val: any) => sum + Math.pow(val - mean, 2), 0) / glucoseValues.length;
         const outcome_glucose_std = Math.sqrt(variance);
         const outcome_glucose_cv = (outcome_glucose_std / mean) * 100;
 

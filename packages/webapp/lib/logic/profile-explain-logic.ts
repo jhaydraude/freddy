@@ -62,25 +62,25 @@ export async function explainProfileAnalysis(analysis: IProfileAnalysis): Promis
                 analysis.r_squared > 0.5 ? 'Good fit' :
                     analysis.r_squared > 0.3 ? 'Moderate fit' : 'Poor fit'
         },
-        activity_analysis: analysis.estimated_activity_coefficients ? {
-            steps_coefficient: analysis.estimated_activity_coefficients.steps_per_minute,
-            hr_spike_coefficient: analysis.estimated_activity_coefficients.hr_spike,
-            stress_hr_coefficient: analysis.estimated_activity_coefficients.stress_hr ?? null,
-            confidence: analysis.activity_confidence || null,
-            interpretation: Math.abs(analysis.estimated_activity_coefficients.steps_per_minute || 0) < 0.01 ?
+        activity_analysis: (analysis as any).estimated_activity_coefficients ? {
+            steps_coefficient: (analysis as any).estimated_activity_coefficients.steps_per_minute,
+            hr_spike_coefficient: (analysis as any).estimated_activity_coefficients.hr_spike,
+            stress_hr_coefficient: (analysis as any).estimated_activity_coefficients.stress_hr ?? null,
+            confidence: (analysis as any).activity_confidence || null,
+            interpretation: Math.abs((analysis as any).estimated_activity_coefficients.steps_per_minute || 0) < 0.01 ?
                 'No measurable activity impact detected' :
                 'Activity impact detected'
         } : null,
         data_quality: {
             windows_analyzed: analysis.windows_analyzed,
-            windows_filtered_out: analysis.windows_filtered_out,
-            stable_windows: analysis.stable_windows,
-            meal_windows: analysis.meal_windows,
+            windows_filtered_out: (analysis as any).windows_filtered_out,
+            stable_windows: (analysis as any).stable_windows,
+            meal_windows: (analysis as any).meal_windows,
             quality_score: analysis.windows_analyzed > 100 ? 'high' :
                 analysis.windows_analyzed > 50 ? 'medium' : 'low',
             sufficient_data: analysis.windows_analyzed >= 50
         },
-        tuning_suggestions: analysis.tuning_suggestions || [],
+        tuning_suggestions: (analysis as any).tuning_suggestions || [],
         current_recommendation: analysis.recommendation
     };
 

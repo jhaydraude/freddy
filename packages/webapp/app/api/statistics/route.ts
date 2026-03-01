@@ -22,9 +22,9 @@ export async function GET(request: NextRequest) {
             preferences[p.key] = p.value;
         });
 
-        const lowThreshold = preferences.low_threshold || 70;
-        const highThreshold = preferences.high_threshold || 180;
-        const units = preferences.units || 'mg/dL';
+        const lowThreshold = Number(preferences.low_threshold || 70);
+        const highThreshold = Number(preferences.high_threshold || 180);
+        const units = String(preferences.units || 'mg/dL');
 
         const startDate = new Date(startDateStr);
         const endDate = new Date(endDateStr);

@@ -1,3 +1,98 @@
+export interface IProfileStoreData {
+    dia: number;
+    carbratio: Array<{ time: string, value: number, timeAsSeconds?: number }>;
+    sens: Array<{ time: string, value: number, timeAsSeconds?: number }>;
+    basal: Array<{ time: string, value: number, timeAsSeconds?: number }>;
+    target_low: Array<{ time: string, value: number, timeAsSeconds?: number }>;
+    target_high: Array<{ time: string, value: number, timeAsSeconds?: number }>;
+    units: string;
+    activity_coefficients?: {
+        steps_per_minute: number;
+        calories: number;
+        stairs: number;
+        hr_spike: number;
+        stress_hr: number;
+        post_meal_multiplier: number;
+    };
+}
+
+export interface IProfileInfoData {
+    doc: unknown | null;
+    activeProfileName: string;
+    profileData: IProfileStoreData | null;
+    expiration?: string;
+    isFreddy?: boolean;
+}
+
+export interface ITreatmentData {
+    eventType: string;
+    insulin?: number;
+    carbs?: number;
+    created_at: string;
+    enteredBy?: string;
+    notes?: string;
+    duration?: number;
+    percent?: number;
+    rate?: number;
+    profile?: string;
+    timeshift?: number;
+    originalDuration?: number;
+    profileJson?: string;
+    percentage?: number;
+    mbg?: number;
+}
+
+export interface IDeviceStatusData {
+    created_at: string;
+    pump?: {
+        battery?: { percent?: number; voltage?: number; status?: string; };
+        reservoir?: number;
+        clock?: string;
+        status?: { status?: string; timestamp?: string; };
+        extended?: {
+            Version?: string;
+            ActiveProfile?: string;
+            TempBasalAbsoluteRate?: number;
+            TempBasalStart?: string;
+            TempBasalRemaining?: number;
+            LastBolus?: string;
+            LastBolusAmount?: number;
+            BaseBasalRate?: number;
+            IOB?: number;
+        };
+    };
+    openaps?: {
+        iob?: { iob?: number; activity?: number; basaliob?: number; bolusiob?: number; timestamp?: string; time?: string; };
+        suggested?: {
+            COB?: number;
+            sensitivityRatio?: number;
+            [key: string]: unknown;
+        };
+        enacted?: unknown;
+    };
+    uploaderBattery?: number;
+    configuration?: {
+        sensitivityConfiguration?: {
+            openaps_smb_min_5m_carbimpact?: number;
+            [key: string]: unknown;
+        };
+        [key: string]: unknown;
+    };
+    [key: string]: unknown;
+}
+
+export interface ISystemConfigData {
+    key: string;
+    value: unknown;
+}
+
+export interface IStatusContext {
+    profileInfo?: IProfileInfoData;
+    treatments?: ITreatmentData[];
+    deviceStatus?: IDeviceStatusData;
+    activityData?: unknown[];
+    sysConfig?: ISystemConfigData[];
+}
 
 export interface IGlucoseResult {
     timestamp: string;
@@ -136,6 +231,7 @@ export interface IAttributionTimeframe {
             calories: number;
             stairs: number;
             heartRate: number;
+            stressHeartRate: number;
             intensity: string;
             dataAvailable: boolean;
         };

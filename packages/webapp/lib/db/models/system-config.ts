@@ -1,10 +1,10 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 /**
  * System Configuration Interface
  * Stores system-wide configuration including tuned parameters
  */
-export interface ISystemConfig extends Document {
+export interface ISystemConfig {
     config_id: string;
     user_id: string;
     updated_at: Date;
@@ -128,5 +128,5 @@ const SystemConfigSchema = new Schema<ISystemConfig>({
 // Indexes
 SystemConfigSchema.index({ user_id: 1, config_id: 1 }, { unique: true });
 
-export const SystemConfig = mongoose.models.SystemConfig ||
+export const SystemConfig: any = mongoose.models.SystemConfig ||
     mongoose.model<ISystemConfig>('SystemConfig', SystemConfigSchema);

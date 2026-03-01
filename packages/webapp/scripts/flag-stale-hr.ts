@@ -82,7 +82,7 @@ async function flagStaleHR(dryRun: boolean) {
     console.log(`Total stale records: ${totalStaleRecords} / ${hrRecords.length} (${((totalStaleRecords / hrRecords.length) * 100).toFixed(1)}%)`);
 
     // Check how many are already flagged
-    const alreadyFlagged = hrRecords.filter(r => (r as any).stale === true).length;
+    const alreadyFlagged = (hrRecords as any[]).filter((r: any) => r.stale === true).length;
     console.log(`Already flagged: ${alreadyFlagged}`);
 
     const toFlag = staleIds.length;

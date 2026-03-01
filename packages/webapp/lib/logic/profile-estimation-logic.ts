@@ -180,7 +180,7 @@ export async function findInsulinCorrectionEvents(
             // Check for carb interference (in memory)
             const timestampMs = timestamp.getTime();
             const afterMs = afterTimestamp.getTime();
-            const carbsDuring = carbTreatments.filter(t => {
+            const carbsDuring = (carbTreatments as any[]).filter((t: any) => {
                 const tMs = new Date(t.created_at).getTime();
                 return tMs >= timestampMs && tMs <= afterMs;
             });

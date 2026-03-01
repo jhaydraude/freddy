@@ -1,4 +1,4 @@
-import { Entry, DeviceStatus, Treatment } from '../db/models';
+import { Entry, DeviceStatus, Treatment, SystemConfig } from '../db/models';
 import { resolveActiveProfile, getProfileStore } from './profile-logic';
 import { getBasalRate } from './basal-logic';
 import { getIOB } from './iob-logic';
@@ -7,7 +7,7 @@ import { getActivityHistory } from './activity-logic';
 import { calculateActivityImpact } from './activity-impact';
 import { getBaseline } from './baseline-logic';
 import { attributeGlucoseChange } from './attribution-logic';
-import { IGlucoseResult, IStatusResult, IIOBResult, ICOBResult, IAttributionResult } from './types';
+import { IGlucoseResult, IStatusResult, IIOBResult, ICOBResult, IAttributionResult, type IStatusContext } from './types';
 
 /**
  * Fetches the latest glucose readings and calculates 5m/10m deltas.
@@ -25,12 +25,15 @@ export async function getGlucose(options: { timestamp?: string | Date, count?: n
     // Fetch entries for delta calculations
     // 30 mins = 6 entries, + buffer for gaps = 10 entries
     const fetchCount = Math.max(count + 9, 12);
-    const [entries, profileInfo, lastSensorChange, lastCalibration] = await Promise.all([
-        Entry.find({ date: { $lte: tsNumber }, type: 'sgv' }).sort({ date: -1 }).limit(fetchCount).lean(),
-        resolveActiveProfile(dateObj, bypassCache),
-        Treatment.findOne({ eventType: "Sensor Change" }).sort({ created_at: -1 }).lean(),
-        Treatment.findOne({ eventType: "BG Check", mbg: { $exists: true }, created_at: { $lte: dateObj.toISOString() } }).sort({ created_at: -1 }).lean()
-    ]);
+    const entriesPromise = Entry.find({ date: { $lte: tsNumber }, type: 'sgv' }).sort({ date: -1 }).limit(fetchCount).lean() as Promise<any[]>;
+    const profilePromise = resolveActiveProfile(dateObj, bypassCache);
+    const sensorPromise = Treatment.findOne({ eventType: "Sensor Change" }).sort({ created_at: -1 }).lean() as Promise<any>;
+    const calibPromise = Treatment.findOne({ eventType: "BG Check", mbg: { $exists: true }, created_at: { $lte: dateObj.toISOString() } }).sort({ created_at: -1 }).lean() as Promise<any>;
+
+    const entries = await entriesPromise;
+    const profileInfo = await profilePromise;
+    const lastSensorChange = await sensorPromise;
+    const lastCalibration = await calibPromise;
 
     if (entries.length === 0) return [];
 
@@ -211,7 +214,8 @@ export async function getStatus(
     timestamp: string | Date,
     includeTimeseries: boolean = true,
     includeAttribution: boolean = true,
-    bypassCache: boolean = false
+    bypassCache: boolean = false,
+    context?: IStatusContext
 ): Promise<IStatusResult> {
     const ts = typeof timestamp === 'string' ? timestamp : timestamp.toISOString();
     const dateObj = new Date(ts);
@@ -228,7 +232,7 @@ export async function getStatus(
         try {
             const cached = await ComputedStatus.findOne({
                 timestamp: bucketTime
-            }).lean();
+            }).lean() as any;
 
             if (cached && isCacheValid(cached, 7)) {
                 const status = cached.status as IStatusResult;
@@ -251,25 +255,72 @@ export async function getStatus(
     const lookbackMinutes = 240; // 4 hours of treatment data for chart markers
     const treatmentStart = new Date(dateObj.getTime() - (lookbackMinutes * 60 * 1000)).toISOString();
 
+    // For IOB/COB we need deeper lookbacks for treatments (up to 48 hours for profile switches / 12h for COB)
+    const maxTreatmentLookback = new Date(dateObj.getTime() - (48 * 60 * 60 * 1000)).toISOString();
+
     const activityStart = new Date(dateObj.getTime() - (5 * 60 * 1000));
-    const [profileInfo, cob, latestDeviceStatus, glucoseEntries, calcIOB, basalResult, lastSiteChange, recentTreatments, activityPoints, userBaseline] = await Promise.all([
-        resolveActiveProfile(ts, bypassCache),
-        getCOB(ts, includeTimeseries, bypassCache),
-        DeviceStatus.findOne({ created_at: { $lte: ts } }).sort({ created_at: -1 }),
-        getGlucose({ timestamp: ts, count: 1, bypassCache }),
-        getIOB(ts, includeTimeseries, bypassCache),
-        getBasalRate(ts, bypassCache),
-        Treatment.findOne({ eventType: "Site Change", created_at: { $lte: ts } }).sort({ created_at: -1 }),
-        Treatment.find({
-            created_at: { $gte: treatmentStart, $lte: ts },
+
+    // Resolve context if not provided
+    const statusCtx: IStatusContext = context || {};
+
+    let profileInfo = statusCtx.profileInfo;
+    let latestDeviceStatus = statusCtx.deviceStatus;
+    let allTreatments = statusCtx.treatments;
+    let sysConfig = statusCtx.sysConfig;
+
+    const contextPromises: any[] = [];
+
+    if (!profileInfo) {
+        contextPromises.push(resolveActiveProfile(ts, bypassCache).then(r => profileInfo = r as any));
+    }
+    if (!latestDeviceStatus) {
+        contextPromises.push(DeviceStatus.findOne({ created_at: { $lte: ts } } as any).sort({ created_at: -1 }).lean().then((r: any) => latestDeviceStatus = r as any));
+    }
+    if (!allTreatments) {
+        contextPromises.push(Treatment.find({
+            created_at: { $gte: maxTreatmentLookback, $lte: ts },
             $or: [
                 { insulin: { $exists: true, $gte: 0.1 } },
-                { carbs: { $exists: true, $gt: 0 } }
+                { carbs: { $exists: true, $gt: 0 } },
+                { eventType: { $in: ["Temp Basal", "Profile Switch", "Site Change"] } }
             ]
-        }).sort({ created_at: 1 }).lean(),
-        getActivityHistory(activityStart, dateObj, 5),
-        getBaseline()
+        } as any).sort({ created_at: 1 }).lean().then((r: any) => allTreatments = r as any));
+    }
+    if (!sysConfig) {
+        contextPromises.push(SystemConfig.find({} as any).lean().then((r: any) => sysConfig = r as any));
+    }
+
+    if (contextPromises.length > 0) {
+        await Promise.all(contextPromises);
+    }
+
+    statusCtx.profileInfo = profileInfo;
+    statusCtx.deviceStatus = latestDeviceStatus;
+    statusCtx.treatments = allTreatments;
+    statusCtx.sysConfig = sysConfig;
+
+    // Filter recent treatments just for the dashboard markers (4 hours lookback)
+    const recentTreatments = (allTreatments as any[] || []).filter(t => t.created_at >= treatmentStart && t.created_at <= ts && ((t.insulin || 0) >= 0.1 || (t.carbs || 0) > 0));
+    const lastSiteChange = (allTreatments as any[] || []).reverse().find(t => t.eventType === "Site Change" && t.created_at <= ts);
+
+    const activityDataPromise = getActivityHistory(activityStart, dateObj, 5); // 5-min buckets
+    const baselineDataPromise = getBaseline();
+
+    const results = await Promise.all([
+        getCOB(ts, includeTimeseries, bypassCache, statusCtx).catch((err: any) => { console.error("Error in getCOB:", err); return null as any; }),
+        getGlucose({ timestamp: ts, count: 1, bypassCache }).catch((err: any) => { console.error("Error in getGlucose:", err); return []; }),
+        getIOB(ts, includeTimeseries, bypassCache, statusCtx).catch((err: any) => { console.error("Error in getIOB:", err); return null as any; }),
+        getBasalRate(ts, bypassCache, statusCtx).catch((err: any) => { console.error("Error in getBasalRate:", err); return null as any; }),
+        activityDataPromise.catch((err: any) => { console.error("Error in activityDataPromise:", err); return []; }),
+        baselineDataPromise.catch((err: any) => { console.error("Error in baselineDataPromise:", err); return null as any; })
     ]);
+
+    const cob = results[0] as typeof results[0];
+    const glucoseEntries = results[1] as typeof results[1];
+    const calcIOB = results[2] as typeof results[2];
+    const basalResult = results[3] as typeof results[3];
+    const activityPoints = results[4] as typeof results[4];
+    const userBaseline = results[5] as typeof results[5];
 
     // Calculate activity impact with user baseline
     const activityImpact = calculateActivityImpact(activityPoints, 5, userBaseline);

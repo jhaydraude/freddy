@@ -65,25 +65,31 @@ export class SyncWorker {
             }
 
             // Trigger status re-calculation if it's a recent glucose or treatment event
-            if (colName === 'treatments') {
-                const docDate = new Date(doc.created_at || Date.now());
+            if (colName === 'treatments' || (colName === 'entries' && doc.type === 'sgv')) {
+                const docDate = new Date(doc.created_at || doc.date || Date.now());
                 const now = new Date();
 
-                // Only re-calculate if within last 15 mins
+                // Only re-calculate if within last 15 mins (recent data, not historical backfill)
                 if (now.getTime() - docDate.getTime() < 15 * 60 * 1000) {
                     console.error(`SyncWorker: Invalidating cache due to ${event} in ${colName}`);
-                    await this.invalidateCache(docDate);
-                    // Force a recalculation for the current time
-                    await getStatus(new Date(), true, true, true);
-                }
-            } else if (colName === 'entries' && doc.type === 'sgv') {
-                const docDate = new Date(doc.date || Date.now());
-                const now = new Date();
 
-                if (now.getTime() - docDate.getTime() < 15 * 60 * 1000) {
-                    console.error(`SyncWorker: Invalidating cache due to ${event} in ${colName}`);
+                    // 1. Delete the bad / stale cache
                     await this.invalidateCache(docDate);
-                    await getStatus(new Date(), true, true, true);
+
+                    // 2. Fire and forget a background recomputation job!
+                    // This ensures the dashboard loads instantly (hitting prepopulated cache) next time.
+                    const { recalculateStatusRange } = await import('../logic/cache-logic');
+
+                    // Use setImmediate to detach from the current WebSocket event processing loop
+                    setImmediate(async () => {
+                        try {
+                            console.error(`SyncWorker: Starting background recomputation from ${docDate.toISOString()} to ${now.toISOString()}`);
+                            await recalculateStatusRange(docDate, now);
+                            console.error(`SyncWorker: Background recomputation complete.`);
+                        } catch (err) {
+                            console.error('SyncWorker: Background recomputation failed:', err);
+                        }
+                    });
                 }
             }
         } catch (error) {
@@ -116,7 +122,7 @@ export class SyncWorker {
             if (recentHR.length < 2) return; // Not enough history to judge
 
             // Check if all 3 (the 2 previous + the new one) have the same HR
-            const allSameHR = recentHR.every(r => r.heartrate === doc.heartrate);
+            const allSameHR = recentHR.every((r: any) => r.heartrate === doc.heartrate);
 
             if (allSameHR) {
                 // Flag the new record as stale

@@ -46,7 +46,7 @@ export async function getActiveProfile() {
     let extra: any = {};
     if (result?.isFreddy) {
         const active = await freddyProfileService.getActiveProfile();
-        extra._id = active?._id;
+        extra._id = (active as any)?._id;
     }
 
     return JSON.parse(JSON.stringify({ ...result, ...extra }));
@@ -76,10 +76,10 @@ export async function runProfileAnalysis(options: any) {
             // otherwise use the default store from the profile document
             currentProfile = profileInfo.profileData;
             if (!currentProfile && profileInfo.doc) {
-                const defaultName = profileInfo.doc.defaultProfile;
-                currentProfile = profileInfo.doc.store instanceof Map
-                    ? profileInfo.doc.store.get(defaultName)
-                    : (profileInfo.doc.store as any)?.[defaultName];
+                const defaultName = (profileInfo.doc as any).defaultProfile;
+                currentProfile = (profileInfo.doc as any).store instanceof Map
+                    ? (profileInfo.doc as any).store.get(defaultName)
+                    : (profileInfo.doc as any).store?.[defaultName];
             }
         }
     } catch (e) {

@@ -17,7 +17,7 @@ async function inspectDb() {
 
     console.log('\n--- System Configuration ---');
     const configs = await SystemConfig.find({});
-    configs.forEach(c => {
+    (configs as any[]).forEach((c: any) => {
         console.log(`${c.key}: ${c.key.includes('api_key') ? '********' : c.value}`);
     });
 

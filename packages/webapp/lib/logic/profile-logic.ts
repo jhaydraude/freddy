@@ -1,6 +1,6 @@
 import { Profile, Treatment, FreddyProfile } from '../db/models';
-import type { IProfile, IProfileStore } from '../db/models';
 import { freddyToNS } from './profile-conversion';
+import type { IProfileInfoData } from './types';
 
 const profileCache = new Map<string, any>();
 
@@ -10,10 +10,10 @@ const profileCache = new Map<string, any>();
  */
 export function resolveProfileFromData(
     timestamp: string | Date,
-    baseProfiles: IProfile[],
+    baseProfiles: any[],
     profileSwitches: any[],
     activeFreddy: any | null
-): { doc: IProfile | null, activeProfileName: string, profileData: IProfileStore | null, expiration?: string | undefined, isFreddy?: boolean } | null {
+): IProfileInfoData | null {
     const targetDate = new Date(timestamp);
     const targetIso = targetDate.toISOString();
 
@@ -47,7 +47,7 @@ export function resolveProfileFromData(
 
         // Check if the switch is still active at our target time
         if (targetDate.getTime() >= startMs && targetDate.getTime() < endMs) {
-            let profileData: IProfileStore | undefined;
+            let profileData: any | undefined;
 
             if (activeSwitch.profileJson) {
                 try {
@@ -68,13 +68,13 @@ export function resolveProfileFromData(
             if (profileData && percentage !== undefined && percentage !== 100 && percentage > 0) {
                 const factor = percentage / 100;
                 if (profileData.basal) {
-                    profileData.basal = profileData.basal.map(b => ({ ...b, value: Math.round(b.value * factor * 1000) / 1000 }));
+                    profileData.basal = profileData.basal.map((b: any) => ({ ...b, value: Math.round(b.value * factor * 1000) / 1000 }));
                 }
                 if (profileData.sens) {
-                    profileData.sens = profileData.sens.map(s => ({ ...s, value: Math.round((s.value / factor) * 100) / 100 }));
+                    profileData.sens = profileData.sens.map((s: any) => ({ ...s, value: Math.round((s.value / factor) * 100) / 100 }));
                 }
                 if (profileData.carbratio) {
-                    profileData.carbratio = profileData.carbratio.map(c => ({ ...c, value: Math.round((c.value / factor) * 100) / 100 }));
+                    profileData.carbratio = profileData.carbratio.map((c: any) => ({ ...c, value: Math.round((c.value / factor) * 100) / 100 }));
                 }
             }
 
@@ -108,7 +108,7 @@ export function resolveProfileFromData(
  * Resolves the active profile information at a specific timestamp.
  * Correctly handles historical profile switches (overrides) and base documents.
  */
-export async function resolveActiveProfile(timestamp: string | Date, bypassCache: boolean = false): Promise<{ doc: IProfile | null, activeProfileName: string, profileData: IProfileStore | null, expiration?: string | undefined, isFreddy?: boolean } | null> {
+export async function resolveActiveProfile(timestamp: string | Date, bypassCache: boolean = false): Promise<IProfileInfoData | null> {
     const targetDate = new Date(timestamp);
     const targetIso = targetDate.toISOString();
 
@@ -117,23 +117,23 @@ export async function resolveActiveProfile(timestamp: string | Date, bypassCache
         return profileCache.get(cacheKey);
     }
 
-    const activeFreddy = await FreddyProfile.findOne({ isActive: true });
+    const activeFreddy = await FreddyProfile.findOne({ isActive: true }).lean() as any;
 
     // We fetch a couple of base documents just in case (e.g. recent profile)
     const baseDocs = await Profile.find({
         startDate: { $lte: targetIso }
-    }).sort({ startDate: -1 }).limit(2);
+    }).sort({ startDate: -1 }).limit(2).lean() as any[];
 
     // If none found before, grab the very first one regardless of time
     if (baseDocs.length === 0) {
-        const oldest = await Profile.findOne({}).sort({ startDate: 1 });
+        const oldest = await Profile.findOne({}).sort({ startDate: 1 }).lean() as any;
         if (oldest) baseDocs.push(oldest);
     }
 
     const activeSwitches = await Treatment.find({
         eventType: "Profile Switch",
         created_at: { $lte: targetIso }
-    }).sort({ created_at: -1 }).limit(10); // Grab last 10 switches to be safe
+    }).sort({ created_at: -1 }).limit(10).lean() as any[]; // Grab last 10 switches to be safe
 
     const result = resolveProfileFromData(targetDate, baseDocs, activeSwitches, activeFreddy);
 
@@ -147,12 +147,12 @@ export function clearProfileCache(): void {
     profileCache.clear();
 }
 
-export async function getProfileAtTime(timestamp: string | Date): Promise<IProfile | null> {
+export async function getProfileAtTime(timestamp: string | Date): Promise<any | null> {
     const result = await resolveActiveProfile(timestamp);
     return result?.doc || null;
 }
 
-export function getProfileStore(profileDoc?: IProfile, profileName?: string, providedData?: IProfileStore): IProfileStore | null {
+export function getProfileStore(profileDoc?: any, profileName?: string, providedData?: any): any | null {
     if (providedData) return providedData;
     if (!profileDoc) return null;
 

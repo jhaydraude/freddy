@@ -160,6 +160,8 @@ export async function attributeGlucoseChange(
                 activity: {
                     value: activityImpactData.totalImpact,
                     steps: activityImpactData.components.steps,
+                    calories: activityImpactData.components.calories,
+                    stairs: activityImpactData.components.stairs,
                     heartRate: activityImpactData.components.heartRate,
                     stressHeartRate: activityImpactData.components.stressHeartRate,
                     intensity: activityImpactData.intensity,

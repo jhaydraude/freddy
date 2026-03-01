@@ -135,7 +135,7 @@ export default function Home() {
   };
 
   const timeDomain = useMemo(() => {
-    if (data.length === 0) return [null, null];
+    if (data.length === 0) return undefined;
     const endTime = viewOffsetMinutes > 0
       ? new Date(Date.now() - viewOffsetMinutes * 60 * 1000).getTime()
       : new Date(data[data.length - 1].meta?.status_date || Date.now()).getTime();
@@ -145,17 +145,17 @@ export default function Home() {
 
   // Centralized data transformation
   const glucoseChartData = useMemo(() =>
-    transformGlucoseData(data, timeDomain[0] ? timeDomain : undefined),
+    transformGlucoseData(data, timeDomain),
     [data, timeDomain]
   );
 
   const impactChartData = useMemo(() =>
-    transformImpactData(data, timeDomain[0] ? timeDomain : undefined),
+    transformImpactData(data, timeDomain),
     [data, timeDomain]
   );
 
   const activityChartData = useMemo(() =>
-    transformActivityData(activityHistory, timeDomain[0] ? timeDomain : undefined),
+    transformActivityData(activityHistory, timeDomain),
     [activityHistory, timeDomain]
   );
 

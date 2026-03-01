@@ -136,7 +136,7 @@ export class MealActivityTuningService {
             }
 
             // Normalize ISF to mg/dL for consistent mathematical analysis in Python
-            let current_isf = tuning.current_values.isf.map(v => normalizeISF(v, tuning.current_values.units));
+            let current_isf = tuning.current_values.isf.map((v: any) => normalizeISF(v, tuning.current_values.units));
             let current_basal = tuning.current_values.basal;
             let current_dia = tuning.current_values.dia;
             let current_peak = tuning.current_values.peak;

@@ -18,7 +18,7 @@ async function testApi() {
     // Load config from DB manually
     const configs = await SystemConfig.find({});
     const dbConfig: Record<string, any> = {};
-    configs.forEach(c => { dbConfig[c.key] = c.value; });
+    (configs as any[]).forEach((c: any) => { dbConfig[c.key] = c.value; });
 
     const url = dbConfig.nightscout_url;
     const apiKey = dbConfig.nightscout_api_key;

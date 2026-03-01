@@ -131,7 +131,7 @@ export async function generateTimeWindows(
 
         getActivityHistory(startDate, endDate),
 
-        SystemConfig.findOne({ key: 'smb_threshold' }).lean(),
+        SystemConfig.findOne({ key: 'smb_threshold' }).lean() as Promise<any>,
 
         DeviceStatus.find({
             "openaps.suggested.sensitivityRatio": { $exists: true },
@@ -213,7 +213,7 @@ export async function generateTimeWindows(
             let carbAbsorption = 0;
 
             // 1. Process Raw Totals
-            const treatmentsInWindow = treatments.filter(t => {
+            const treatmentsInWindow = (treatments as any[]).filter((t: any) => {
                 const tTime = new Date(t.created_at).getTime();
                 return tTime >= windowStart.getTime() && tTime <= windowEnd.getTime();
             });
@@ -298,13 +298,13 @@ export async function generateTimeWindows(
             const avgHR = activityImpact.components.heartRate || 0;
             const hrElevation = avgHR > 0 ? (avgHR - restingHR) / restingHR : 0;
 
-            const readingCount = glucoseEntries.filter(e => e.date >= windowStart.getTime() && e.date <= windowEnd.getTime()).length;
+            const readingCount = (glucoseEntries as any[]).filter((e: any) => e.date >= windowStart.getTime() && e.date <= windowEnd.getTime()).length;
 
             // Resolve autosens ratio for this window (find closest devicestatus point prior to start, or default to 1.0)
             let autosensRatio = 1.0;
-            const statusMatch = statusDocs.slice().reverse().find(s => new Date(s.created_at).getTime() <= windowStart.getTime());
-            if (statusMatch && statusMatch.openaps?.suggested?.sensitivityRatio) {
-                autosensRatio = statusMatch.openaps.suggested.sensitivityRatio;
+            const statusMatch = (statusDocs as any[]).slice().reverse().find((s: any) => new Date(s.created_at).getTime() <= windowStart.getTime());
+            if (statusMatch && (statusMatch as any).openaps?.suggested?.sensitivityRatio) {
+                autosensRatio = (statusMatch as any).openaps.suggested.sensitivityRatio;
             }
 
             // Calculate basal drift and isolation confidence
@@ -394,7 +394,7 @@ export async function generateTimeWindows(
                 activity_heart_rate: activityImpact.dataAvailable ? avgHR : 0,
                 activity_hr_elevation: activityImpact.dataAvailable ? (Math.round(hrElevation * 1000) / 1000) : 0,
                 activity_impact: activityImpact.totalImpact,
-                activity_impact_components: activityImpact.components,
+                activity_impact_components: activityImpact.components as any,
                 activity_intensity: activityImpact.intensity,
 
                 hour_of_day: new Date(windowStart.getTime() + (utcOffset * 60 * 1000)).getUTCHours(),

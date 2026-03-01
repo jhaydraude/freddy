@@ -1,5 +1,6 @@
 import { Treatment } from '../db/models';
 import { resolveActiveProfile, getProfileStore } from './profile-logic';
+import type { IStatusContext } from './types';
 
 /**
  * Calculates the scheduled basal rate for a given time of day.
@@ -41,12 +42,16 @@ export interface IBasalResult {
 /**
  * Service to get the current basal rate, accounting for active Temp Basals.
  */
-export async function getBasalRate(timestamp: string | Date, bypassCache: boolean = false): Promise<IBasalResult> {
+export async function getBasalRate(
+    timestamp: string | Date,
+    bypassCache: boolean = false,
+    context?: IStatusContext
+): Promise<IBasalResult> {
     const date = new Date(timestamp);
     const isoTimestamp = date.toISOString();
 
-    // 1. Resolve profile and scheduled rate FIRST (as requested: always lookup profile)
-    const profileInfo = await resolveActiveProfile(date, bypassCache);
+    // 1. Resolve profile
+    const profileInfo = context?.profileInfo || await resolveActiveProfile(date, bypassCache);
     let scheduledRate = 0;
 
     if (profileInfo) {
@@ -57,12 +62,20 @@ export async function getBasalRate(timestamp: string | Date, bypassCache: boolea
     }
 
     // 2. Look for active Temp Basal in treatments
-    // We look back 24 hours to be safe, though temp basals are usually short.
-    const lookback = new Date(date.getTime() - 24 * 60 * 60 * 1000).toISOString();
-    const treatments = await Treatment.find({
-        eventType: "Temp Basal",
-        created_at: { $gte: lookback, $lte: isoTimestamp }
-    }).sort({ created_at: -1 });
+    let treatments = context?.treatments;
+
+    if (!treatments) {
+        const lookback = new Date(date.getTime() - 24 * 60 * 60 * 1000).toISOString();
+        treatments = await Treatment.find({
+            eventType: "Temp Basal",
+            created_at: { $gte: lookback, $lte: isoTimestamp }
+        }).sort({ created_at: -1 }).lean() as any[];
+    } else {
+        // Filter context treatments for temp basals before our timestamp
+        treatments = treatments
+            .filter(t => t.eventType === "Temp Basal" && new Date(t.created_at).getTime() <= date.getTime())
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
 
     for (const t of treatments) {
         const createdMs = new Date(t.created_at).getTime();

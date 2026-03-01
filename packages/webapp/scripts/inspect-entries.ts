@@ -21,7 +21,7 @@ async function inspectEntries() {
     if (count > 0) {
         const sample = await Entry.find().sort({ date: -1 }).limit(5);
         console.log('\n--- Latest 5 Entries ---');
-        sample.forEach(e => {
+        (sample as any[]).forEach((e: any) => {
             console.log(`Date: ${new Date(e.date).toISOString()}, Type: ${e.type}, SGV: ${e.sgv}, Device: ${e.device}`);
         });
     }

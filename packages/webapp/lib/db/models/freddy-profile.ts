@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 import { getFreddyConn } from '../connection';
 
 export interface IScheduleEntry {
@@ -6,7 +6,9 @@ export interface IScheduleEntry {
     value: number;
 }
 
-export interface IFreddyProfile extends Document {
+export interface IFreddyProfile {
+    _id?: string;
+    save: () => Promise<IFreddyProfile>;
     name: string;
     description?: string;
     isActive: boolean;
@@ -65,7 +67,7 @@ const FreddyProfileSchema = new Schema<IFreddyProfile>({
 });
 
 // Helper to get the model on the correct connection
-export const FreddyProfile = (function () {
+export const FreddyProfile: any = (function () {
     const name = 'FreddyProfile';
     const dummy = function () { } as unknown as mongoose.Model<IFreddyProfile>;
 

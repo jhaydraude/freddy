@@ -56,7 +56,7 @@ async function backupDatabase() {
                 const success = writeStream.write(JSON.stringify(doc, null, 2));
                 if (!success) {
                     // Handle backpressure if needed, though simple write works for local files usually
-                    await new Promise(resolve => writeStream.once('drain', resolve));
+                    await new Promise<void>(resolve => writeStream.once('drain', resolve));
                 }
                 count++;
             }
@@ -64,7 +64,7 @@ async function backupDatabase() {
             writeStream.write('\n]');
             writeStream.end();
 
-            await new Promise((resolve, reject) => {
+            await new Promise<void>((resolve, reject) => {
                 writeStream.on('finish', resolve);
                 writeStream.on('error', reject);
             });

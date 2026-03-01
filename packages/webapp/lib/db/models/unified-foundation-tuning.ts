@@ -1,10 +1,10 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
 /**
  * Unified Foundation Tuning Interface
  * Synchronously optimizes DIA, Peak, ISF, and Basal Rates.
  */
-export interface IUnifiedFoundationTuning extends Document {
+export interface IUnifiedFoundationTuning {
     tuning_id: string;
     user_id: string;
     created_at: Date;
@@ -117,5 +117,5 @@ const UnifiedFoundationTuningSchema = new Schema<IUnifiedFoundationTuning>({
 
 UnifiedFoundationTuningSchema.index({ user_id: 1, created_at: -1 });
 
-export const UnifiedFoundationTuning = mongoose.models.UnifiedFoundationTuning ||
+export const UnifiedFoundationTuning: any = mongoose.models.UnifiedFoundationTuning ||
     mongoose.model<IUnifiedFoundationTuning>('UnifiedFoundationTuning', UnifiedFoundationTuningSchema);

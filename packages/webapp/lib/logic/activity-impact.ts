@@ -25,6 +25,8 @@ export interface IActivityImpact {
     totalImpact: number;
     components: {
         steps: number;
+        calories: number;
+        stairs: number;
         heartRate: number;
         stressHeartRate: number;  // Elevated HR without movement (glucose-raising)
     };
@@ -349,7 +351,7 @@ export function calculateActivityImpact(
         return {
             totalImpact: 0,
             components: { steps: 0, calories: 0, stairs: 0, heartRate: 0, stressHeartRate: 0 },
-            intensity: 'unknown',
+            intensity: 'unknown' as const,
             dataAvailable: false,
             collectionState,
             bouts: []
@@ -414,6 +416,8 @@ export function calculateActivityImpact(
         totalImpact: Math.round(totalImpact * 10) / 10,
         components: {
             steps: Math.round(stepsImpact * 10) / 10,
+            calories: Math.round(totalCalories * 10) / 10,
+            stairs: Math.round(totalFloors * 10) / 10,
             heartRate: Math.round(hrImpact * 10) / 10,
             stressHeartRate: Math.round(stressHRImpact * 10) / 10
         },

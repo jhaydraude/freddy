@@ -204,7 +204,7 @@ export async function getBaseline(): Promise<IUserBaseline> {
 
     try {
         const { SystemConfig } = await import('../db/models');
-        const cached = await SystemConfig.findOne({ key: BASELINE_CONFIG_KEY }).lean();
+        const cached = await SystemConfig.findOne({ key: BASELINE_CONFIG_KEY }).lean() as any;
 
         if (cached?.value) {
             const baseline = cached.value as IUserBaseline;
