@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Moon, Settings, LayoutDashboard, BookOpen, Tags, Activity, RefreshCw, BarChart } from 'lucide-react';
+import { Moon, Settings, LayoutDashboard, BookOpen, Tags, Activity, RefreshCw, BarChart, MessageSquare } from 'lucide-react';
 
 export default function Header({
     title = "Freddy",
@@ -38,6 +38,17 @@ export default function Header({
                         >
                             <LayoutDashboard size={14} />
                             <span className="hidden sm:inline">Dashboard</span>
+                        </Link>
+
+                        <Link
+                            href="/chat"
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/chat')
+                                ? 'bg-emerald-900/60 text-emerald-300 shadow-sm'
+                                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                                }`}
+                        >
+                            <MessageSquare size={14} />
+                            <span className="hidden sm:inline">Chat</span>
                         </Link>
 
                         <Link

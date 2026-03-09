@@ -308,6 +308,37 @@ export default function SettingsPage() {
                     </div>
                 </section>
 
+                {/* AI Assistant Section */}
+                <section className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800/50 backdrop-blur-sm space-y-4">
+                    <h2 className="text-zinc-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
+                        <Activity size={16} className="text-emerald-400" /> AI Data Assistant
+                    </h2>
+
+                    <div className="flex items-start justify-between gap-4 p-4 bg-zinc-950/60 rounded-xl border border-zinc-800/60">
+                        <div className="flex-1">
+                            <h3 className="text-sm font-semibold text-zinc-200 mb-1">Enable AI Chat</h3>
+                            <p className="text-xs text-zinc-500 leading-relaxed">
+                                Allows the Data Explorer to send aggregated tool results to the Google Gemini API for natural language analysis.
+                                Your raw glucose readings and other personal data are <span className="text-zinc-300">never</span> sent — only computed summaries (e.g. mean: 142 mg/dL, TIR: 72%).
+                            </p>
+                            <p className="text-[10px] text-zinc-600 mt-2 flex items-center gap-1">
+                                <Shield size={10} className="text-indigo-400 shrink-0" />
+                                All tool queries run locally. Only the aggregated results and your question are sent to Gemini.
+                            </p>
+                        </div>
+                        <button
+                            id="ai-assistant-toggle"
+                            onClick={() => {
+                                const newVal = !preferences?.ai_assistant_enabled;
+                                handleSavePreference('ai_assistant_enabled', newVal);
+                            }}
+                            className={`relative shrink-0 w-12 h-6 rounded-full transition-colors ${preferences?.ai_assistant_enabled ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                        >
+                            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${preferences?.ai_assistant_enabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                        </button>
+                    </div>
+                </section>
+
                 {/* Maintenance Section */}
                 <section className="p-6 rounded-2xl border border-rose-500/10 bg-rose-500/5 backdrop-blur-sm space-y-4">
                     <h2 className="text-rose-400 font-bold text-xs uppercase tracking-widest flex items-center gap-2">

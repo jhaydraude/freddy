@@ -9,9 +9,12 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ai-sdk/google": "^3.0.43",
+    "@ai-sdk/react": "^3.0.118",
     "@google/generative-ai": "^0.24.1",
     "@scalar/api-reference-react": "^0.8.15",
     "@scalar/nextjs-api-reference": "^0.9.9",
+    "ai": "^6.0.116",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "lucide-react": "^0.562.0",
