@@ -16,7 +16,7 @@ import { buildSystemPrompt } from '@/lib/logic/agent/prompts';
 import { getUserContext } from '@/lib/logic/agent/data-catalog';
 import { UserPreference } from '@/lib/db/models';
 
-export const maxDuration = 60; // seconds — tool calls can take a few seconds each
+export const maxDuration = 120; // seconds — chart + multi-step tool chains can take longer
 
 export async function POST(req: NextRequest) {
     // 1. Parse request
@@ -67,11 +67,21 @@ export async function POST(req: NextRequest) {
         system: systemPrompt,
         messages: modelMessages,
         tools: agentTools,
-        stopWhen: stepCountIs(5),
+        stopWhen: stepCountIs(25),
+        providerOptions: {
+            google: {
+                thinkingConfig: {
+                    thinkingBudget: 2048,
+                    includeThoughts: true,
+                },
+            },
+        },
         onError: ({ error }) => {
             console.error('[chat] streamText error:', error);
         },
     });
 
-    return result.toUIMessageStreamResponse();
+    return result.toUIMessageStreamResponse({
+        sendReasoning: true,
+    });
 }

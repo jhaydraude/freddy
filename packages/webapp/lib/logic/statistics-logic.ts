@@ -66,7 +66,7 @@ export function estimateHbA1c(meanGlucoseMgDl: number): number {
 
 export interface ReadingRecord { sgv?: number; timestamp?: string | number | Date; dateString?: string; }
 
-export function calculateStatistics(readings: ReadingRecord[], lowThreshold: number, highThreshold: number, units: string, timeZone?: string) {
+export function calculateStatistics(readings: ReadingRecord[], lowThreshold: number, highThreshold: number, units: string, timeZone?: string, forceMgdl: boolean = false) {
     if (readings.length === 0) {
         return {
             percentiles: [],
@@ -75,7 +75,7 @@ export function calculateStatistics(readings: ReadingRecord[], lowThreshold: num
         };
     }
 
-    const isMmol = units === 'mmol/L';
+    const isMmol = units === 'mmol/L' && !forceMgdl;
     const rawValues = readings.map(r => r.sgv).filter(v => v != null);
 
     if (rawValues.length === 0) {

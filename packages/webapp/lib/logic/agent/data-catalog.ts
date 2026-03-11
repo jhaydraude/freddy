@@ -11,9 +11,11 @@
 // ---------------------------------------------------------------------------
 
 export interface TimeframeInput {
-    /** Number of days to look back. Defaults to 30. */
+    /** Number of days to look back. */
     days?: number;
-    /** Explicit start ISO datetime (overrides `days`). */
+    /** Number of hours to look back (can be used instead of or with days). */
+    hours?: number;
+    /** Explicit start ISO datetime (overrides `days`/`hours`). */
     start?: string;
     /** Explicit end ISO datetime. Defaults to now. */
     end?: string;
@@ -22,10 +24,19 @@ export interface TimeframeInput {
 /** Resolve a TimeframeInput to concrete { startMs, endMs } epoch timestamps. */
 export function resolveTimeframe(input: TimeframeInput = {}): { startMs: number; endMs: number } {
     const endMs = input.end ? new Date(input.end).getTime() : Date.now();
-    const startMs = input.start
-        ? new Date(input.start).getTime()
-        : endMs - (input.days ?? 30) * 24 * 60 * 60 * 1000;
-    return { startMs, endMs };
+    
+    let lookbackMs = 0;
+    if (input.start) {
+        return { startMs: new Date(input.start).getTime(), endMs };
+    }
+    
+    if (input.days != null) lookbackMs += input.days * 24 * 60 * 60 * 1000;
+    if (input.hours != null) lookbackMs += input.hours * 60 * 60 * 1000;
+    
+    // Default to 30 days if nothing provided
+    if (lookbackMs === 0) lookbackMs = 30 * 24 * 60 * 60 * 1000;
+
+    return { startMs: endMs - lookbackMs, endMs };
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +86,8 @@ export interface UserContext {
     /** Always mg/dL — for raw SGV comparisons/conversions */
     lowThresholdMgdl: number;
     highThresholdMgdl: number;
+    /** Threshold in units for what constitutes a Super Micro Bolus (SMB) vs a normal bolus */
+    smbThreshold: number;
 }
 
 /** Fetch user context from UserPreference and SystemConfig. Falls back to defaults. */
@@ -82,18 +95,20 @@ export async function getUserContext(): Promise<UserContext> {
     try {
         const { UserPreference } = await import('../../../lib/db/models');
 
-        const [unitsPref, tzPref, lowPref, highPref] = await Promise.all([
+        const [unitsPref, tzPref, lowPref, highPref, smbPref] = await Promise.all([
             // Settings page saves units as key 'units'
             UserPreference.findOne({ userId: 'default', key: 'units' }).lean(),
             UserPreference.findOne({ userId: 'default', key: 'timezone' }).lean(),
             // Thresholds are UserPreferences too (saved from the Settings UI)
             UserPreference.findOne({ userId: 'default', key: 'low_threshold' }).lean(),
             UserPreference.findOne({ userId: 'default', key: 'high_threshold' }).lean(),
+            UserPreference.findOne({ userId: 'default', key: 'smb_threshold' }).lean(),
         ]);
 
         const glucoseUnits: 'mg/dL' | 'mmol/L' = (unitsPref as any)?.value ?? 'mg/dL';
         const rawLow: number = (lowPref as any)?.value ?? 70;
         const rawHigh: number = (highPref as any)?.value ?? 180;
+        const rawSmb: number = parseFloat((smbPref as any)?.value) || 0.5; // Default to 0.5 U if not set
         const isMmol = glucoseUnits === 'mmol/L';
 
         return {
@@ -105,6 +120,7 @@ export async function getUserContext(): Promise<UserContext> {
             // Calculate mg/dL equivalent for internal DB filtering if user is in mmol/L
             lowThresholdMgdl: isMmol ? Math.round(rawLow * 18.018) : rawLow,
             highThresholdMgdl: isMmol ? Math.round(rawHigh * 18.018) : rawHigh,
+            smbThreshold: rawSmb,
         };
     } catch {
         return {
@@ -114,6 +130,7 @@ export async function getUserContext(): Promise<UserContext> {
             highThreshold: 180,
             lowThresholdMgdl: 70,
             highThresholdMgdl: 180,
+            smbThreshold: 0.5,
         };
     }
 }
