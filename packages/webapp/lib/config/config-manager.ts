@@ -8,6 +8,7 @@ export interface SystemConfig {
     nightscout_mongo_uri?: string;
     prediction_service_url?: string;
     sync_frequency_ms: number;
+    min_carb_impact?: number;
 }
 
 export interface UserPreferences {

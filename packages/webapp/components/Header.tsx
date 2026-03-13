@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Moon, Settings, LayoutDashboard, BookOpen, Tags, Activity, RefreshCw, BarChart, MessageSquare } from 'lucide-react';
+import { Moon, Settings, LayoutDashboard, BookOpen, Tags, Activity, RefreshCw, BarChart, MessageSquare, CircleHelp } from 'lucide-react';
 
 export default function Header({
     title = "Freddy",
@@ -52,16 +52,6 @@ export default function Header({
                         </Link>
 
                         <Link
-                            href="/tuning"
-                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/tuning')
-                                ? 'bg-zinc-800 text-white shadow-sm'
-                                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
-                                }`}
-                        >
-                            <RefreshCw size={14} />
-                            <span className="hidden sm:inline">Tuning</span>
-                        </Link>
-                        <Link
                             href="/statistics"
                             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/statistics')
                                 ? 'bg-zinc-800 text-white shadow-sm'
@@ -69,8 +59,9 @@ export default function Header({
                                 }`}
                         >
                             <BarChart size={14} />
-                            <span className="hidden sm:inline">Statistics</span>
+                            <span className="hidden sm:inline">Stats</span>
                         </Link>
+
                         <Link
                             href="/profile"
                             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/profile')
@@ -81,6 +72,18 @@ export default function Header({
                             <Activity size={14} />
                             <span className="hidden sm:inline">Profile</span>
                         </Link>
+
+                        <Link
+                            href="/tuning"
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/tuning')
+                                ? 'bg-zinc-800 text-white shadow-sm'
+                                : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
+                                }`}
+                        >
+                            <RefreshCw size={14} />
+                            <span className="hidden sm:inline">Tuning</span>
+                        </Link>
+                        
                         <Link
                             href="/settings"
                             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/settings')
@@ -91,6 +94,7 @@ export default function Header({
                             <Settings size={14} />
                             <span className="hidden sm:inline">Settings</span>
                         </Link>
+
                         <Link
                             href="/apidocs"
                             className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${isActive('/apidocs')
@@ -98,8 +102,8 @@ export default function Header({
                                 : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50'
                                 }`}
                         >
-                            <BookOpen size={14} />
-                            <span className="hidden sm:inline">API Docs</span>
+                            <CircleHelp size={14} />
+                            <span className="hidden sm:inline">Help</span>
                         </Link>
                     </nav>
                 </div>

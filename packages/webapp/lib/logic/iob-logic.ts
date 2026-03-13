@@ -29,21 +29,8 @@ export async function getIOB(
     let peak = 45; // Default Peak in minutes (Assume Fiasp/45m if unknown as per user request)
     let autosensRatio = 1.0;
 
-    // 1. Get Autosens Ratio from latest DeviceStatus (relative to requested time)
-    // Note: Future versions will calculate this locally to exclude activity impact, 
-    // rather than relying on AAPS's devicestatus.
-    let statusDoc = context?.deviceStatus;
-    if (!statusDoc) {
-        statusDoc = await DeviceStatus.findOne({
-            "openaps.suggested.sensitivityRatio": { $exists: true },
-            "created_at": { $lte: endWindow.toISOString() }
-        }).sort({ created_at: -1 }).lean() as any;
-    }
-
-    const suggested = statusDoc?.openaps?.suggested as any;
-    if (suggested?.sensitivityRatio) {
-        autosensRatio = suggested.sensitivityRatio;
-    }
+    // Autosens feature temporarily disabled per user request pending internal Freddy implementation.
+    // autosensRatio will remain 1.0.
 
     // Get SMB testing threshold from System Config (defaults to 0.7)
     let smbThreshold = 0.7;
@@ -88,9 +75,46 @@ export async function getIOB(
     const diaMs = dia * 60 * 60 * 1000;
     const startWindow = new Date(endWindow.getTime() - diaMs);
 
+    // Deduplicates treatment entries (e.g. from AAPS redundantly sending Bolus Wizard + Meal Bolus)
+    const deduplicateTreatments = (treatments: any[]): any[] => {
+        if (treatments.length <= 1) return treatments;
+        
+        // Sort by time
+        const sorted = [...treatments].sort((a, b) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+
+        const result: any[] = [];
+        for (const t of sorted) {
+            if (result.length === 0) {
+                result.push(t);
+                continue;
+            }
+
+            const prev = result[result.length - 1];
+            const timeDiff = Math.abs(new Date(t.created_at).getTime() - new Date(prev.created_at).getTime());
+            
+            // If same insulin within 2 minutes, ignore as duplicate
+            const isDuplicateInsulin = (t.insulin && prev.insulin && t.insulin === prev.insulin && timeDiff < 120000);
+            
+            // If same carbs within 2 minutes, ignore as duplicate
+            const isDuplicateCarbs = (t.carbs && prev.carbs && t.carbs === prev.carbs && timeDiff < 120000);
+
+            if (!isDuplicateInsulin && !isDuplicateCarbs) {
+                result.push(t);
+            } else {
+                // Keep the one with more info if possible
+                if (t.eventType === 'Bolus Wizard' && prev.eventType !== 'Bolus Wizard') {
+                    result[result.length - 1] = t;
+                }
+            }
+        }
+        return result;
+    };
+
     // 2. Fetch Boluses and calculate IOB curves
-    let boluses = context?.treatments;
-    if (boluses) {
+    let boluses: any[] = context?.treatments || [];
+    if (context?.treatments) {
         // Filter contextual treatments
         boluses = boluses.filter(b => {
             const isBolus = ["Meal Bolus", "Correction Bolus", "Bolus", "Bolus Wizard", "bolus", "meal bolus", "correction bolus"].includes(b.eventType);
@@ -103,6 +127,9 @@ export async function getIOB(
             created_at: { $lte: endWindow.toISOString(), $gte: startWindow.toISOString() }
         }).lean() as any[];
     }
+
+    // Deduplicate treatments
+    boluses = deduplicateTreatments(boluses);
 
     const bolusCurves: IInsulinEventCurve[] = [];
     let bolusIOB = 0;
@@ -146,6 +173,14 @@ export async function getIOB(
     const glucoseImpact = insulinActivityRate * impactISF;
 
     // 6. Construct result
+    let statusDoc = context?.deviceStatus as any;
+    if (!statusDoc || !statusDoc?.openaps?.iob) {
+        statusDoc = await DeviceStatus.findOne({
+            "openaps.iob": { $exists: true },
+            "created_at": { $lte: endWindow.toISOString() }
+        }).sort({ created_at: -1 }).lean() as any;
+    }
+
     const reported = {
         totalIOB: statusDoc?.openaps?.iob?.iob || 0,
         bolusIOB: statusDoc?.openaps?.iob?.bolusiob || 0,

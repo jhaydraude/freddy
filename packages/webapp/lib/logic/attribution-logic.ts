@@ -1,4 +1,4 @@
-import { IStatusResult, IAttributionResult, IAttributionTimeframe, IAttributionHistoryPoint } from './types';
+import { IStatusResult, IAttributionResult, IAttributionTimeframe, IAttributionHistoryPoint, IStatusContext } from './types';
 import { getActivityHistory } from './activity-logic';
 import { calculateActivityImpact, DEFAULT_ACTIVITY_COEFFICIENTS, ActivityCoefficients } from './activity-impact';
 import { getBaseline, IUserBaseline } from './baseline-logic';
@@ -12,7 +12,8 @@ import { getBaseline, IUserBaseline } from './baseline-logic';
  */
 export async function attributeGlucoseChange(
     currentStatus: IStatusResult,
-    timeframes: number[] = [5, 10, 15, 30]
+    timeframes: number[] = [5, 10, 15, 30],
+    context?: IStatusContext
 ): Promise<IAttributionResult> {
     const attributions: IAttributionTimeframe[] = [];
 
@@ -51,8 +52,12 @@ export async function attributeGlucoseChange(
     let userBaseline: IUserBaseline | undefined;
     try {
         [activityData, userBaseline] = await Promise.all([
-            getActivityHistory(lookback, now, 5),
-            getBaseline()
+            context?.activityEntries
+                ? getActivityHistory(lookback, now, 5, context.activityEntries)
+                : getActivityHistory(lookback, now, 5),
+            context?.baselineData
+                ? Promise.resolve(context.baselineData)
+                : getBaseline()
         ]);
     } catch (error) {
         console.warn('Failed to fetch activity data/baseline for attribution:', error);

@@ -17,18 +17,32 @@ import { IGlucoseResult, IStatusResult, IIOBResult, ICOBResult, IAttributionResu
  * If timestamp is given, finds the most recent entry at or before that time.
  * If count is given, returns multiple recent entries.
  */
-export async function getGlucose(options: { timestamp?: string | Date, count?: number, bypassCache?: boolean } = {}): Promise<IGlucoseResult[]> {
-    const { timestamp, count = 1, bypassCache = false } = options;
+export async function getGlucose(options: { timestamp?: string | Date, count?: number, bypassCache?: boolean, context?: IStatusContext } = {}): Promise<IGlucoseResult[]> {
+    const { timestamp, count = 1, bypassCache = false, context } = options;
     const dateObj = timestamp ? new Date(timestamp) : new Date();
     const tsNumber = dateObj.getTime();
+
+    const tsIso = dateObj.toISOString();
 
     // Fetch entries for delta calculations
     // 30 mins = 6 entries, + buffer for gaps = 10 entries
     const fetchCount = Math.max(count + 9, 12);
-    const entriesPromise = Entry.find({ date: { $lte: tsNumber }, type: 'sgv' }).sort({ date: -1 }).limit(fetchCount).lean() as Promise<any[]>;
-    const profilePromise = resolveActiveProfile(dateObj, bypassCache);
-    const sensorPromise = Treatment.findOne({ eventType: "Sensor Change" }).sort({ created_at: -1 }).lean() as Promise<any>;
-    const calibPromise = Treatment.findOne({ eventType: "BG Check", mbg: { $exists: true }, created_at: { $lte: dateObj.toISOString() } }).sort({ created_at: -1 }).lean() as Promise<any>;
+    
+    const entriesPromise = context?.glucoseEntries
+        ? Promise.resolve(context.glucoseEntries.filter((e: any) => e.date <= tsNumber).slice(0, fetchCount))
+        : Entry.find({ date: { $lte: tsNumber }, type: 'sgv' }).sort({ date: -1 }).limit(fetchCount).lean() as Promise<any[]>;
+        
+    const profilePromise = context?.profileInfo 
+        ? Promise.resolve(context.profileInfo) 
+        : resolveActiveProfile(dateObj, bypassCache);
+        
+    const sensorPromise = context?.sensorChanges
+        ? Promise.resolve(context.sensorChanges.find((e: any) => new Date(e.created_at).getTime() <= tsNumber) || null)
+        : Treatment.findOne({ eventType: "Sensor Change", created_at: { $lte: tsIso } }).sort({ created_at: -1 }).lean() as Promise<any>;
+        
+    const calibPromise = context?.calibrations
+        ? Promise.resolve(context.calibrations.find((e: any) => new Date(e.created_at).getTime() <= tsNumber) || null)
+        : Treatment.findOne({ eventType: "BG Check", mbg: { $exists: true }, created_at: { $lte: tsIso } }).sort({ created_at: -1 }).lean() as Promise<any>;
 
     const entries = await entriesPromise;
     const profileInfo = await profilePromise;
@@ -299,16 +313,45 @@ export async function getStatus(
     statusCtx.treatments = allTreatments;
     statusCtx.sysConfig = sysConfig;
 
+    // Get SMB testing threshold from System Config (defaults to 0.7)
+    let smbThreshold = 0.7;
+    if (sysConfig) {
+        const sysConf = (sysConfig as any[]).find((c: any) => c.key === 'smb_threshold');
+        if (sysConf?.value !== undefined) smbThreshold = Number(sysConf.value);
+    }
+
     // Filter recent treatments just for the dashboard markers (4 hours lookback)
-    const recentTreatments = (allTreatments as any[] || []).filter(t => t.created_at >= treatmentStart && t.created_at <= ts && ((t.insulin || 0) >= 0.1 || (t.carbs || 0) > 0));
+    // Remove the 0.1U floor constraint so micro-boluses are preserved in the array.
+    let recentTreatments = (allTreatments as any[] || []).filter(t => 
+        t.created_at >= treatmentStart && 
+        t.created_at <= ts && 
+        ((t.insulin || 0) > 0 || (t.carbs || 0) > 0)
+    );
+
+    // Inject bolusType enum for insulin events
+    const bolusEvents = ["Meal Bolus", "Correction Bolus", "Bolus", "Bolus Wizard", "bolus", "meal bolus", "correction bolus"];
+    recentTreatments = recentTreatments.map(t => {
+        if ((t.insulin || 0) > 0 && bolusEvents.includes(t.eventType)) {
+            return {
+                ...t,
+                bolusType: t.insulin <= smbThreshold ? 'SMB' : 'BOLUS'
+            };
+        }
+        return t;
+    });
+
     const lastSiteChange = (allTreatments as any[] || []).reverse().find(t => t.eventType === "Site Change" && t.created_at <= ts);
 
-    const activityDataPromise = getActivityHistory(activityStart, dateObj, 5); // 5-min buckets
-    const baselineDataPromise = getBaseline();
+    const activityDataPromise = statusCtx.activityEntries
+        ? getActivityHistory(activityStart, dateObj, 5, statusCtx.activityEntries)
+        : getActivityHistory(activityStart, dateObj, 5); // 5-min buckets
+    const baselineDataPromise = statusCtx.baselineData
+        ? Promise.resolve(statusCtx.baselineData)
+        : getBaseline();
 
     const results = await Promise.all([
         getCOB(ts, includeTimeseries, bypassCache, statusCtx).catch((err: any) => { console.error("Error in getCOB:", err); return null as any; }),
-        getGlucose({ timestamp: ts, count: 1, bypassCache }).catch((err: any) => { console.error("Error in getGlucose:", err); return []; }),
+        getGlucose({ timestamp: ts, count: 1, bypassCache, context: statusCtx }).catch((err: any) => { console.error("Error in getGlucose:", err); return []; }),
         getIOB(ts, includeTimeseries, bypassCache, statusCtx).catch((err: any) => { console.error("Error in getIOB:", err); return null as any; }),
         getBasalRate(ts, bypassCache, statusCtx).catch((err: any) => { console.error("Error in getBasalRate:", err); return null as any; }),
         activityDataPromise.catch((err: any) => { console.error("Error in activityDataPromise:", err); return []; }),
@@ -401,7 +444,7 @@ export async function getStatus(
     // Calculate attribution if requested
     if (includeAttribution) {
         try {
-            statusResult.attribution = await attributeGlucoseChange(statusResult);
+            statusResult.attribution = await attributeGlucoseChange(statusResult, [5, 10, 15, 30], statusCtx);
         } catch (error) {
             console.warn('Failed to calculate glucose attribution:', error);
         }

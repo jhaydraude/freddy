@@ -167,8 +167,18 @@ export default function ImpactChart({ data, isLoading, timeDomain }: ImpactChart
                         orientation="left"
                         tick={{ fontSize: 10, fill: '#71717a' }}
                         tickFormatter={(v) => v >= 0 ? `+${v.toFixed(0)}` : v.toFixed(0)}
-                        domain={([min, max]) => {
-                            const absMax = Math.min(Math.max(Math.abs(min || 0), Math.abs(max || 0), 5), 20);
+                        domain={([, ]) => {
+                            // TODO: Add activityImpact and totalImpact back into scale calculation once less noisy
+                            const relevantValues = chartData.flatMap(d => [
+                                d.actualDelta, 
+                                d.carbImpact, 
+                                d.insulinImpact
+                            ]).filter(v => v != null) as number[];
+                            
+                            const minVal = Math.min(...relevantValues, 0);
+                            const maxVal = Math.max(...relevantValues, 0);
+                            
+                            const absMax = Math.min(Math.max(Math.abs(minVal), Math.abs(maxVal), 3), 20);
                             return [-absMax, absMax];
                         }}
                     />
@@ -180,8 +190,18 @@ export default function ImpactChart({ data, isLoading, timeDomain }: ImpactChart
                         orientation="right"
                         tick={{ fontSize: 10, fill: '#71717a' }}
                         tickFormatter={(v) => v >= 0 ? `+${v.toFixed(0)}` : v.toFixed(0)}
-                        domain={([min, max]) => {
-                            const absMax = Math.min(Math.max(Math.abs(min || 0), Math.abs(max || 0), 5), 20);
+                        domain={([, ]) => {
+                            // TODO: Add activityImpact and totalImpact back into scale calculation once less noisy
+                            const relevantValues = chartData.flatMap(d => [
+                                d.actualDelta, 
+                                d.carbImpact, 
+                                d.insulinImpact
+                            ]).filter(v => v != null) as number[];
+                            
+                            const minVal = Math.min(...relevantValues, 0);
+                            const maxVal = Math.max(...relevantValues, 0);
+
+                            const absMax = Math.min(Math.max(Math.abs(minVal), Math.abs(maxVal), 3), 20);
                             return [-absMax, absMax];
                         }}
                     />

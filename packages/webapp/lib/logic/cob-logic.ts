@@ -1,6 +1,7 @@
 import { Treatment, Entry, DeviceStatus } from '../db/models';
 import { resolveActiveProfile, getProfileStore, getValueAtTime } from './profile-logic';
 import { getIOB, calculateInsulinActivityRate } from './iob-logic';
+import { configManager } from '../config/config-manager';
 import { ICOBResult, type IStatusContext } from './types';
 
 /** Result for a single carb event's absorption curve */
@@ -185,7 +186,7 @@ export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: n
     let totalCarbAbsorption = 0; // g/5min
 
     const atTimeMs = atTime.getTime();
-    const rate = absorptionRate || calculateMinAbsorptionRate(isf, cr, 8); // Default fallback
+    const fixedRate = absorptionRate;
 
     for (const t of treatments) {
         if (!t.carbs) continue;
@@ -194,8 +195,15 @@ export function calculateCOB(treatments: any[], atTime: Date, isf: number, cr: n
         const duration = t.duration ? t.duration / (1000 * 60) : 0; // min
         const timeSinceEventMin = (atTimeMs - eventTime) / (1000 * 60);
 
+        // STABILIZATION: Use the pre-calculated rate based on treatment event time
+        // This prevents historical curves from jumping when NOW profile changes.
+        let rateToUse = t._calculatedAbsorptionRate || fixedRate;
+        if (!rateToUse) {
+            rateToUse = calculateMinAbsorptionRate(isf, cr, 8); 
+        }
+
         // Get absorption status
-        const abs = getBolusAbsorption(timeSinceEventMin, t.carbs, duration, rate);
+        const abs = getBolusAbsorption(timeSinceEventMin, t.carbs, duration, rateToUse);
 
         const remaining = Math.max(0, t.carbs - abs.absorbed);
 
@@ -272,19 +280,7 @@ export async function getCOB(
     let isf = 50;
     let cr = 10;
     let units = 'mg/dL';
-    let minCarbImpact = 8;
-
-    let configDoc = context?.deviceStatus;
-    if (!configDoc) {
-        configDoc = await DeviceStatus.findOne({
-            "configuration.sensitivityConfiguration.openaps_smb_min_5m_carbimpact": { $exists: true },
-            "created_at": { $lte: date.toISOString() }
-        }).sort({ created_at: -1 }).lean() as any;
-    }
-
-    if ((configDoc as any)?.configuration?.sensitivityConfiguration?.openaps_smb_min_5m_carbimpact) {
-        minCarbImpact = (configDoc as any).configuration.sensitivityConfiguration.openaps_smb_min_5m_carbimpact;
-    }
+    let minCarbImpact = configManager.getSystemConfig().min_carb_impact || 8;
 
     if (profileInfo) {
         const store = getProfileStore(
@@ -320,10 +316,75 @@ export async function getCOB(
         }).lean() as any[];
     }
 
+/**
+ * Deduplicates treatment entries (e.g. from AAPS redundantly sending Bolus Wizard + Meal Bolus)
+ */
+function deduplicateTreatments(treatments: any[]): any[] {
+    if (treatments.length <= 1) return treatments;
+    
+    // Sort by time
+    const sorted = [...treatments].sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+
+    const result: any[] = [];
+    for (const t of sorted) {
+        if (result.length === 0) {
+            result.push(t);
+            continue;
+        }
+
+        const prev = result[result.length - 1];
+        const timeDiff = Math.abs(new Date(t.created_at).getTime() - new Date(prev.created_at).getTime());
+        
+        // If same carbs within 2 minutes, ignore as duplicate
+        const isDuplicateCarbs = (t.carbs && prev.carbs && t.carbs === prev.carbs && timeDiff < 120000);
+        
+        // If same insulin within 2 minutes, ignore as duplicate
+        const isDuplicateInsulin = (t.insulin && prev.insulin && t.insulin === prev.insulin && timeDiff < 120000);
+
+        if (!isDuplicateCarbs && !isDuplicateInsulin) {
+            result.push(t);
+        } else {
+            // Keep the one with more info if possible (e.g. Bolus Wizard often has more metadata)
+            if (t.eventType === 'Bolus Wizard' && prev.eventType !== 'Bolus Wizard') {
+                result[result.length - 1] = t;
+            }
+        }
+    }
+    return result;
+}
+
+// ... inside getCOB ...
     // Use consistent absorption rate based on profile settings
-    // Note: Dynamic absorption adjustment removed to prevent COB oscillations
-    // The rate was varying wildly (e.g., 13.393 → 1.717 → 0.463 g/5min) based on
-    // momentary glucose trends, causing absorption curves to recalculate inconsistently
+    // Note: To prevent jumps at profile segment boundaries, we'll use a 24h average sensitivity 
+    // or at least cap the rate of change of the absorption rate.
+    // For now, let's fix the cross-segement jump by calculating sensitivity over a wider window.
+    
+    // Deduplicate first
+    treatments = deduplicateTreatments(treatments);
+
+    const store = profileInfo ? getProfileStore(
+        profileInfo.doc || undefined,
+        profileInfo.activeProfileName,
+        profileInfo.profileData || undefined
+    ) : null;
+
+    // STABILIZATION (Option A): Lock absorption parameters per event time
+    treatments = treatments.map(t => {
+        let t_isf = isf;
+        let t_cr = cr;
+        if (store) {
+            const tDate = new Date(t.created_at);
+            const resolvedIsf = getValueAtTime(store.sens, tDate);
+            const resolvedCr = getValueAtTime(store.carbratio, tDate);
+            if (resolvedIsf) t_isf = resolvedIsf;
+            if (resolvedCr) t_cr = resolvedCr;
+        }
+        const t_rate = calculateMinAbsorptionRate(t_isf, t_cr, minCarbImpact, units);
+        return { ...t, _calculatedAbsorptionRate: t_rate };
+    });
+
     const absorptionRate = calculateMinAbsorptionRate(isf, cr, minCarbImpact, units);
 
     const baseResult = calculateCOB(treatments, date, isf, cr, absorptionRate);
@@ -331,9 +392,9 @@ export async function getCOB(
 
     // Get Reported COB
     let latestStatus = context?.deviceStatus;
-    if (!latestStatus) {
+    if (!latestStatus || !(latestStatus as any)?.openaps?.suggested?.COB) {
         latestStatus = await DeviceStatus.findOne({
-            "openaps.suggested": { $exists: true },
+            "openaps.suggested.COB": { $exists: true },
             "created_at": { $lte: date.toISOString() }
         }).sort({ created_at: -1 }).lean() as any;
     }
@@ -389,8 +450,8 @@ export async function getCOB(
                 const duration = treat.duration ? treat.duration / 60000 : 0;
                 const dtMin = (t - tEvent) / 60000;
                 const treatCarbs = treat.carbs ?? 0;
-
-                const res = getBolusAbsorption(dtMin, treatCarbs, duration, absorptionRate);
+                const treatRate = (treat as any)._calculatedAbsorptionRate || absorptionRate;
+                const res = getBolusAbsorption(dtMin, treatCarbs, duration, treatRate);
                 const remaining = Math.max(0, treatCarbs - res.absorbed);
 
                 totalCOB += remaining;

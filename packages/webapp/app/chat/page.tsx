@@ -127,7 +127,7 @@ function MessageBubble({ message }: { message: UIMessage }) {
 
     if (isUser) {
         // Simple user message rendering
-        const content = message.content || (message.parts as any[])
+        const content = (message as any).content || (message.parts as any[])
             ?.filter(p => p.type === 'text')
             ?.map((p: any) => p.text)
             ?.join('') || '';
@@ -149,14 +149,14 @@ function MessageBubble({ message }: { message: UIMessage }) {
         console.warn('[MessageBubble] Assistant Message:', {
             id: message.id,
             partsCount: message.parts?.length,
-            toolInvocationsCount: message.toolInvocations?.length,
+            toolInvocationsCount: (message as any).toolInvocations?.length,
             parts: message.parts,
-            invocations: message.toolInvocations
+            invocations: (message as any).toolInvocations
         });
     }, [message]);
 
     const parts = (message.parts as any[]) || [];
-    const toolInvocations = (message.toolInvocations as any[]) || [];
+    const toolInvocations = ((message as any).toolInvocations as any[]) || [];
     
     // We'll track which tool calls we've rendered to avoid duplicates
     const renderedToolCallIds = new Set<string>();
@@ -241,9 +241,9 @@ function MessageBubble({ message }: { message: UIMessage }) {
             })}
 
             {/* 2. Fallback: if parts are missing, render content and all toolInvocations */}
-            {parts.length === 0 && message.content && (
+            {parts.length === 0 && (message as any).content && (
                 <div className="px-4 py-3 bg-zinc-900/80 border border-zinc-800/60 rounded-2xl rounded-tl-sm text-sm text-zinc-100 leading-relaxed whitespace-pre-wrap">
-                    {message.content}
+                    {(message as any).content}
                 </div>
             )}
 

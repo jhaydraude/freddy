@@ -39,12 +39,22 @@ export async function recalculateStatusRange(
     const tsEndStr = rangeEnd.toISOString();
     // Treatments need a deep lookback (48h for profile switches, 12h for COB)
     const maxTreatmentLookback = new Date(rangeStart.getTime() - (48 * 60 * 60 * 1000)).toISOString();
+    
+    // For sensor, calibration, device status we want to be sure we find the *last* one before the window starts
+    const maxGlobalLookback = new Date(rangeStart.getTime() - (7 * 24 * 60 * 60 * 1000)).toISOString();
+    
+    // For entries and activities, we look back a bit further than range start for deltas
+    const maxEntryLookback = new Date(rangeStart.getTime() - (2 * 60 * 60 * 1000)).getTime();
+    const endTsNumber = rangeEnd.getTime();
 
     console.log(`[Cache Recalc] Building global context from ${maxTreatmentLookback} to ${tsEndStr} ...`);
 
+    const { getBaseline } = await import('./baseline-logic');
+    const { Entry } = await import('../db/models');
+
     // We fetch the profile for the end of the range, assuming it doesn't change wildly in the span
     // For perfect historical accuracy, getIOB/getBasal resolves profile internally per segment anyway.
-    const [profileInfo, sysConfig, allTreatments] = await Promise.all([
+    const [profileInfo, sysConfig, allTreatments, deviceStatuses, sgvEntries, activityEntries, sensorChanges, calibrations, baselineData] = await Promise.all([
         resolveActiveProfile(rangeEnd, true) as Promise<any>,
         SystemConfig.find().lean() as Promise<any[]>,
         Treatment.find({
@@ -54,16 +64,40 @@ export async function recalculateStatusRange(
                 { carbs: { $exists: true, $gt: 0 } },
                 { eventType: { $in: ["Temp Basal", "Profile Switch", "Site Change"] } }
             ]
-        }).sort({ created_at: 1 }).lean() as Promise<any[]>
+        }).sort({ created_at: 1 }).lean() as Promise<any[]>,
+        DeviceStatus.find({
+            created_at: { $gte: maxGlobalLookback, $lte: tsEndStr }
+        }).sort({ created_at: -1 }).lean() as Promise<any[]>,
+        Entry.find({
+            type: 'sgv',
+            date: { $gte: maxEntryLookback, $lte: endTsNumber }
+        }).sort({ date: -1 }).lean() as Promise<any[]>,
+        Entry.find({
+            type: 'activity',
+            stale: { $ne: true },
+            date: { $gte: maxEntryLookback, $lte: endTsNumber }
+        }).sort({ date: 1 }).lean() as Promise<any[]>,
+        Treatment.find({
+            eventType: "Sensor Change",
+            created_at: { $gte: maxGlobalLookback, $lte: tsEndStr }
+        }).sort({ created_at: -1 }).lean() as Promise<any[]>,
+        Treatment.find({
+            eventType: "BG Check",
+            mbg: { $exists: true },
+            created_at: { $gte: maxGlobalLookback, $lte: tsEndStr }
+        }).sort({ created_at: -1 }).lean() as Promise<any[]>,
+        getBaseline() as Promise<any>
     ]);
 
-    // Pump status changes often (every 5 mins), so we can't easily use a global one for a giant range.
-    // getStatus will query DeviceStatus internally if omitted from context.
     const globalContext: IStatusContext = {
         profileInfo,
         sysConfig,
-        treatments: allTreatments
-        // Omitting deviceStatus so getStatus finds the correct interpolated one per bucket
+        treatments: allTreatments,
+        glucoseEntries: sgvEntries,
+        activityEntries,
+        sensorChanges,
+        calibrations,
+        baselineData
     };
 
     console.log(`[Cache Recalc] Context built. Processing ${timestamps.length} buckets...`);
@@ -75,8 +109,16 @@ export async function recalculateStatusRange(
 
         await Promise.all(chunk.map(async (timestamp) => {
             try {
-                // Force recalculation by calling getStatus with bypassCache=true and our global context
-                await getStatus(timestamp, true, includeAttribution, true, globalContext);
+                const bucketIso = timestamp.toISOString();
+                // Find latest device status for this bucket timestamp (they are sorted desc)
+                const deviceStatus = deviceStatuses.find(ds => ds.created_at <= bucketIso);
+                const localContext: IStatusContext = {
+                    ...globalContext,
+                    deviceStatus
+                };
+
+                // Force recalculation by calling getStatus with bypassCache=true and our local context
+                await getStatus(timestamp, true, includeAttribution, true, localContext);
                 calculated++;
             } catch (error) {
                 console.error(`Failed to calculate status for ${timestamp.toISOString()}:`, error);

@@ -301,7 +301,7 @@ export const analyzeStatusTool = tool({
                     sgv: h.status?.glucose?.current?.sgv,
                     iob: h.status?.iob?.calculated?.totalIOB,
                     cob: h.status?.cob?.calculated?.cob,
-                })).filter(r => r.sgv != null);
+                })).filter((r: any) => r.sgv != null);
 
                 // Server-side downsampling/bucketing
                 const target = Math.min(args.datapoints || MAX_CHART_POINTS, 500);

@@ -147,9 +147,34 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
     const offsetHigh = calculateOffset(targetHigh);
     const offsetLow = calculateOffset(targetLow);
 
+    const renderIobDot = useCallback((props: any) => {
+        const { cx, cy, payload } = props;
+        if (!payload || !payload.raw || !payload.raw.treatments || cx == null || cy == null) return <g></g>;
 
+        const ts = payload.timestamp;
+        const bucketStart = ts - 5 * 60 * 1000;
+        
+        const bucketTreatments = payload.raw.treatments.filter((t: any) => {
+            const tTime = new Date(t.created_at).getTime();
+            return tTime > bucketStart && tTime <= ts && t.insulin > 0;
+        });
 
+        if (bucketTreatments.length === 0) return <g></g>;
 
+        const isBolus = bucketTreatments.some((t: any) => t.bolusType === 'BOLUS');
+        const isSMB = bucketTreatments.some((t: any) => t.bolusType === 'SMB');
+
+        if (isBolus) {
+            return (
+                <circle key={`dot-${ts}`} cx={cx} cy={cy} r={5} fill="#60a5fa" stroke="#1e3a8a" strokeWidth={1.5} />
+            );
+        } else if (isSMB) {
+            return (
+                <circle key={`dot-${ts}`} cx={cx} cy={cy} r={3} fill="#60a5fa" fillOpacity={0.4} stroke="none" />
+            );
+        }
+        return <g></g>;
+    }, []);
     if (isLoading && data.length === 0) {
         return (
             <div className="w-full h-[350px] flex items-center justify-center bg-zinc-900/40 rounded-xl border border-zinc-800/50">
@@ -302,7 +327,7 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
                             name="IOB"
                             stroke="#3b82f6"
                             strokeWidth={2}
-                            dot={false}
+                            dot={renderIobDot}
                             connectNulls
                             isAnimationActive={false}
                         />

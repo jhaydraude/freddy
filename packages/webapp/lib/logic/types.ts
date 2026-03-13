@@ -90,8 +90,12 @@ export interface IStatusContext {
     profileInfo?: IProfileInfoData;
     treatments?: ITreatmentData[];
     deviceStatus?: IDeviceStatusData;
-    activityData?: unknown[];
     sysConfig?: ISystemConfigData[];
+    glucoseEntries?: any[];
+    sensorChanges?: any[];
+    calibrations?: any[];
+    activityEntries?: any[];
+    baselineData?: any; // IUserBaseline
 }
 
 export interface IGlucoseResult {
@@ -276,7 +280,7 @@ export interface IStatusResult {
         battery: number | undefined;
         device: string;
     };
-    treatments?: any[]; // Recent insulin and carb treatments for chart markers
+    treatments?: Array<ITreatmentData & { bolusType?: 'SMB' | 'BOLUS' }>; // Recent insulin and carb treatments for chart markers
     meta: {
         reported_date: string | undefined;
         status_date: string;

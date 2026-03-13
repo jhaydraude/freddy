@@ -34,14 +34,19 @@ export interface IActivitySummary {
 /**
  * Fetches and aggregates activity data for a given time window.
  */
-export async function getActivityHistory(start: Date, end: Date, bucketSizeMin: number = 5): Promise<IActivityPoint[]> {
-    await connectToDatabase();
-
-    const records = await Entry.find({
-        type: 'activity',
-        stale: { $ne: true },
-        date: { $gte: start.getTime(), $lte: end.getTime() }
-    }).sort({ date: 1 }).lean();
+export async function getActivityHistory(start: Date, end: Date, bucketSizeMin: number = 5, preFetchedRecords?: any[]): Promise<IActivityPoint[]> {
+    
+    let records;
+    if (preFetchedRecords) {
+        records = preFetchedRecords.filter(r => r.date >= start.getTime() && r.date <= end.getTime());
+    } else {
+        await connectToDatabase();
+        records = await Entry.find({
+            type: 'activity',
+            stale: { $ne: true },
+            date: { $gte: start.getTime(), $lte: end.getTime() }
+        }).sort({ date: 1 }).lean();
+    }
 
     const bucketMs = bucketSizeMin * 60 * 1000;
     const buckets: Map<number, IActivityPoint> = new Map();
