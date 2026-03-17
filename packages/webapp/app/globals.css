@@ -69,3 +69,12 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+@keyframes enter {
+  from { opacity: 0; transform: translateY(-8px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-enter {
+  animation: enter 0.2s ease-out forwards;
+}
