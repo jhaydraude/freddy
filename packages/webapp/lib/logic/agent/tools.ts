@@ -323,7 +323,7 @@ export const analyzeStatusTool = tool({
                         const sortedCob = [...subset].sort((a,b) => (a.cob || 0) - (b.cob || 0));
                         
                         bucketed.push({
-                            date: Math.round(subset.reduce((s, r) => s + r.date, 0) / subset.length),
+                            date: Math.round(subset.reduce((s: number, r: any) => s + r.date, 0) / subset.length),
                             sgv: sortedSgv[midIdx].sgv,
                             iob: sortedIob[midIdx].iob,
                             cob: sortedCob[midIdx].cob
@@ -403,10 +403,10 @@ export const analyzeActivitiesTool = tool({
                     const subset = activityEntries.slice(start, end);
                     if (subset.length === 0) continue;
 
-                    const date = Math.round(subset.reduce((s, r) => s + r.date, 0) / subset.length);
+                    const date = Math.round(subset.reduce((s: number, r: any) => s + r.date, 0) / subset.length);
                     
                     // Sum steps in period
-                    const steps = subset.reduce((s, r) => s + (r.steps || 0), 0);
+                    const steps = subset.reduce((s: number, r: any) => s + (r.steps || 0), 0);
                     steps_series.push({ x: date, y: steps });
 
                     // Stats for heart rate

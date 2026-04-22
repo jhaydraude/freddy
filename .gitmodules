@@ -1,0 +1,3 @@
+[submodule "AndroidAps"]
+	path = AndroidAps
+	url = https://github.com/jhaydraude/androidaps
