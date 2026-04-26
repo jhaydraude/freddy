@@ -1,91 +1,140 @@
+/**
+ * profile-explain-logic.ts
+ *
+ * Profile analysis explain endpoint logic.
+ * Builds structured context from a ProfileAnalysis document and calls the configured LLM.
+ *
+ * Previously: manually constructed and JSON.stringify'd a dataContext object.
+ * Now: formats the analysis data into a labelled, structured text block using
+ * the same serialization approach as the dashboard explain.
+ *
+ * Note: ProfileAnalysis uses the legacy statistical model output (IProfileAnalysis).
+ * The MealActivityTuning path has its own buildTuningContext() builder (Phase 3).
+ */
+
 import { generateExplanation } from './llm-service';
 import { PROFILE_EXPLAIN_SYSTEM_PROMPT, generateProfileExplainPrompt } from './prompts';
 import type { IProfileAnalysis } from '../db/models';
+
+// ---------------------------------------------------------------------------
+// Time block labels (6 four-hour windows)
+// ---------------------------------------------------------------------------
+const TIME_BLOCKS = [
+    '00:00–04:00', '04:00–08:00', '08:00–12:00',
+    '12:00–16:00', '16:00–20:00', '20:00–24:00',
+];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const r = (v: number, dp = 1) => Math.round(v * 10 ** dp) / 10 ** dp;
+
+function formatBlock(label: string, values: number[], confidences: number[][], unit: string, dp = 1): string {
+    return values.map((val, i) => {
+        const [lo, hi] = confidences[i] ?? [val * 0.8, val * 1.2];
+        const relWidth = val !== 0 ? (hi - lo) / Math.abs(val) : 1;
+        const confidence = relWidth < 0.25 ? 'high' : relWidth < 0.6 ? 'medium' : 'low';
+        return `  ${TIME_BLOCKS[i] ?? `Block ${i + 1}`}: ${r(val, dp)} ${unit} [${r(lo, dp)}–${r(hi, dp)}] ${confidence} confidence`;
+    }).join('\n');
+}
+
+/**
+ * Build a structured, labelled text block from a ProfileAnalysis document.
+ * Replaces JSON.stringify(dataContext).
+ */
+function buildProfileAnalysisContext(analysis: IProfileAnalysis): string {
+    const lines: string[] = [];
+
+    // Model quality
+    const rSq = analysis.r_squared ?? 0;
+    const windows = analysis.windows_analyzed ?? 0;
+    const label = rSq > 0.7 ? 'excellent' : rSq > 0.5 ? 'good' : rSq > 0.3 ? 'moderate' : 'poor';
+    const dataNote = windows > 100 ? 'high data volume' : windows > 50 ? 'adequate data' : 'limited data';
+    const caution = rSq < 0.5
+        ? ' Results should be interpreted with caution.'
+        : ' Results are statistically meaningful.';
+    const qualityLine = `${label} fit (R²=${r(rSq, 2)}, RMSE=${r(analysis.rmse ?? 0, 1)}, MAE=${r(analysis.mae ?? 0, 1)}) — ${dataNote} (${windows} analysis windows).${caution}`;
+
+    lines.push('## Model Quality');
+    lines.push(qualityLine);
+
+    // Summary averages
+    const avgISF = analysis.estimated_isf.length > 0
+        ? r(analysis.estimated_isf.reduce((a, b) => a + b, 0) / analysis.estimated_isf.length)
+        : null;
+    const avgICR = analysis.estimated_icr.length > 0
+        ? r(analysis.estimated_icr.reduce((a, b) => a + b, 0) / analysis.estimated_icr.length)
+        : null;
+    const avgBasal = analysis.estimated_basal_rates.length > 0
+        ? r(analysis.estimated_basal_rates.reduce((a, b) => a + b, 0) / analysis.estimated_basal_rates.length, 3)
+        : null;
+
+    lines.push('\n## Estimated Parameter Averages');
+    if (avgISF != null) lines.push(`ISF (Insulin Sensitivity Factor): ${avgISF} mg/dL per U`);
+    if (avgICR != null) lines.push(`ICR (Insulin-to-Carb Ratio): ${avgICR} g per U`);
+    if (avgBasal != null) lines.push(`Basal Rate: ${avgBasal} U/hr`);
+
+    // Time-block breakdown: ISF
+    if (analysis.estimated_isf.length > 0) {
+        lines.push('\n## Estimated ISF by Time Block');
+        lines.push('(mg/dL per unit of insulin | [confidence interval] | confidence level)');
+        lines.push(formatBlock('ISF', analysis.estimated_isf, analysis.isf_confidence ?? [], 'mg/dL per U'));
+    }
+
+    // ICR
+    if (analysis.estimated_icr.length > 0) {
+        lines.push('\n## Estimated Carb Ratio (ICR) by Time Block');
+        lines.push('(grams of carbs per unit of insulin)');
+        lines.push(formatBlock('ICR', analysis.estimated_icr, analysis.icr_confidence ?? [], 'g per U'));
+    }
+
+    // Basal
+    if (analysis.estimated_basal_rates.length > 0) {
+        lines.push('\n## Estimated Basal Rates by Time Block');
+        lines.push('(units per hour)');
+        lines.push(formatBlock('Basal', analysis.estimated_basal_rates, analysis.basal_confidence ?? [], 'U/hr', 3));
+    }
+
+    // Activity coefficients
+    const actCoefs = analysis.estimated_activity_coefficients as any;
+    if (actCoefs) {
+        lines.push('\n## Activity Coefficients');
+        if (actCoefs.steps_per_minute != null) {
+            const stepsImpact = Math.abs(actCoefs.steps_per_minute) < 0.01
+                ? 'no measurable step impact detected'
+                : `${actCoefs.steps_per_minute > 0 ? 'raises' : 'lowers'} glucose by ~${r(Math.abs(actCoefs.steps_per_minute), 4)} mg/dL per step/min`;
+            lines.push(`Steps: ${stepsImpact}`);
+        }
+        if (actCoefs.hr_spike != null) {
+            lines.push(`Heart rate spike: ${r(actCoefs.hr_spike, 4)} mg/dL per elevated BPM`);
+        }
+        if (actCoefs.stress_hr != null) {
+            lines.push(`Stress HR: ${r(actCoefs.stress_hr, 4)} mg/dL per elevated BPM without steps`);
+        }
+    }
+
+    // Recommendation
+    if (analysis.recommendation) {
+        lines.push('\n## Model Recommendation');
+        lines.push(analysis.recommendation);
+    }
+
+    return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Main export
+// ---------------------------------------------------------------------------
 
 /**
  * Generate an LLM-powered explanation for a profile analysis result.
  */
 export async function explainProfileAnalysis(analysis: IProfileAnalysis): Promise<string> {
-    // Calculate averages for summary
-    const avgISF = analysis.estimated_isf.reduce((a, b) => a + b, 0) / analysis.estimated_isf.length;
-    const avgICR = analysis.estimated_icr.reduce((a, b) => a + b, 0) / analysis.estimated_icr.length;
-    const avgBasal = analysis.estimated_basal_rates.reduce((a, b) => a + b, 0) / analysis.estimated_basal_rates.length;
-
-    // Format timeline-based parameters (6 four-hour blocks)
-    const timeBlocks = ['00:00-04:00', '04:00-08:00', '08:00-12:00', '12:00-16:00', '16:00-20:00', '20:00-00:00'];
-
-    const timelineISF = analysis.estimated_isf.map((val, idx) => ({
-        time: timeBlocks[idx],
-        value: Math.round(val * 10) / 10,
-        confidence: {
-            lower: Math.round(analysis.isf_confidence[idx][0] * 10) / 10,
-            upper: Math.round(analysis.isf_confidence[idx][1] * 10) / 10
-        }
-    }));
-
-    const timelineICR = analysis.estimated_icr.map((val, idx) => ({
-        time: timeBlocks[idx],
-        value: Math.round(val * 10) / 10,
-        confidence: {
-            lower: Math.round(analysis.icr_confidence[idx][0] * 10) / 10,
-            upper: Math.round(analysis.icr_confidence[idx][1] * 10) / 10
-        }
-    }));
-
-    const timelineBasal = analysis.estimated_basal_rates.map((val, idx) => ({
-        time: timeBlocks[idx],
-        value: Math.round(val * 1000) / 1000,
-        confidence: {
-            lower: Math.round(analysis.basal_confidence[idx][0] * 1000) / 1000,
-            upper: Math.round(analysis.basal_confidence[idx][1] * 1000) / 1000
-        }
-    }));
-
-    // Build enhanced context for LLM
-    const dataContext = {
-        summary: {
-            isf_average: Math.round(avgISF * 10) / 10,
-            icr_average: Math.round(avgICR * 10) / 10,
-            basal_average: Math.round(avgBasal * 1000) / 1000,
-            activity_coefficients: analysis.estimated_activity_coefficients || null
-        },
-        timeline_parameters: {
-            isf_by_time: timelineISF,
-            icr_by_time: timelineICR,
-            basal_by_time: timelineBasal
-        },
-        model_quality: {
-            r_squared: analysis.r_squared,
-            rmse: analysis.rmse,
-            mae: analysis.mae,
-            interpretation: analysis.r_squared > 0.7 ? 'Excellent fit' :
-                analysis.r_squared > 0.5 ? 'Good fit' :
-                    analysis.r_squared > 0.3 ? 'Moderate fit' : 'Poor fit'
-        },
-        activity_analysis: (analysis as any).estimated_activity_coefficients ? {
-            steps_coefficient: (analysis as any).estimated_activity_coefficients.steps_per_minute,
-            hr_spike_coefficient: (analysis as any).estimated_activity_coefficients.hr_spike,
-            stress_hr_coefficient: (analysis as any).estimated_activity_coefficients.stress_hr ?? null,
-            confidence: (analysis as any).activity_confidence || null,
-            interpretation: Math.abs((analysis as any).estimated_activity_coefficients.steps_per_minute || 0) < 0.01 ?
-                'No measurable activity impact detected' :
-                'Activity impact detected'
-        } : null,
-        data_quality: {
-            windows_analyzed: analysis.windows_analyzed,
-            windows_filtered_out: (analysis as any).windows_filtered_out,
-            stable_windows: (analysis as any).stable_windows,
-            meal_windows: (analysis as any).meal_windows,
-            quality_score: analysis.windows_analyzed > 100 ? 'high' :
-                analysis.windows_analyzed > 50 ? 'medium' : 'low',
-            sufficient_data: analysis.windows_analyzed >= 50
-        },
-        tuning_suggestions: (analysis as any).tuning_suggestions || [],
-        current_recommendation: analysis.recommendation
-    };
+    const structuredContext = buildProfileAnalysisContext(analysis);
 
     return generateExplanation({
         system: PROFILE_EXPLAIN_SYSTEM_PROMPT,
-        user: generateProfileExplainPrompt(dataContext)
+        user: generateProfileExplainPrompt(structuredContext),
     });
 }

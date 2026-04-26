@@ -19,7 +19,9 @@ import {
     X,
     FolderKanban,
     Wind,
-    Utensils
+    Utensils,
+    MessageSquare,
+    ChevronDown
 } from 'lucide-react';
 import {
     XAxis,
@@ -51,6 +53,11 @@ export const MealActivityTuner: React.FC<Props> = ({ onBack, initialTuningId, mo
 
     const [confirmDeleteRun, setConfirmDeleteRun] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+
+    const [explanation, setExplanation] = useState<string | null>(null);
+    const [isExplaining, setIsExplaining] = useState(false);
+    const [explainError, setExplainError] = useState<string | null>(null);
+    const [explainOpen, setExplainOpen] = useState(false);
 
     useEffect(() => {
         fetch('/api/profile/active')
@@ -181,6 +188,24 @@ export const MealActivityTuner: React.FC<Props> = ({ onBack, initialTuningId, mo
         }
     };
 
+    const fetchExplanation = async () => {
+        if (!tuningId) return;
+        setIsExplaining(true);
+        setExplainError(null);
+        setExplanation(null);
+        setExplainOpen(true);
+        try {
+            const res = await fetch(`/api/tuning/explain?tuning_id=${tuningId}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to generate explanation');
+            setExplanation(data.explanation);
+        } catch (err: any) {
+            setExplainError(err.message);
+        } finally {
+            setIsExplaining(false);
+        }
+    };
+
     const handleApply = async (options: ApplyOptions) => {
         if (!activeProfileId || !result) return;
 
@@ -285,14 +310,26 @@ export const MealActivityTuner: React.FC<Props> = ({ onBack, initialTuningId, mo
                         </button>
                     </div>
                 ) : status === 'completed' ? (
-                    <button
-                        onClick={() => setShowApplyDialog(true)}
-                        disabled={isApplying}
-                        className="flex items-center gap-2 px-8 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-400 disabled:opacity-50 transition-all active:scale-95"
-                    >
-                        <Save size={18} />
-                        APPLY PARAMETERS
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={fetchExplanation}
+                            disabled={isExplaining}
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-300 text-sm font-bold hover:bg-zinc-700 hover:text-white disabled:opacity-50 transition-all active:scale-95"
+                        >
+                            {isExplaining
+                                ? <Loader2 size={16} className="animate-spin" />
+                                : <MessageSquare size={16} />}
+                            EXPLAIN THIS
+                        </button>
+                        <button
+                            onClick={() => setShowApplyDialog(true)}
+                            disabled={isApplying}
+                            className="flex items-center gap-2 px-8 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-bold shadow-lg shadow-indigo-500/20 hover:bg-indigo-400 disabled:opacity-50 transition-all active:scale-95"
+                        >
+                            <Save size={18} />
+                            APPLY PARAMETERS
+                        </button>
+                    </div>
                 ) : (
                     <div className="px-6 py-2.5 rounded-xl bg-zinc-800/50 border border-zinc-700 text-zinc-400 text-sm font-bold flex items-center gap-3">
                         <Loader2 className="animate-spin text-zinc-500" size={16} />
@@ -616,6 +653,60 @@ export const MealActivityTuner: React.FC<Props> = ({ onBack, initialTuningId, mo
                         isEditing={false}
                     />
                 </div>
+
+                {/* Explanation Panel */}
+                {explainOpen && (
+                    <div className="border border-zinc-800 rounded-3xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-400">
+                        <button
+                            onClick={() => setExplainOpen(v => !v)}
+                            className="w-full flex items-center justify-between p-5 bg-zinc-900 hover:bg-zinc-800/80 transition-colors"
+                        >
+                            <div className="flex items-center gap-3">
+                                <MessageSquare size={16} className="text-indigo-400" />
+                                <span className="text-sm font-bold text-zinc-200">AI Explanation</span>
+                                {isExplaining && (
+                                    <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest animate-pulse">Generating...</span>
+                                )}
+                            </div>
+                            <ChevronDown size={16} className={`text-zinc-500 transition-transform ${explainOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        <div className="p-6 bg-zinc-950/60 space-y-4">
+                            {isExplaining && (
+                                <div className="flex items-center gap-3 text-zinc-400 text-sm">
+                                    <Loader2 size={16} className="animate-spin text-indigo-400" />
+                                    <span>Analyzing tuning results...</span>
+                                </div>
+                            )}
+                            {explainError && (
+                                <div className="flex items-center gap-2 text-red-400 text-sm p-3 bg-red-500/5 border border-red-500/20 rounded-xl">
+                                    <AlertCircle size={14} />
+                                    {explainError}
+                                </div>
+                            )}
+                            {explanation && (
+                                <div className="prose prose-invert prose-sm max-w-none">
+                                    {explanation.split(/\n(?=###)/).map((section, i) => {
+                                        const [heading, ...body] = section.split('\n');
+                                        const isHeading = heading.startsWith('###');
+                                        return (
+                                            <div key={i} className={i > 0 ? 'pt-4 border-t border-zinc-800/60' : ''}>
+                                                {isHeading && (
+                                                    <h4 className="text-xs font-bold text-indigo-400 uppercase tracking-widest mb-2">
+                                                        {heading.replace(/^###\s*/, '')}
+                                                    </h4>
+                                                )}
+                                                <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                                                    {isHeading ? body.join('\n').trim() : section.trim()}
+                                                </p>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };

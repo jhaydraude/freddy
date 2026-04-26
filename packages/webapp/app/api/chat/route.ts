@@ -2,11 +2,13 @@
  * /api/chat/route.ts
  *
  * Data Explorer Agent endpoint.
- * Accepts a conversation history, runs the agent with tool calling (max 5 steps),
+ * Accepts a conversation history, runs the agent with tool calling (max 25 steps),
  * and streams the result back as Server-Sent Events using the Vercel AI SDK.
+ *
+ * Uses the unified LLM provider factory for model selection.
+ * Provider and model are configured via SystemConfig + env vars.
  */
 
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { streamText, stepCountIs, convertToModelMessages, type UIMessage } from 'ai';
 import { NextRequest } from 'next/server';
 import { connectToDatabase } from '@/lib/db/connection';
@@ -15,6 +17,7 @@ import { agentTools } from '@/lib/logic/agent/tools';
 import { buildSystemPrompt } from '@/lib/logic/agent/prompts';
 import { getUserContext } from '@/lib/logic/agent/data-catalog';
 import { UserPreference } from '@/lib/db/models';
+import { getChatModel } from '@/lib/logic/llm';
 
 export const maxDuration = 120; // seconds — chart + multi-step tool chains can take longer
 
@@ -46,36 +49,39 @@ export async function POST(req: NextRequest) {
     const ctx = await getUserContext();
     const systemPrompt = buildSystemPrompt(ctx);
 
-    // 4. Initialise Gemini via Vercel AI SDK
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-        return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured.' }), { status: 500 });
+    // 4. Get model from unified provider factory
+    let chatModel;
+    try {
+        chatModel = await getChatModel();
+    } catch (err: any) {
+        console.error('[chat] Provider initialization failed:', err);
+        return new Response(
+            JSON.stringify({ error: err.message || 'Failed to initialize LLM provider.' }),
+            { status: 500 }
+        );
     }
 
-    const google = createGoogleGenerativeAI({ apiKey });
-
-    // 5. Read model from system_config (fallback to 2.5 flash)
-    const { SystemConfig } = await import('@/lib/db/models');
-    const modelConfig = await SystemConfig.findOne({ key: 'ai_model' }).lean() as any;
-    const modelId = modelConfig?.value ?? 'gemini-2.5-flash';
+    // 5. Build provider-specific options
+    const providerOptions: Record<string, any> = {};
+    if (chatModel.providerType === 'gemini') {
+        providerOptions.google = {
+            thinkingConfig: {
+                thinkingBudget: 2048,
+                includeThoughts: true,
+            },
+        };
+    }
 
     // 6. Convert UIMessages → ModelMessages and stream
     const modelMessages = await convertToModelMessages(uiMessages);
 
     const result = streamText({
-        model: google(modelId),
+        model: chatModel.model,
         system: systemPrompt,
         messages: modelMessages,
         tools: agentTools,
         stopWhen: stepCountIs(25),
-        providerOptions: {
-            google: {
-                thinkingConfig: {
-                    thinkingBudget: 2048,
-                    includeThoughts: true,
-                },
-            },
-        },
+        providerOptions,
         onError: ({ error }) => {
             console.error('[chat] streamText error:', error);
         },

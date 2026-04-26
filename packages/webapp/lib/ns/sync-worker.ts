@@ -14,6 +14,7 @@ import { ComputedStatus } from '../db/models';
 export class SyncWorker {
     private client: NightscoutClient | null = null;
     private isRunning: boolean = false;
+    private patternTimer: NodeJS.Timeout | null = null;
 
     constructor() { }
 
@@ -24,6 +25,23 @@ export class SyncWorker {
         console.error('SyncWorker: Starting in Invalidation Mode...');
 
         await this.initializeWebSocket();
+
+        // Run pattern detection 10 seconds after startup, then every 6 hours
+        this.patternTimer = setTimeout(async () => {
+            await this.runPatternDetector();
+            this.patternTimer = setInterval(() => this.runPatternDetector(), 6 * 60 * 60 * 1000);
+        }, 10000);
+    }
+
+    private async runPatternDetector() {
+        try {
+            console.error('SyncWorker: Running background pattern detection...');
+            const { detectRecurringPatterns } = await import('../logic/pattern-detector');
+            const result = await detectRecurringPatterns();
+            console.error(`SyncWorker: Pattern detection complete. Scanned ${result.scannedDays} days, found ${result.patternsFound} blocks with data, upserted ${result.upsertedCount} active patterns.`);
+        } catch (err) {
+            console.error('SyncWorker: Background pattern detection failed:', err);
+        }
     }
 
     private async initializeWebSocket(): Promise<boolean> {
@@ -46,6 +64,11 @@ export class SyncWorker {
     public stop() {
         this.isRunning = false;
         if (this.client) this.client.disconnectWebSocket();
+        if (this.patternTimer) {
+            clearTimeout(this.patternTimer);
+            clearInterval(this.patternTimer);
+            this.patternTimer = null;
+        }
     }
 
     /**

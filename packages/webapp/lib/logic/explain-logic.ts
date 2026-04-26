@@ -1,89 +1,56 @@
+/**
+ * explain-logic.ts
+ *
+ * Dashboard explain endpoint logic.
+ * Builds structured attribution context and calls the configured LLM provider.
+ *
+ * Previously: manually constructed a dataContext object and JSON.stringify'd it.
+ * Now: uses buildAttributionContext() + serializeExplainContext() for labelled,
+ * pre-annotated LLM input that the model can parse without guessing units or field meanings.
+ */
+
 import { getStatus } from './status-logic';
-import { getStatusHistory } from './history-logic';
-import { calculateProjectedGlucose, getGlucosePrediction } from './prediction-logic';
+import { getGlucosePrediction } from './prediction-logic';
+import { SurfacedPattern } from '../db/models';
 import { generateExplanation } from './llm-service';
+import { buildAttributionContext, serializeExplainContext, buildExplainContext } from './llm';
 import { EXPLAIN_SYSTEM_PROMPT, generateExplainUserPrompt } from './prompts';
 
 export async function explainStatus(timestamp: string | Date = new Date()): Promise<string> {
     const now = new Date(timestamp);
-    const nowIso = now.toISOString();
 
-    // 1. Gather Context
-    const [currentStatus, history, projection30m, fullPrediction] = await Promise.all([
+    // 1. Gather context — prediction gives us the 4-hour forecast, status gives everything else
+    const [currentStatus, fullPrediction] = await Promise.all([
         getStatus(now),
-        getStatusHistory({
-            startTime: nowIso,
-            windowSize: 60, // Look back 60 minutes
-            bucketSize: 5
-        }),
-        calculateProjectedGlucose(30), // Point prediction
-        getGlucosePrediction(now, 240) // 4 hour projection
+        getGlucosePrediction(now, 240),  // 4-hour projection
     ]);
 
-    // 2. Formulate Prompt
-    const attribution30m = currentStatus.attribution?.timeframes?.find(tf => tf.minutes === 30);
+    // 2. Build structured attribution context (replaces the manual dataContext object)
+    const attributionCtx = buildAttributionContext(
+        currentStatus,
+        fullPrediction.length > 0 ? fullPrediction : null,
+        now
+    );
 
-    const dataContext = {
-        current: {
-            glucose: `${currentStatus.glucose?.current?.sgv} ${currentStatus.glucose?.units}`,
-            trend: currentStatus.glucose?.current?.direction,
-            rate_of_change: currentStatus.glucose?.current?.rateOfChange ? `${currentStatus.glucose.current.rateOfChange.toFixed(1)} ${currentStatus.glucose.units}/min` : "unknown",
-            delta30m: currentStatus.glucose?.current?.delta30m,
-            iob: {
-                total: currentStatus.iob?.calculated?.totalIOB,
-                bolus: currentStatus.iob?.calculated?.bolusIOB,
-                basal_dev: currentStatus.iob?.calculated?.basalIOB
-            },
-            cob: {
-                total: currentStatus.cob?.calculated?.cob,
-                active: currentStatus.cob?.calculated?.activeCOB,
-                pending: currentStatus.cob?.calculated?.pendingCOB
+    // 2.5 Fetch any active patterns that overlap this hour
+    const currentHour = now.getHours();
+    const activePatterns = await SurfacedPattern.find({
+        status: 'active',
+        $or: [
+            { time_window: { $exists: false } },
+            {
+                'time_window.start_hour': { $lte: currentHour },
+                'time_window.end_hour': { $gt: currentHour }
             }
-        },
-        attribution_30m: attribution30m ? {
-            actual_change: attribution30m.glucoseChange.actual,
-            predicted_change: attribution30m.glucoseChange.predicted,
-            unexplained_delta: attribution30m.components.unexplained,
-            breakdown: {
-                insulin: attribution30m.components.insulin.value,
-                carbs: attribution30m.components.carbs.value,
-                basal: attribution30m.components.basal.value,
-                activity: {
-                    impact: attribution30m.components.activity.value,
-                    intensity: attribution30m.components.activity.intensity,
-                    steps: attribution30m.components.activity.steps,
-                    heart_rate: attribution30m.components.activity.heartRate,
-                    calories: attribution30m.components.activity.calories,
-                    stairs: attribution30m.components.activity.stairs,
-                    data_available: attribution30m.components.activity.dataAvailable
-                }
-            }
-        } : "Not available",
-        device_health: {
-            sensor_age_hours: currentStatus.glucose?.sensor?.age,
-            sensor_noise: currentStatus.glucose?.sensor?.noise,
-            pump_age_hours: currentStatus.pump?.pumpAge,
-            reservoir: currentStatus.pump?.reservoir
-        },
-        history_20m: history.slice(0, 4).map(h => ({
-            time: h.meta?.status_date,
-            sgv: h.glucose?.current?.sgv
-        })),
-        projection_30m: projection30m ? {
-            predicted_bg: projection30m.projectedBg,
-            reasoning: projection30m.activityLines
-        } : "Not available",
-        long_term_prediction: fullPrediction.length > 0 ? {
-            min_bg: Math.min(...fullPrediction.map(p => p.sgv)),
-            max_bg: Math.max(...fullPrediction.map(p => p.sgv)),
-            eventual_bg: fullPrediction[fullPrediction.length - 1].sgv,
-            trend_summary: "4-hour lookahead"
-        } : "Not available"
-    };
+        ]
+    }).lean();
 
-    // 3. Call LLM
+    const explainCtx = buildExplainContext('dashboard', attributionCtx, undefined, activePatterns);
+    const structuredContext = serializeExplainContext(explainCtx);
+
+    // 3. Call the configured LLM provider
     return generateExplanation({
         system: EXPLAIN_SYSTEM_PROMPT,
-        user: generateExplainUserPrompt(now.toLocaleTimeString(), dataContext)
+        user: generateExplainUserPrompt(now.toLocaleTimeString(), structuredContext),
     });
 }

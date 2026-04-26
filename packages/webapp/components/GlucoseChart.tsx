@@ -149,31 +149,31 @@ export default function GlucoseChart({ data, isLoading, visibleLines, timeDomain
 
     const renderIobDot = useCallback((props: any) => {
         const { cx, cy, payload } = props;
-        if (!payload || !payload.raw || !payload.raw.treatments || cx == null || cy == null) return <g></g>;
+        if (!payload || !payload.raw || !payload.raw.treatments || cx == null || cy == null) return <g key={`dot-empty-${cx}-${cy}`}></g>;
 
         const ts = payload.timestamp;
         const bucketStart = ts - 5 * 60 * 1000;
-        
+
         const bucketTreatments = payload.raw.treatments.filter((t: any) => {
             const tTime = new Date(t.created_at).getTime();
             return tTime > bucketStart && tTime <= ts && t.insulin > 0;
         });
 
-        if (bucketTreatments.length === 0) return <g></g>;
+        if (bucketTreatments.length === 0) return <g key={`dot-empty-${ts}`}></g>;
 
         const isBolus = bucketTreatments.some((t: any) => t.bolusType === 'BOLUS');
         const isSMB = bucketTreatments.some((t: any) => t.bolusType === 'SMB');
 
         if (isBolus) {
             return (
-                <circle key={`dot-${ts}`} cx={cx} cy={cy} r={5} fill="#60a5fa" stroke="#1e3a8a" strokeWidth={1.5} />
+                <circle key={`dot-bolus-${ts}`} cx={cx} cy={cy} r={5} fill="#60a5fa" stroke="#1e3a8a" strokeWidth={1.5} />
             );
         } else if (isSMB) {
             return (
-                <circle key={`dot-${ts}`} cx={cx} cy={cy} r={3} fill="#60a5fa" fillOpacity={0.4} stroke="none" />
+                <circle key={`dot-smb-${ts}`} cx={cx} cy={cy} r={3} fill="#60a5fa" fillOpacity={0.4} stroke="none" />
             );
         }
-        return <g></g>;
+        return <g key={`dot-none-${ts}`}></g>;
     }, []);
     if (isLoading && data.length === 0) {
         return (

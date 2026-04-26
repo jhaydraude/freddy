@@ -18,7 +18,7 @@ import { getStatus } from '../status-logic';
 import { getGlucosePrediction } from '../prediction-logic';
 import { calculateStatistics, calculateTDDStatistics, calculateCarbStatistics, calculateActivityStatistics } from '../statistics-logic';
 import { resolveActiveProfile, getProfileStore } from '../profile-logic';
-import { Entry, Treatment, ComputedStatus } from '../../db/models';
+import { Entry, Treatment, ComputedStatus, SurfacedPattern } from '../../db/models';
 import { attributeGlucoseChange } from '../attribution-logic';
 
 /** Convert a raw mg/dL SGV to the user's display units. */
@@ -794,6 +794,65 @@ function buildAggregateOp(metric: string, field: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Tool: analyze_patterns
+// ---------------------------------------------------------------------------
+
+const analyzePatternsParams = z.object({
+    pattern_type: z.enum([
+        'overnight_unexplained_delta',
+        'time_of_day_hypo',
+        'post_activity_drop',
+        'post_meal_spike',
+        'time_of_month_sensitivity',
+        'persistent_high_unexplained'
+    ]).optional().describe('Specific pattern type to look for. Omit to fetch all types.'),
+    status: z.enum(['active', 'resolved', 'acknowledged']).optional().describe('Status of the pattern. Usually active is most relevant. Omit to fetch all statuses.'),
+    lookback_days: z.number().int().min(1).max(365).optional().describe('Only include patterns observed within the last N days.')
+});
+
+export const analyzePatternsTool = tool({
+    description: `Query surfaced recurring metabolic patterns. Use this when asked about recurring issues, why something keeps happening, longitudinal trends, or overnight drift. Patterns provide structured evidence of what the model cannot explain.`,
+    inputSchema: analyzePatternsParams,
+    execute: async (args: z.infer<typeof analyzePatternsParams>) => {
+        try {
+            const query: any = {};
+            if (args.pattern_type) query.pattern_type = args.pattern_type;
+            if (args.status) query.status = args.status;
+            if (args.lookback_days) {
+                const cutoff = new Date(Date.now() - args.lookback_days * 24 * 60 * 60 * 1000);
+                query.last_observed = { $gte: cutoff };
+            }
+
+            const patterns = await SurfacedPattern.find(query)
+                .sort({ 'magnitude.max': -1, last_observed: -1 })
+                .limit(10)
+                .lean();
+
+            if (!patterns || patterns.length === 0) {
+                return { result: 'No recurring patterns found matching the criteria.' };
+            }
+
+            return {
+                patterns: patterns.map((p: any) => ({
+                    id: p.pattern_id,
+                    type: p.pattern_type,
+                    status: p.status,
+                    time_window: p.time_window ? `${p.time_window.start_hour}:00 - ${p.time_window.end_hour}:00` : 'N/A',
+                    magnitude: `${p.magnitude.direction === 'positive' ? '+' : '-'}${p.magnitude.mean} mg/dL (max: ${p.magnitude.max})`,
+                    frequency: `${p.occurrence_count} days out of ${p.days_in_window}`,
+                    first_seen: p.first_observed.toISOString().split('T')[0],
+                    last_seen: p.last_observed.toISOString().split('T')[0],
+                    confidence: p.confidence
+                })),
+                total_found: patterns.length
+            };
+        } catch (err: any) {
+            return { error: `Failed to query patterns: ${err.message}` };
+        }
+    }
+});
+
+// ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 
@@ -803,6 +862,7 @@ export const agentTools = {
     analyze_activities: analyzeActivitiesTool,
     analyze_status: analyzeStatusTool,
     analyze_explain: analyzeExplainTool,
+    analyze_patterns: analyzePatternsTool,
     query_data: queryDataTool,
     render_chart: renderChartTool,
 };

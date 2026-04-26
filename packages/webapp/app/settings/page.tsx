@@ -210,6 +210,70 @@ export default function SettingsPage() {
                     </h2>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* AI Provider */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-zinc-500 ml-1">AI Provider</label>
+                            <select
+                                id="ai-provider-select"
+                                value={config?.ai_provider || 'gemini'}
+                                onChange={(e) => {
+                                    const newProvider = e.target.value;
+                                    setConfig({ ...config, ai_provider: newProvider });
+                                    handleSaveConfig('ai_provider', newProvider);
+                                    // Reset model to provider default when switching
+                                    const defaultModel = newProvider === 'ollama' ? 'qwen3:14b' : 'gemini-2.5-flash';
+                                    setConfig((prev: any) => ({ ...prev, ai_provider: newProvider, ai_model: defaultModel }));
+                                    handleSaveConfig('ai_model', defaultModel);
+                                }}
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                            >
+                                <option value="gemini">Google Gemini</option>
+                                <option value="ollama">Ollama (Local)</option>
+                            </select>
+                            <p className="text-[10px] text-zinc-600 ml-1">
+                                {(config?.ai_provider || 'gemini') === 'ollama'
+                                    ? 'Runs locally — no data leaves your machine.'
+                                    : 'Cloud API — only computed summaries are sent, never raw data.'}
+                            </p>
+                        </div>
+
+                        {/* AI Model */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-medium text-zinc-500 ml-1">AI Model</label>
+                            {(config?.ai_provider || 'gemini') === 'gemini' ? (
+                                <select
+                                    id="ai-model-select"
+                                    value={config?.ai_model || 'gemini-2.5-flash'}
+                                    onChange={(e) => {
+                                        setConfig({ ...config, ai_model: e.target.value });
+                                        handleSaveConfig('ai_model', e.target.value);
+                                    }}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                                >
+                                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                    <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+                                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                </select>
+                            ) : (
+                                <input
+                                    id="ai-model-input"
+                                    type="text"
+                                    defaultValue={config?.ai_model || 'qwen3:14b'}
+                                    onBlur={(e) => {
+                                        setConfig({ ...config, ai_model: e.target.value });
+                                        handleSaveConfig('ai_model', e.target.value);
+                                    }}
+                                    placeholder="e.g. qwen3:14b"
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 transition-all font-mono"
+                                />
+                            )}
+                            <p className="text-[10px] text-zinc-600 ml-1">
+                                {(config?.ai_provider || 'gemini') === 'ollama'
+                                    ? 'Any model tag available in your Ollama instance.'
+                                    : 'Takes effect on the next LLM call.'}
+                            </p>
+                        </div>
+
                         {/* Gemini Key */}
                         <div className="space-y-2">
                             <label className="text-xs font-medium text-zinc-500 ml-1">Google Gemini API Key</label>
@@ -318,12 +382,12 @@ export default function SettingsPage() {
                         <div className="flex-1">
                             <h3 className="text-sm font-semibold text-zinc-200 mb-1">Enable AI Chat</h3>
                             <p className="text-xs text-zinc-500 leading-relaxed">
-                                Allows the Data Explorer to send aggregated tool results to the Google Gemini API for natural language analysis.
+                                Allows the Data Explorer to send aggregated tool results to the configured AI provider for natural language analysis.
                                 Your raw glucose readings and other personal data are <span className="text-zinc-300">never</span> sent — only computed summaries (e.g. mean: 142 mg/dL, TIR: 72%).
                             </p>
                             <p className="text-[10px] text-zinc-600 mt-2 flex items-center gap-1">
                                 <Shield size={10} className="text-indigo-400 shrink-0" />
-                                All tool queries run locally. Only the aggregated results and your question are sent to Gemini.
+                                All tool queries run locally. Only the aggregated results and your question are sent to the AI provider.
                             </p>
                         </div>
                         <button

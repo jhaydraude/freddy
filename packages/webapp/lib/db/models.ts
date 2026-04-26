@@ -318,4 +318,5 @@ const ActivityRecordSchema = new Schema({
 export const ActivityRecord: any = getModel('ActivityRecord', ActivityRecordSchema, getFreddyConn, 'activity_records');
 
 export * from './models/freddy-profile';
-
+export * from './models/meal-activity-tuning';
+export * from './models/surfaced-pattern';
