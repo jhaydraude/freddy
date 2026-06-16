@@ -122,14 +122,16 @@ export class SyncWorker {
 
     /**
      * Real-time stale HR detection.
-     * When a new HR record arrives, check if it matches the last 2 records.
-     * If all 3 have identical HR values, the newest ones are stale (cached).
-     * 
-     * We preserve the FIRST record in a run (it's a legitimate reading)
-     * and only flag the duplicates that follow it.
-     * 
-     * Example: 2:59=85(real), 3:00=85(stale), 3:01=85(stale)
-     * When 3:01 arrives: flag 3:01 and 3:00, keep 2:59.
+     * When a new HR record arrives, check if it and the last 2 records form a
+     * low-variance cluster (≤3 BPM range) with no concurrent step activity.
+     * This catches off-body phantom readings from the optical sensor, which vary
+     * slightly (~1-3 BPM) rather than matching exactly.
+     *
+     * We preserve the FIRST record in a stale run (may be the last real reading)
+     * and flag the duplicates that follow it.
+     *
+     * Example: 2:59=85(real), 3:00=86(stale), 3:01=85(stale)
+     * When 3:01 arrives: range=1≤3, no steps → flag 3:01 and 3:00, keep 2:59.
      */
     private async checkAndFlagStaleHR(doc: any) {
         try {
@@ -140,29 +142,46 @@ export class SyncWorker {
                 type: 'activity',
                 heartrate: { $exists: true },
                 date: { $lt: doc.date }
-            }).sort({ date: -1 }).limit(2).select('_id heartrate stale').lean();
+            }).sort({ date: -1 }).limit(2).select('_id heartrate stale date').lean();
 
-            if (recentHR.length < 2) return; // Not enough history to judge
+            if (recentHR.length < 2) return;
 
-            // Check if all 3 (the 2 previous + the new one) have the same HR
-            const allSameHR = recentHR.every((r: any) => r.heartrate === doc.heartrate);
+            // Use a ≤3 BPM range instead of exact equality — off-body phantom
+            // readings are nearly flat but rarely produce perfectly identical integers.
+            const allBpms = [
+                (recentHR[1] as any).heartrate,
+                (recentHR[0] as any).heartrate,
+                doc.heartrate
+            ];
+            const bpmRange = Math.max(...allBpms) - Math.min(...allBpms);
+            if (bpmRange > 3) return;
 
-            if (allSameHR) {
-                // Flag the new record as stale
+            // Only flag when there's no concurrent step activity. A resting person
+            // sitting still may also have low HR variance, but the watch will still
+            // record steps=0 in separate step-type records. HR records don't carry
+            // steps themselves, so we look at step records in the same time window.
+            const windowStart = (recentHR[1] as any).date;
+            const hasRecentSteps = await Entry.exists({
+                type: 'activity',
+                steps: { $gt: 0 },
+                date: { $gte: windowStart, $lte: doc.date }
+            });
+            if (hasRecentSteps) return;
+
+            // Low-variance HR + no steps → likely off-body phantom readings.
+            await Entry.updateOne(
+                { _id: doc._id },
+                { $set: { stale: true } }
+            );
+
+            // Flag the immediate predecessor if not already stale.
+            // Do NOT flag recentHR[1] — it is either the last legitimate reading
+            // or already flagged from a prior check.
+            if (!(recentHR[0] as any).stale) {
                 await Entry.updateOne(
-                    { _id: doc._id },
+                    { _id: (recentHR[0] as any)._id },
                     { $set: { stale: true } }
                 );
-
-                // Flag the immediate predecessor if not already stale.
-                // Do NOT flag recentHR[1] — it's either the original legitimate
-                // reading, or already flagged from a previous check.
-                if (!(recentHR[0] as any).stale) {
-                    await Entry.updateOne(
-                        { _id: recentHR[0]._id },
-                        { $set: { stale: true } }
-                    );
-                }
             }
         } catch (error) {
             // Non-critical — don't let stale detection break the event pipeline

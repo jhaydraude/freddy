@@ -93,11 +93,19 @@ export function transformImpactData(data: any[], timeDomain?: [number, number]) 
 
 /**
  * Transforms activity history for ActivityChart.
+ *
+ * HR confidence:
+ *   - hrAvg / hrMin / hrMax / hrRange → confident (worn, real reading)
+ *   - hrLowConf → same BPM value but suspected off-body phantom reading:
+ *       triggered when steps stopped >15 min ago AND post-step HR range ≤5 BPM.
+ *     Chart renders this as a dashed, faded line instead of the solid HR line.
  */
 export function transformActivityData(activityHistory: any[], timeDomain?: [number, number]) {
     if (!activityHistory || activityHistory.length === 0) return [];
 
     const GAP_THRESHOLD_MS = 10 * 60 * 1000; // 10 min = 2× expected 5-min interval
+    const STEP_GAP_FOR_OFFBODY_MS = 15 * 60 * 1000; // no steps for 15+ min triggers check
+    const OFFBODY_HR_RANGE_THRESHOLD = 5; // BPM — real resting HR varies more than this
 
     const transformed = activityHistory
         .map(item => {
@@ -114,11 +122,45 @@ export function transformActivityData(activityHistory: any[], timeDomain?: [numb
                 hrMin,
                 hrMax,
                 hrRange: (hrMin !== null && hrMax !== null) ? [hrMin, hrMax] : null,
+                hrLowConf: null as number | null,
                 raw: item
             };
         })
         .filter((d): d is any => d !== null)
         .sort((a, b) => a.timestamp - b.timestamp);
+
+    // Detect suspected off-body periods: steps stopped >15 min ago AND post-step
+    // HR is suspiciously flat (≤5 BPM range). Real resting HR on a wrist still
+    // varies more than this; phantom optical readings from a desk are nearly constant.
+    const lastStepTime = transformed.reduce(
+        (acc: number, d: any) => d.steps > 0 ? d.timestamp : acc,
+        0
+    );
+
+    if (lastStepTime > 0) {
+        const postStepPoints = transformed.filter(
+            (d: any) => d.timestamp > lastStepTime && d.hrAvg !== null
+        );
+        const postStepGapMs = postStepPoints.length > 0
+            ? postStepPoints[postStepPoints.length - 1].timestamp - lastStepTime
+            : 0;
+
+        if (postStepGapMs >= STEP_GAP_FOR_OFFBODY_MS && postStepPoints.length >= 3) {
+            const bpms: number[] = postStepPoints.map((d: any) => d.hrAvg);
+            const bpmRange = Math.max(...bpms) - Math.min(...bpms);
+
+            if (bpmRange <= OFFBODY_HR_RANGE_THRESHOLD) {
+                // Move HR data to low-confidence slot; nulls break the solid line
+                for (const d of postStepPoints) {
+                    d.hrLowConf = d.hrAvg;
+                    d.hrAvg = null;
+                    d.hrMin = null;
+                    d.hrMax = null;
+                    d.hrRange = null;
+                }
+            }
+        }
+    }
 
     // Insert null-HR gap-breaker points where data collection gaps exist.
     // Without these, Recharts draws a straight line across gaps.
@@ -129,14 +171,14 @@ export function transformActivityData(activityHistory: any[], timeDomain?: [numb
         if (i < transformed.length - 1) {
             const gap = transformed[i + 1].timestamp - transformed[i].timestamp;
             if (gap > GAP_THRESHOLD_MS) {
-                // Insert a null sentinel just after the last real point
                 withGaps.push({
-                    timestamp: transformed[i].timestamp + 60000, // 1 min after last point
+                    timestamp: transformed[i].timestamp + 60000,
                     steps: 0,
                     hrAvg: null,
                     hrMin: null,
                     hrMax: null,
                     hrRange: null,
+                    hrLowConf: null,
                     raw: null
                 });
             }

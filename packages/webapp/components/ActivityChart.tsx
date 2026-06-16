@@ -45,7 +45,7 @@ export default function ActivityChart({ data, isLoading, timeDomain }: ActivityC
         );
     }
 
-    const hasData = chartData.some(d => d.steps > 0 || d.hrAvg !== null);
+    const hasData = chartData.some(d => d.steps > 0 || d.hrAvg !== null || d.hrLowConf !== null);
 
     if (!hasData) {
         return (
@@ -77,11 +77,14 @@ export default function ActivityChart({ data, isLoading, timeDomain }: ActivityC
                                         {hoverData.steps}
                                     </span>
                                 )}
-                                {hoverData.hrAvg && (
-                                    <span className="text-rose-400">
+                                {(hoverData.hrAvg || hoverData.hrLowConf) && (
+                                    <span className={hoverData.hrLowConf ? "text-rose-400/40" : "text-rose-400"}>
                                         <span className="text-zinc-600 mr-1">HR</span>
-                                        {hoverData.hrAvg}
-                                        {hoverData.hrMin !== hoverData.hrMax && (
+                                        {hoverData.hrAvg ?? hoverData.hrLowConf}
+                                        {hoverData.hrLowConf && (
+                                            <span className="text-zinc-600 text-[10px] ml-1">?</span>
+                                        )}
+                                        {hoverData.hrAvg && hoverData.hrMin !== hoverData.hrMax && (
                                             <span className="text-zinc-600 text-[10px] ml-1">
                                                 ({hoverData.hrMin}–{hoverData.hrMax})
                                             </span>
@@ -153,7 +156,7 @@ export default function ActivityChart({ data, isLoading, timeDomain }: ActivityC
                         connectNulls={false}
                     />
 
-                    {/* HR Average Line */}
+                    {/* HR Average Line — confident (watch worn) */}
                     <Line
                         yAxisId="hr"
                         type="monotone"
@@ -162,6 +165,20 @@ export default function ActivityChart({ data, isLoading, timeDomain }: ActivityC
                         strokeWidth={2}
                         dot={false}
                         activeDot={{ r: 4, strokeWidth: 0, fill: '#fff' }}
+                        connectNulls={false}
+                    />
+
+                    {/* HR Low-Confidence Line — suspected off-body phantom readings */}
+                    <Line
+                        yAxisId="hr"
+                        type="monotone"
+                        dataKey="hrLowConf"
+                        stroke="#f43f5e"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.3}
+                        dot={false}
+                        activeDot={{ r: 3, strokeWidth: 0, fill: '#f43f5e' }}
                         connectNulls={false}
                     />
                 </ComposedChart>
